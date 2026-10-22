@@ -28,6 +28,17 @@ handoff. One Python 3.12 app, native Windows window (PySide6).
 - YouTube upload.
 - Render Mode suspend/resume on Windows; NVENC encoding.
 
+## 2026-10-22 — one-click start
+
+Dave ran setup but couldn't find how to start the program. Now the desktop icon
+(made by `scripts/make-shortcut.ps1`, using Windows' real Desktop folder, which can be
+inside OneDrive) opens a startup window that starts Ollama and ComfyUI if needed,
+waits for both, then opens the Studio (`fofstudio/services.py`, `app/startup.py`).
+ComfyUI is found automatically (git install with venv, portable build, run_nvidia_gpu.bat,
+or the Desktop app on port 8000), or from Settings → services → comfyui_command.
+Closing the Studio stops the ComfyUI it started unless the queue is busy.
+`Update Studio.cmd` pulls updates and remakes the icon. 26 tests pass.
+
 ## Next
 
 1. Dave: run `setup.ps1`, then make S01E01 (Y2K fear industry) with Animation and Music skipped.

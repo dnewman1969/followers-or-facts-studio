@@ -64,15 +64,9 @@ if ($ComfyModels) {
     & powershell -ExecutionPolicy Bypass -File "$PSScriptRoot\scripts\get-comfy-models.ps1" -ComfyDir $ComfyDir
 }
 
-Step "Desktop shortcut"
-$shell = New-Object -ComObject WScript.Shell
-$lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\Followers or Facts Studio.lnk")
-$lnk.TargetPath = Join-Path $PSScriptRoot ".venv\Scripts\pythonw.exe"
-$lnk.Arguments = "-m fofstudio app"
-$lnk.WorkingDirectory = $PSScriptRoot
-$lnk.IconLocation = Join-Path $PSScriptRoot "brand\owlbert.ico"
-$lnk.Save()
+Step "Desktop icon"
+& powershell -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot\scripts\make-shortcut.ps1"
 
 Step "Check everything"
 & $venvPy -m fofstudio doctor
-Write-Host "`nDone. Start ComfyUI and Ollama, then open 'Followers or Facts Studio' from the desktop." -ForegroundColor Green
+Write-Host "`nDone. Double-click 'Followers or Facts Studio' on your desktop. It starts Ollama and ComfyUI for you." -ForegroundColor Green

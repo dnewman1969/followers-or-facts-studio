@@ -104,6 +104,18 @@ DEFAULTS: dict[str, Any] = {
         ],
         "auto_for_gpu_stages": False,
     },
+    "services": {
+        # The desktop icon starts these if they aren't already running.
+        "start_ollama": True,
+        "start_comfyui": True,
+        # Leave empty to find ComfyUI automatically. Otherwise the full command,
+        # e.g. "F:/AI/ComfyUI/run_nvidia_gpu.bat" or "F:/AI/ComfyUI/venv/Scripts/python.exe main.py"
+        "comfyui_command": "",
+        "comfyui_args": "--disable-auto-launch",
+        # Close the ComfyUI we started when the Studio closes (unless jobs are still running).
+        "stop_comfyui_on_exit": True,
+        "comfyui_wait_seconds": 240,
+    },
     "pipeline": {
         "auto_continue": False,
         "channel_credit": (

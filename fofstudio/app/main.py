@@ -107,6 +107,15 @@ class MainWindow(QMainWindow):
                 and not jobs.control()["paused"]:
             jobs.start_worker()
 
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt name
+        """Close the ComfyUI we started, unless the queue still needs it."""
+        from .. import services
+        from ..config import settings
+        busy = any(j["status"] in ("queued", "running") for j in jobs.jobs(50))
+        if settings()["services"]["stop_comfyui_on_exit"] and not busy:
+            services.stop_started_comfyui()
+        super().closeEvent(event)
+
     def _status(self) -> None:
         ollama_ok, _ = Ollama().health()
         comfy_ok, comfy_msg = Comfy().health()
@@ -136,6 +145,9 @@ def main() -> None:
                              "Check config/data-dir.txt or run setup.ps1.")
         return
     jobs.recover_stale()
+    if "--no-services" not in sys.argv:
+        from .startup import Startup
+        Startup().exec()
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

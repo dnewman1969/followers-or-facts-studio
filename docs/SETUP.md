@@ -40,9 +40,19 @@ Leave off `-ComfyModels` if you want stills-only episodes for now; you can run
 
 ## 4. Each time you make videos
 
-1. Start **Ollama** (it usually starts with Windows).
-2. Start **ComfyUI** (`F:\AI\ComfyUI`, the way you normally do).
-3. Open **Followers or Facts Studio** from the desktop.
+Double-click **Followers or Facts Studio** on your desktop (it's also in the Start menu).
+A small window starts Ollama and ComfyUI if they aren't already running, waits until
+both answer (the first ComfyUI start can take a minute or two), then opens the Studio.
+When you close the Studio, the ComfyUI it started is closed too, unless jobs are still
+running in the queue.
+
+If the icon is missing, open `F:\AI\followers-or-facts-studio` and double-click
+**Update Studio.cmd**. It gets the newest version and makes the icon.
+
+If ComfyUI won't start from the icon, go to Settings → services → `comfyui_command`
+and type how you normally start it, for example
+`F:/AI/ComfyUI/run_nvidia_gpu.bat`. "Show ComfyUI messages" on the startup window
+shows what went wrong.
 
 ## 5. Your first episode
 
