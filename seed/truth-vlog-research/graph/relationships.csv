@@ -1,0 +1,188 @@
+from_type,from_id,to_type,to_id,relation,start_year,end_year,source_ids,notes
+person,P-ALEX-JONES,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,owns,1999,,,Primary subject of KF index
+person,P-TED-ANDERSON,org,O-GENESIS-COMMUNICATIONS-NETWORK-GCN,owns,1990s,,,GCN / Midas pipeline
+person,P-TED-ANDERSON,org,O-MIDAS-RESOURCES-TED-ANDERSON,owns,1990s,,,Gold sponsor on crisis programming
+person,P-ALEX-JONES,org,O-GENESIS-COMMUNICATIONS-NETWORK-GCN,guests_on,1990s,,,Early GCN syndication era
+person,P-GAVIN-MCINNES,org,O-PROUD-BOYS,member_of,2016,,,Founder
+person,P-JACK-POSOBIEC,org,O-REBEL-MEDIA,employs,2010s,,,Amplification platform
+person,P-GEORGE-SOROS,org,O-OPEN-SOCIETY-FOUNDATIONS,funds,1993,,,"Legitimate philanthropy — often the TARGET of smears, not the villain"
+org,O-INFOWARS-FREE-SPEECH-SYSTEMS,org,O-JOHN-BIRCH-SOCIETY,cites,1990s,,,Ideological inheritance / bookshelf pipeline
+person,P-ALEKSANDR-DUGIN,country,X-RUSSIA,amplifies,2000s,,,Geopolitical ideologue guest pipeline
+org,O-RUSSIA-TODAY-RT,country,X-RUSSIA,owns,2005,,,State media platform
+person,P-SIMON-ROCHE,org,O-SUIDLANDERS,member_of,2000s,,,White-genocide evacuation narrative
+person,P-MARK-DICE,org,O-DRUDGE-REPORT,amplifies,2015,,,Dice → Drudge → Jones flag-ban cycle
+person,P-MILLIE-WEAVER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,employs,2010s,,,InfoWars reporter/filmmaker
+person,P-JON-RAPPOPORT,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #12 special
+person,P-STEVE-PIECZENIK,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,Introduced KF #20; major later false-flag guest
+person,P-MIKE-CERNOVICH,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #29-30
+person,P-GAVIN-MCINNES,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #30 with Proud Boys intro
+person,P-DENNIS-MONTGOMERY,person,P-JOE-ARPAIO,partners_with,2010s,,,Fake intel pipeline
+person,P-JACK-POSOBIEC,org,O-4CHAN-ANONYMOUS-BOARDS,amplifies,2016,,,KF #39 vibes/4chan sourcing
+org,O-BREITBART,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2010s,,,Chobani/Twin Falls pipeline
+person,P-STEFAN-MOLYNEUX,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #35
+person,P-MARK-DICE,person,P-MATT-DRUDGE,amplifies,2015,,,Flag-ban cycle KF #36
+person,P-LARRY-NICHOLS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #45 Present Day + #46+ 2015 Investigation; anti-Hillary fuel
+person,P-LAUREN-SOUTHERN,org,O-REBEL-MEDIA,employs,2015,,,Intro adjacency KF #47
+person,P-LAUREN-SOUTHERN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #47
+person,P-GERALD-CELENTE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #49 collapse/gold lane
+person,P-GERALD-CELENTE,org,O-MIDAS-RESOURCES-TED-ANDERSON,amplifies,2015,,,Buy gold during crisis programming
+person,P-PETER-SCHIFF,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #47 financial collapse interview
+person,P-LORD-MONCKTON,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #49 EU fascist framing
+person,P-ROB-DEW,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,employs,2010s,,,Producer/on-air KF #42/#49
+person,P-JOHN-DEW,person,P-ROB-DEW,partners_with,2015,,,Uncle/nephew per KF #49 SH investigator claim — verify
+person,P-JEROME-CORSI,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,employs,2017,2017,,Bureau chief exit after #45/#48 flop
+person,P-TOMMY-ROBINSON,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #51 first blood — UK Islamophobia pipeline
+person,P-DAVID-DUKE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,Full interview KF #59; document carefully
+person,P-KERRY-CASSIDY,org,O-PROJECT-CAMELOT,owns,2006,,,Camelot host
+person,P-KERRY-CASSIDY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #60 Mars Colonies
+person,P-ROBERT-DAVID-STEELE,org,O-PROJECT-CAMELOT,guests_on,2017,,,Mars/pedo-base claims KF #60
+org,O-CENTER-FOR-MEDICAL-PROGRESS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2015,,,CMP sting videos treated as news KF #52/#56
+person,P-MEGYN-KELLY,org,O-NBC-MEGYN-KELLY-FRANCHISE,employs,2017,,,Platform interview KF #54-55 — not a conspiracist
+person,P-LARRY-ELDER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #52 early pro-Trump interview
+person,P-LEO-ZAGAMI,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #61/#68 esoteric guest
+person,P-STEVE-QUAYLE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #64 chimera window
+person,P-JOSEPH-FARAH,org,O-WORLDNETDAILY,owns,1997,,,WND publisher
+person,P-JOSEPH-FARAH,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #66
+person,P-JOHN-MCAFEE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #66
+person,P-ROBERT-DAVID-STEELE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,Protocols Deep Dive KF #67 + Camelot #60
+person,P-DAVID-DUKE,person,P-ALEX-JONES,amplifies,2015,,,Duke stats cited arguing with Ventura KF #62; interview #59
+person,P-ALEKSANDR-DUGIN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,Live interview KF #71; also #10
+person,P-ADAM-CURRY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #72
+person,P-MATT-DRUDGE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,On-air visit KF #74
+person,P-MARK-RICHARDS,org,O-PROJECT-CAMELOT,guests_on,2010s,,,Prison Camelot interviews KF #79
+person,P-JOEL-SKOUSEN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #80
+person,P-JOEL-SKOUSEN,person,P-W-CLEON-SKOUSEN,partners_with,,,,Family/ideological adjacency — verify relation type later
+person,P-DAVID-CLARKE,country,X-RUSSIA,amplifies,2015,,,Rogozin meeting optics KF #78
+person,P-PAUL-CRAIG-ROBERTS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #78
+org,O-DAILY-STORMER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2017,,,Pipeline suspicion on KF #73 Charlottesville coverage — verify
+person,P-HARRY-DENT,org,O-MIDAS-RESOURCES-TED-ANDERSON,amplifies,2015,,,Collapse→gold lane KF #76
+person,P-ROGER-STONE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,STONE FLIP KF #82 — Trump pivot architect on air
+person,P-ROGER-STONE,person,P-ALEX-JONES,amplifies,2015,,,Plays Alex toward Trump Nov 2015
+person,P-PHYLLIS-SCHLAFLY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #82 Trump endorsement lane
+person,P-JIM-MARRS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #82
+person,P-GEORGE-NOORY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #82 Coast to Coast crossover
+person,P-DAVID-ICKE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2012,,,KF #84 Mayan/SH psychic vampires
+person,P-JAMES-DAVID-MANNING,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,KF #89
+person,P-JAMES-DAVID-MANNING,org,O-ATLAH-WORLDWIDE-MISSIONARY,owns,2000s,,,ATLAH church
+person,P-STEVE-PIECZENIK,person,P-ROGER-STONE,partners_with,2015,,,KF #93 — Stone+Steve playing Alex
+person,P-STEVE-PIECZENIK,org,O-KNIGHT-SHOW-TOM-KNIGHT,guests_on,2015,,,Vegas denial on Knight show cited KF #93
+person,P-MATT-BRACKEN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #99 after Manhattan attack
+person,P-LOUIS-FARRAKHAN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2016,,,KF #100 flattery compromise
+person,P-ZACK-SPACE-COMMAND,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,Caller debut KF #99
+person,P-LARRY-KLAYMAN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2012,,,KF #98
+person,P-MAX-KEISER,org,O-RUSSIA-TODAY-RT,employs,2010s,,,RT show host — KF #102 overlap
+person,P-SIMON-ROCHE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #104 Suidlanders
+person,P-LUCIAN-WINTRICH,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2017,,,KF #108
+org,O-BRITAIN-FIRST,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2017,,,Trump retweet defense KF #108
+person,P-CHRISTOPHER-CANTWELL,person,P-PAUL-JOSEPH-WATSON,amplifies,2016,,,PJW quotes Cantwell KF #101
+person,P-PAUL-CRAIG-ROBERTS,org,O-RUSSIA-TODAY-RT,guests_on,2010s,,,KF #102 guest overlap with RT
+person,P-TED-MALLOCH,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2016,,,Fake knight KF #111
+person,P-HARRISON-SMITH,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,employs,2010s,,,Researcher on fake Soros contracts KF #118
+person,P-HARRISON-SMITH,org,O-4CHAN-ANONYMOUS-BOARDS,amplifies,2018,,,4chan docs as research KF #118
+person,P-TOSH-PLUMLEE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2016,,,Controlled-opp claim KF #120
+person,P-DAVE-MUSTAINE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2012,,,KF #119 staged-shootings claim
+org,O-PATRIOT-FRONT,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2017,,,Racist tee adjacency KF #117 — verify carefully
+person,P-MIKE-ADAMS,org,O-NATURAL-NEWS,owns,2000s,,,Health Ranger / Natural News
+person,P-MARC-RANDAZZA,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,partners_with,2018,,,PayPal lawsuit counsel KF #213
+person,P-RON-PAUL,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #211 gold/dollar guest
+person,P-JACK-MCLAMB,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #215 caller / #219 guest
+person,P-JACK-MCLAMB,org,O-OATH-KEEPERS,amplifies,2009,,S-ADL-OATH-KEEPERS,Ideological predecessor; introduces the group to Jones on #219
+person,P-STEWART-RHODES,org,O-OATH-KEEPERS,member_of,2009,,S-ADL-OATH-KEEPERS,Founder
+person,P-RICHARD-MACK,org,O-OATH-KEEPERS,member_of,2009,,,Already in DB as orbit from #174; listed among early directors in later reporting
+person,P-CHUCK-NORRIS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #219
+person,P-SOPHIA-STEWART,org,O-PROJECT-CAMELOT,guests_on,2018,,,KF #212
+person,P-WEBSTER-TARPLEY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #211 Obamavilles / OD sales window — earlier than the 230A seed
+person,P-W-CLEON-SKOUSEN,person,P-CARROLL-QUIGLEY,cites,1970,,,Naked Capitalist is a gloss on Quigley Tragedy and Hope; Obama Deception pipeline
+person,P-TERRY-BRESSI,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #211 sovereign-adjacent
+person,P-BOB-CHAPMAN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #219 gold/MIAC
+org,O-OATH-KEEPERS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2009,,,Recruitment adjacency from first on-air intro
+person,P-STEWART-RHODES,org,O-OATH-KEEPERS,member_of,2009,,,Founder; first InfoWars guest appearance KF #222.
+person,P-STEWART-RHODES,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #222 first appearance.
+person,P-ROGER-STONE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,Recurring; #221 bomb false-flag video + #226 midterm.
+person,P-WEBSTER-TARPLEY,person,P-W-CLEON-SKOUSEN,cites,2009,,S-QUIGLEY-SKOUSEN-GEORGETOWN,OD expert voice tracks to Skousen Naked Capitalist misread of Quigley.
+person,P-W-CLEON-SKOUSEN,person,P-CARROLL-QUIGLEY,cites,1970,,S-QUIGLEY-SKOUSEN-GEORGETOWN,Naked Capitalist misrepresents Tragedy and Hope; Quigley repudiated it.
+person,P-DANIEL-ESTULIN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,Obama Deception Bilderberg talking head.
+person,P-TED-NUGENT,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2018,,,KF #226 midterm guest.
+person,P-CHUCK-BALDWIN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #222 MIAC / Tea Party guest.
+person,P-JOHN-F-MCMANUS,org,O-JOHN-BIRCH-SOCIETY,member_of,1960s,,,Longtime JBS; president when guesting on #234.
+person,P-JOHN-F-MCMANUS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #234.
+person,P-JAMES-DAVID-MANNING,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,,,Recurring; deep dive KF #232.
+person,P-SCOTT-WHITAKER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #237 harmful medical advice hour.
+person,P-DAVE-DAUBENMIRE,org,O-JOHN-BIRCH-SOCIETY,member_of,,,,KF #238 notes JBS adjacency / Lee statue talking points.
+person,P-LUKE-RUDKOWSKI,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,OD orbit + KF #240.
+person,P-GAVIN-MCINNES,org,O-PROUD-BOYS,member_of,2016,2018,,Founder; #239 claims he stepped down to prove not a gang.
+person,P-RICK-BERMAN,org,O-CENTER-FOR-CONSUMER-FREEDOM,owns,1995,,S-CCF-FUNDING-LEAD,Berman operation; industry-funded front group.
+org,O-INFOWARS-FREE-SPEECH-SYSTEMS,org,O-CENTER-FOR-CONSUMER-FREEDOM,amplifies,2009,,,KF #243 — CCF copy read on air as independent news.
+person,P-ROGER-STONE,person,P-GUO-WENGUI,attacks,2017,2018,S-AP-STONE-GUO-2018,False InfoWars claims; retracted under settlement Dec 2018.
+person,P-VOX-DAY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2018,,,KF #242 — brought on to attack Ben Shapiro.
+person,P-OWEN-BENJAMIN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2018,,,KF #245 — hosts the 4th hour.
+person,P-TOMMY-CRYER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #243 — IRS-defiance guest.
+person,P-LARRY-KLAYMAN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2014,,,KF #244 — Ebola suit against Obama used as proof.
+person,P-BILL-COOPER,person,P-ALEX-JONES,attacks,1999,2001,,Cooper calls Jones out on air for the Y2K panic and for prophet posturing; Jones trashes him afterward. Predecessor turned rival.
+person,P-NATHAN-WYATT,org,O-DARK-OVERLORD,member_of,2016,2019,S-WYATT-SENTENCE-2020,Convicted 2020; five years.
+org,O-INFOWARS-FREE-SPEECH-SYSTEMS,org,O-DARK-OVERLORD,amplifies,2019,2019,S-FORBES-DARK-OVERLORD-2019,KF #248 — promoted the extortion leak as a patriot disclosure.
+person,P-JOHN-WATERMAN,org,O-PROJECT-CAMELOT,guests_on,2016,,,KF #250 — fake credentials plus ZOG material aired unchallenged.
+person,P-ROSALIND-PETERSON,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #254 — chemtrail expert for the documentary.
+person,P-WILLIAM-BLACK,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #254 — credible economist; audience rejects him.
+person,P-STEVE-KING,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,amplifies,2019,,,KF #253 — defended on air after the white-supremacy remarks.
+person,P-JIM-TUCKER,org,O-AMERICAN-FREE-PRESS,employs,2001,,,AFP reporter; on InfoWars #262 and SH day-of #266.
+person,P-WILLIS-CARTO,org,O-AMERICAN-FREE-PRESS,owns,2001,,S-SPLC-WILLIS-CARTO,Liberty Lobby successor orbit.
+person,P-JIM-TUCKER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #262 n-word incident; #266 SH day-of.
+person,P-ROGER-STONE,person,P-RANDY-CREDICO,attacks,2017,2019,S-STONE-INDICTMENT-2019,Witness tampering count — pressure to stonewall Congress.
+person,P-MARC-MORANO,org,O-CFACT,employs,2009,,S-CFACT-FUNDING-LEAD,ClimateDepot editor / CFACT communications.
+person,P-ADRIAN-SALBUCCI,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #262 antisemitic guest hour.
+person,P-NAOMI-WOLF,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2009,,,KF #258 — present for the document-misread day.
+org,O-CHURCH-OF-SCIENTOLOGY,org,O-CCHR,owns,1969,,S-CCHR-SCIENTOLOGY,Co-founded CCHR in 1969 per CCHR's own about page.
+org,O-CCHR,person,P-KELLY-OMEARA,employs,,,S-CCHR-SCIENTOLOGY,Wrote for CCHR before appearing as an independent authority on psychiatric drugs.
+org,O-NEWS-WORLD-COMMUNICATIONS,person,P-KELLY-OMEARA,employs,,,S-INSIGHT-NEWS-WORLD,Via Insight on the News. Confirm ownership record before use.
+person,P-JOE-ROGAN,person,P-ALEX-JONES,guests_on,2019,,S-JRE-1255-2019,"JRE #1255, 27 Feb 2019. Four and a half hours, six months after the platform bans."
+person,P-ALEX-JONES,person,P-DANIELE-GANSER,cites,2012,,S-RID-ACTIVE-MEASURES-2020,NATO's Secret Armies is the Gladio reference on air; the book itself carries the forged supplement.
+person,P-LARRY-PRATT,org,O-GUN-OWNERS-OF-AMERICA,member_of,,,,
+person,P-BOB-BARR,org,O-NRA,member_of,,,,Later NRA board member; interviewed in #272.
+person,P-JOHN-TROCHMANN,org,O-MILITIA-OF-MONTANA,member_of,1994,,,Founder.
+person,P-BOB-FLETCHER,org,O-MILITIA-OF-MONTANA,member_of,1990s,,,Self-described co-founder of the patriot militia movement; claim unverified.
+person,P-ALI-ALEXANDER,org,O-STOP-THE-STEAL,member_of,2020,2021,S-J6-JONES-LETTER-2021,Fronted the 2020-21 Stop the Steal street brand; marched to Capitol with Jones.
+person,P-ALEX-JONES,org,O-WOMEN-FOR-AMERICA-FIRST,partners_with,2020,2021,S-CNN-JONES-JAN6-ORG-2021;S-J6-JONES-LETTER-2021,Helped organize/fund Ellipse rally; denied a speaking slot; spoke Jan 5 instead.
+person,P-JACOB-CHANSLEY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,2021,S-KF-518-WIKI,KF #518 — InfoWars interview the day after the riot.
+person,P-SAMUEL-MONTOYA,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,employs,2021,,S-AP-SHROYER-PLEA-2023,InfoWars video editor; entered the Capitol Jan 6.
+person,P-OWEN-SHROYER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,employs,2016,,S-AP-SHROYER-PLEA-2023,War Room host; pleaded guilty to restricted-area charge for Jan 6.
+person,P-MIKE-FLYNN,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2020,,,12/12 stage; #518 message after the riot.
+person,P-ALEX-JONES,person,P-JOHN-EARLE-SULLIVAN,cites,2021,2021,S-POLITIFACT-SULLIVAN-2021,Jones cites Sullivan as the Antifa leader of Jan 6.
+person,P-JIM-HOFT,org,O-GATEWAY-PUNDIT,owns,2004,,,Publisher.
+person,P-JIM-HOFT,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #530 impeachment week.
+person,P-JAY-DYER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #529.
+person,P-ALEX-JONES,org,O-ERCOT,attacks,2021,2021,S-AP-TEXAS-STORM-2021;S-FERC-URI-2021,Uri week: ERCOT as Great Reset / Fed plot.
+person,P-STEW-PETERS,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #540.
+person,P-EZRA-LEVANT,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #541.
+person,P-STEWART-RHODES,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #539 American Journal; #540; #545 with lawyer. Spinning Jan 6 charges while still free.
+person,P-SHEILA-GUNN-REID,org,O-REBEL-MEDIA,member_of,2021,,,Rebel Media reporter; KF #547 guest on InfoWars.
+person,P-SHEILA-GUNN-REID,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #547.
+person,P-ARTUR-PAWLOWSKI,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #554.
+person,P-CARRIE-MADEJ,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #554.
+person,P-ALFIE-OAKES,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #557.
+person,P-MIKE-LINDELL,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #565 first InfoWars interview.
+person,P-NOAM-CHOMSKY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2001,2001,,2001 interview covered on KF #559. Not an InfoWars regular.
+person,P-SHERRY-TENPENNY,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2020,,,KF #482 then #573 magnet theory.
+person,P-MICHAEL-MALICE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #576.
+person,P-JOHN-MCAFEE,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2015,2021,,Guest lane from KF #66; death-as-plot product #569-#570.
+person,P-IVORY-HECKER,org,O-INFOWARS-FREE-SPEECH-SYSTEMS,guests_on,2021,,,KF #584.
+person,P-STELLA-IMMANUEL,person,P-ALEX-JONES,guests_on,2021,2021,,KF #594 vampire-clone / They Live hour.
+person,P-THOMAS-RENZ,person,P-ALEX-JONES,guests_on,2021,2021,,KF #603 — 48k-dead VAERS wrap during default-judgment money panic.
+person,P-STEVE-KIRSCH,person,P-ALEX-JONES,guests_on,2021,2021,S-POLITIFACT-KIRSCH-NEWSOM-2021,KF #616/#619 Newsom-paralysis hour.
+person,P-JAKE-DUCEY,person,P-ALEX-JONES,partners_with,2021,2021,,Reset Wars course pitchman after the CT default.
+person,P-ALEX-JONES,org,O-RESTORE-AMERICA-MARKETING,owns,2021,,,Delaware LLC filed the day after the Connecticut default.
+person,P-TUCKER-CARLSON,person,P-ALEX-JONES,amplifies,2021,2021,,Patriot Purge carries the InfoWars Jan 6 rewrite onto Fox Nation. Jones takes credit.
+person,P-ANN-COULTER,person,P-ALEX-JONES,guests_on,2003,2003,,KF #628 (2003 tape): he books her to crush a neocon. She calls the show insane / LaRouche-ites.
+person,P-MARJORIE-TAYLOR-GREENE,person,P-ALEX-JONES,guests_on,2022,,,KF #644: House member on InfoWars. Stolen election / Fauci-made-COVID / Epps.
+person,P-MICHAEL-HYATT,org,O-THOMAS-NELSON,employs,1998,,S-RNS-CHRISTIANS-RECONSIDER-1999,Senior vice president at Thomas Nelson while simultaneously running Y2K Prep. The respectability layer over the product.
+person,P-MICHAEL-HYATT,org,O-Y2K-PREP,owns,1998,2000,S-CT-Y2KRAZY-1999,"Founder and president. Sold food packages up to $3,395 while publishing the books that made them feel necessary."
+person,P-GARY-NORTH,org,O-INSTITUTE-CHRISTIAN-ECONOMICS,owns,1976,,S-ICE-SCARY-GARY-1999,North's publishing vehicle for Reconstructionist economics.
+person,P-PAT-ROBERTSON,org,O-CBN,owns,1960,,S-CT-SECULAR-APOCALYPSE-1999,"Founder; hosted The 700 Club, which ran the Y2K disaster segments."
+person,P-JAMES-DOBSON,org,O-FOCUS-ON-THE-FAMILY,owns,1977,,S-RNS-CHRISTIANS-RECONSIDER-1999,"Founder. Spent about $650,000 on employee Y2K preparation."
+person,P-SHAUNTI-FELDHAHN,org,O-JOSEPH-PROJECT-2000,member_of,1998,2000,S-CT-Y2K-WORTH-IT-2000,Donated the bulk of her royalties to her church and this project.
+person,P-NORM-OLSON,org,O-MICHIGAN-MILITIA,member_of,1994,,S-FBI-MEGIDDO-1999,Leader. Quoted in Project Megiddo on suspended constitutional rights.
+person,P-JAMES-WICKSTROM,org,O-POSSE-COMITATUS,member_of,1970,,S-ADL-Y2K-EXTREMISTS-1999,CAREFUL -- antisemitism. Carried the Posse financial-conspiracy lane into the Y2K panic.
+person,P-STEVE-HEWITT,person,P-MICHAEL-HYATT,attacks,1998,2000,S-MCO-FALSE-PROFITEERS;S-HEWITT-Y2K-ALARMISTS-1999,Hewitt called the Christian Y2K alarmists irresponsible in Feb 1999 and afterward pressed for accountability; Hyatt responded with an apology letter.
+person,P-HANK-HANEGRAAFF,person,P-GARY-NORTH,attacks,1999,1999,S-RNS-CHRISTIANS-RECONSIDER-1999,Warned the doom predictions would cost the church its credibility with its own people.
+person,P-ALEX-JONES,person,P-GARY-NORTH,amplifies,1999,1999,S-ICE-SCARY-GARY-1999,Same collapse product on the same timeline. Jones is the broadcast end of the industry North anchored in print. Verify any direct on-air citation before claiming a link.
+org,O-SENATE-Y2K-COMMITTEE,org,O-PRESIDENTS-COUNCIL-Y2K,cites,2000,2000,S-SENATE-Y2K-FINAL-2000,Final report credits Koskinen's council with coordinating the preparation that made the rollover uneventful.

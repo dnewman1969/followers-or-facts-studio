@@ -1,0 +1,4 @@
+# YouTube upload (setup.ps1 -YouTube)
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2

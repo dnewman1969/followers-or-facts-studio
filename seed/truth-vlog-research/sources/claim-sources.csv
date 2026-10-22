@@ -1,0 +1,431 @@
+claim_id,source_id,supports_field,notes
+C-Y2K-PLANT,S-AP-LIMERICK-1999,falsity_status,AP / PECO spokesman contradiction
+C-BOHEMIAN-GROVE,S-SPY-GROVE-1989,claim_summary,Real investigative infiltrate vs satanic myth
+C-CHOBANI-REFUGEE-SMEARS,S-CDC-TB-2017,falsity_status,TB rates context
+C-CHOBANI-REFUGEE-SMEARS,S-KMVT-REFUGEE-TB,claim_summary,Local reporting vs smear
+C-PROTOCOLS-GLOBALIST,S-TIMES-PROTOCOLS-1921,falsity_status,1921 Times/Graves plagiarism expose
+C-PROTOCOLS-GLOBALIST,S-USHMM-PROTOCOLS,harm_summary,USHMM encyclopedia on forgery and antisemitic harm
+C-ENDGAME-DOC,S-ENDGAME-FILM,claim_summary,The film itself is the primary text - locate a stable archive copy before scripting
+C-HOLDREN-ECOSCIENCE,S-ECOSCIENCE-HOLDREN,falsity_status,Compare the on-air paraphrase against the actual 1977 text; add page cites
+C-GILMORE-JESUIT,S-GILMORE-SUIT-LEAD,falsity_status,"Court docket shows a real defamation suit, not a Jesuit plot"
+C-SYRIA-GAS-2018,S-OPCW-SYRIA-LEAD,falsity_status,OPCW findings against the staged-attack claim
+C-HR645-FEMA-CAMPS,S-HR645-TEXT-LEAD,falsity_status,Actual bill text vs the FEMA camp reading
+C-DEPLATFORM-2018,S-AP-JONES-DEPLATFORM-2018,claim_summary,AP wire on the Aug 6 2018 removals and the stated hate-speech grounds
+C-DEPLATFORM-CHINA,S-AP-JONES-DEPLATFORM-2018,falsity_status,"Platforms cited their own policies, not a China merger"
+C-DEPLATFORM-ELECTION-MEDDLE,S-AP-JONES-DEPLATFORM-2018,falsity_status,"Removals were policy enforcement, not an in-kind political donation"
+C-BIRD-FLU-BIOWEAPON,S-BAXTER-AVIAN-2009-LEAD,falsity_status,Real contamination incident at the bottom of the laundering chain
+C-ALAMO-PERSECUTED,S-ALAMO-CONVICTION-2009-LEAD,falsity_status,Federal conviction record. Handle victims with care.
+C-TWITTER-BAN-2018,S-TWITTER-BAN-2018-LEAD,falsity_status,Suspension notice and the rules cited
+C-INFOWARS-MLM-JEUNESSE,S-JEUNESSE-INCOME-LEAD,harm_summary,Income disclosure showing what a typical participant actually earns
+C-FORD-MKULTRA,S-FORD-2008-PILOT,falsity_status,The actual 2008 depression-therapy pilot Adams/Jones warp into MK Ultra.
+C-FORD-MKULTRA,S-SNOPES-FORD-CIA,falsity_status,Debunk of the CIA/MK Ultra cluster.
+C-FORD-MKULTRA,S-ADAMS-FORD-HYPNOSIS-2018,claim_summary,"The Natural News article read on air. Smear evidence, not a fact source."
+C-MIAC-PATRIOT-ROUNDUP,S-MIAC-2009-REPORT,claim_summary,The real fusion-center report.
+C-MIAC-PATRIOT-ROUNDUP,S-MIAC-WITHDRAWN-2009,falsity_status,State withdrew it weeks later; not a secret internment plan.
+C-SOROS-PUPPET-FLIP,S-BECK-PUPPET-MASTER-2010,claim_summary,The Beck special Jones is answering in Nov 2010.
+C-KHASHOGGI-FALSE-FLAG,S-ODNI-KHASHOGGI-2021,falsity_status,US IC: MBS approved capture-or-kill. Not Obama/Hillary.
+C-SOPHIA-MATRIX-OWNER,S-STEWART-V-WACHOWSKI,falsity_status,"Summary judgment for the studios, 2005."
+C-SOPHIA-MATRIX-OWNER,S-SNOPES-STEWART-MATRIX,falsity_status,Documents the fake-victory myth.
+C-CANADA-FEMA-CAMPS,S-POSSE-COMITATUS-USC,falsity_status,Posse Comitatus is a US statute. Canada has neither this law nor FEMA.
+C-SOROS-NAZI,S-AP-SOROS-BOMB-2018,harm_summary,"Pipe bomb at Soros home Oct 22 2018. Climate-of-smear harm, not a Jones-mailed claim."
+C-SOROS-NAZI,S-SAYOC-COMPLAINT-2018,harm_summary,Federal complaint: IED addressed to GEORGE SOROS with photo marked X.
+C-KAVANAUGH-CRUELTY,S-KF-214-WIKI,claim_summary,Index only — tape verify before video.
+C-SAYOC-BOMBS-FALSE-FLAG,S-SAYOC-COMPLAINT-2018,falsity_status,Complaint shows real IEDs mailed by Sayoc — not a staged Dem op.
+C-SAYOC-BOMBS-FALSE-FLAG,S-SAYOC-SENTENCE-USSS-2019,falsity_status,Sentence release: researched victims + letter bombs; domestic terror.
+C-SAYOC-BOMBS-FALSE-FLAG,S-AP-SAYOC-PLEA-2019,falsity_status,AP plea coverage.
+C-HR875-GARDEN-BAN,S-FACTCHECK-HR875-2009,falsity_status,FactCheck: no backyard-garden criminalization language.
+C-EO-11110-FED,S-POLITIFACT-EO11110-2022,falsity_status,PolitiFact + CRS: order did not end the Fed.
+C-EO-11110-FED,S-PRA-EO11110-FLAHERTY,falsity_status,Flaherty myth #9: Marrs reading inverted.
+C-EO-11110-FED,S-EO-11110-TEXT,claim_summary,Primary EO text for on-screen overlay.
+C-FAKE-LINCOLN-WILSON-QUOTES,S-QUIGLEY-SKOUSEN-GEORGETOWN,harm_summary,Shows Skousen→Quigley misread pipeline feeding the same documentary DNA.
+C-OBAMA-DECEPTION,S-QUIGLEY-SKOUSEN-GEORGETOWN,claim_summary,Tarpley/Skousen pipeline source: Quigley repudiates Naked Capitalist.
+C-OBAMA-DECEPTION,S-POLITIFACT-EO11110-2022,claim_summary,EO 11110 beat inside the film.
+C-OBAMA-BILDERBERG-2008,S-QUIGLEY-SKOUSEN-GEORGETOWN,harm_summary,Same Skousen/globalist lore family; calendar falsification is the kill shot (KF citations).
+C-MANNING-HATE-GUEST,S-SPLC-MANNING-HATEWATCH,harm_summary,SPLC Hatewatch on Manning anti-LGBT + conspiracy record.
+C-MANNING-HATE-GUEST,S-SPLC-HATE-GROUPS-2016,harm_summary,ATLAH listed as active hate group 2016.
+C-STARBUCKS-SEMEN,S-SPLC-MANNING-HATEWATCH,falsity_status,SPLC documents the Starbucks semen claim as Manning's.
+C-POLIO-IN-VACCINES-2018,S-CDC-POLIO-VACCINE,falsity_status,CDC: vaccines prevent polio; inverse of the on-air claim.
+C-BIRTHER,S-SPLC-MANNING-HATEWATCH,harm_summary,Manning birther theater adjacency (ATLAH faux trials).
+C-JBS-ON-AIR-DNA,S-QUIGLEY-SKOUSEN-GEORGETOWN,claim_summary,Same Birch/globalist lore family Skousen fed into OD; McManus is the live nameplate.
+C-POPLAWSKI-DEFLECTION,S-ADL-POPLAWSKI-POSTINGS,harm_summary,ADL: NWO / gun-confiscation / FEMA-camp beliefs; posted on InfoWars.
+C-POPLAWSKI-DEFLECTION,S-SPLC-POPLAWSKI-TRIAL-2011,harm_summary,Trial coverage; three officers named; fan of the show.
+C-FEMA-CAMPS,S-ADL-POPLAWSKI-POSTINGS,harm_summary,Documented cost of the camp myth in 2009 — three officers killed by a believer.
+C-FEMA-EVIDENCE-COLLAPSE,S-EO-KENNEDY-1962-TEXT,falsity_status,EO text vs the chain-email reading he read on air.
+C-EBOLA-FALSE-FLAG-2014,S-CDC-EBOLA-OUTBREAK-HISTORY,falsity_status,"CDC: 11 treated in US, 2 deaths, no epidemic; not airborne."
+C-EBOLA-FALSE-FLAG-2014,S-CDC-EBOLA-MMWR-2016,falsity_status,MMWR: actual quarantine and screening procedure.
+C-STONE-SETTLEMENT-SPIN,S-AP-STONE-GUO-2018,falsity_status,Settlement: Stone admits the InfoWars statements are not true.
+C-CORPORATE-PR-LAUNDER,S-CCF-FUNDING-LEAD,who_benefited,Money receipt still needed — 990s and funding reporting.
+C-SOROS-NARRATIVE-BIRTH,S-NYT-SOROS-MEDIA-MATTERS-2010,falsity_status,First Soros money to Media Matters is Oct 2010 — 18 months after the claim.
+C-SOROS-NARRATIVE-BIRTH,S-POLITICO-SOROS-MM-2010,falsity_status,Soros on the record: 'I have not to date been a funder.'
+C-SOROS-NARRATIVE-BIRTH,S-AIR-AMERICA-OWNERSHIP-LEAD,falsity_status,Air America was owned by the Green brothers from 2007; Soros declined in 2004.
+C-DARK-OVERLORD-911-DOCS,S-FORBES-DARK-OVERLORD-2019,falsity_status,"Crew states the motive is bitcoin, not disclosure."
+C-DARK-OVERLORD-911-DOCS,S-WYATT-SENTENCE-2020,harm_summary,Five years and ~$1.5M restitution; extortion of healthcare firms.
+C-OBAMA-MARTIAL-LAW-EO,S-EO-13603-TEXT,falsity_status,"EO text is DPA industrial preparedness, not martial law."
+C-NO-PRIOR-EMERGENCIES,S-BRENNAN-EMERGENCY-POWERS,falsity_status,Dozens declared under the NEA; many active at the time he said it.
+C-PREDICTED-911,S-JONES-COOPER-2001-AUDIO-LEAD,falsity_status,Both original broadcasts still needed before scripting.
+C-STONE-INDICTMENT-FRAME,S-STONE-INDICTMENT-2019,falsity_status,"Charging document: lying to Congress, obstruction, witness tampering — not a free-speech case."
+C-STONE-INDICTMENT-FRAME,S-STONE-VERDICT-AP-2019,harm_summary,Convicted on all seven counts Nov 15 2019.
+C-STONE-DUMP,S-STONE-INDICTMENT-2019,who_benefited,"Dump timing tracks the indictment, not a principle fight."
+C-AFP-HATE-PRESS-GUEST,S-SPLC-WILLIS-CARTO,who_benefited,Carto/AFP lineage still needs the exact SPLC URL.
+C-CLIMATE-MORANO-METHOD,S-CFACT-FUNDING-LEAD,who_benefited,Funding receipt still needed before any climate video.
+C-SH-DAY-OF-STAGED,S-TX-SANDY-HOOK-VERDICTS-LEAD,harm_summary,Texas court findings are the harm receipt — mechanism and docs only.
+C-SANDY-HOOK,S-TX-SANDY-HOOK-VERDICTS-LEAD,harm_summary,Same Texas judgments — exact dockets still needed.
+C-SH-SECOND-SHOOTER,S-CT-SA-SANDY-HOOK-2013,falsity_status,"'The subsequent investigation revealed there were no additional shooters', with ten enumerated bases including surveillance video, detained persons cleared, casing locations and DNA. Every detained individual was identified and released."
+C-SH-LANZA-NO-RIFLE,S-CT-SA-SANDY-HOOK-2013,falsity_status,"Bushmaster Model XM15-E2S recovered in classroom 10, tested operable, and all tested 5.56mm casings from the school were fired from it. He also carried a Glock 20 10mm and a Sig Sauer P226 9mm. So: rifle plus two handguns, the opposite of the claim."
+C-SH-FABLE-TO-FALSE-FLAG,S-CT-SA-SANDY-HOOK-2013,falsity_status,"Official finding: the shooter acted alone, no accessories or co-conspirators, case closed."
+C-SH-FABLE-TO-FALSE-FLAG,S-KF-275-WIKI,kf_eps,"Index marker for the day the phrase 'false flag' is used plainly, roughly two weeks after the shooting."
+C-SH-FABLE-TO-FALSE-FLAG,S-TX-SANDY-HOOK-VERDICTS-LEAD,harm_summary,Where this fortnight ends up a decade later. Pull the judgments.
+C-SH-BLAME-PARENTS,S-TX-SANDY-HOOK-VERDICTS-LEAD,harm_summary,Earliest documented beat of the conduct the defamation cases address. Needed before we script anything in this lane.
+C-SH-ROGAN-INVERSION,S-JRE-1255-2019,claim_summary,"Primary recording of the claim being made, Feb 27 2019."
+C-SH-ROGAN-INVERSION,S-KF-270-WIKI,kf_eps,KF index for the appearance.
+C-SH-ROGAN-INVERSION,S-CT-SA-SANDY-HOOK-2013,falsity_status,"The underlying event, established on the record, against which the inversion is measured."
+C-GLADIO-FM3031B,S-FM3031B-HPSCI-1980,falsity_status,"CIA testimony to the House oversight subcommittee: FM 30-31 and Supplement A genuine, Supplement B a KGB forgery."
+C-GLADIO-FM3031B,S-RID-ACTIVE-MEASURES-2020,falsity_status,Attributes the document to Soviet services and tracks its 1976 Manila debut and later re-laundering through the P2 scandal.
+C-GLADIO-FM3031B,S-STATE-SOVIET-INFLUENCE-1987,society_effect,Mechanism: forged US documents were a deliberate active-measures product line. Does not name FM 30-31B; use for context only.
+C-UN-ATT-GUN-GRAB,S-UN-ATT-TEXT,falsity_status,"Treaty scope is international transfer only, and the preamble is explicitly mindful of lawful ownership and use. No domestic mechanism exists in the text."
+C-UN-ATT-GUN-GRAB,S-ATT-SENATE-TRANSMITTAL-2016,falsity_status,"US government's own analysis: existing US controls already meet or exceed the treaty, and no additional legislation or regulation would be required."
+C-UN-ATT-GUN-GRAB,S-UN-ATT-STATUS,claim_summary,"Signed Sep 2013, never ratified, formally abandoned Jul 2019. The confiscation predicted in Dec 2012 had no instrument behind it at any point."
+C-DOD-FPS-KILL-TRAINING,S-AMERICAS-ARMY-DOD,falsity_status,For the true kernel: the Army funded a free shooter as a recruiting tool. Still needed.
+C-CHINA-DISARM-AMERICANS,S-BREITBART-CHINA-2012-LEAD,falsity_status,Needed to date all three artefacts and close the circular-sourcing loop.
+C-OMEARA-PSYCH-EXPERT,S-CCHR-SCIENTOLOGY,who_benefited,CCHR's own about page: established 1969 by the Church of Scientology.
+C-OMEARA-PSYCH-EXPERT,S-INSIGHT-NEWS-WORLD,who_benefited,Needed for the Insight / News World Communications ownership line.
+C-PROZAC-SCHOOL-SHOOTERS,S-CT-SA-SANDY-HOOK-2013,falsity_status,On the very shooting he was deflecting from: the report found no evidence the shooter had taken drugs or medication that would have affected his behaviour.
+C-PROZAC-SCHOOL-SHOOTERS,S-CCHR-SCIENTOLOGY,who_benefited,"Provenance of the talking point: a church-founded anti-psychiatry campaign, supplying the experts."
+C-AOC-SOROS-FRONT,S-FEC-AOC-2018,falsity_status,Needed. Pull the itemised receipts rather than asserting the small-dollar profile.
+C-AOC-SOROS-FRONT,S-AP-SOROS-BOMB-2018,harm_summary,Where Soros-as-villain rhetoric had already led four months earlier: an explosive device at his home.
+C-SUMMERS-BRAZIL-WASTE,S-SUMMERS-MEMO-1991,falsity_status,"Needed: the memo text plus the Economist write-up, so we can state the real version and the distortion side by side."
+C-OKC-GLOBALIST-COVER,S-MCVEIGH-CONVICTION,falsity_status,Needed: answer from the trial record.
+C-OKC-GLOBALIST-COVER,S-DHS-RIGHTWING-2009,society_effect,"The 2009 assessment is the through-line: it warned about exactly this milieu and was killed politically, and its example of real violence was the Pittsburgh police murders by a camp-myth believer."
+C-MIAC-PATRIOT-ROUNDUP,S-DHS-RIGHTWING-2009,claim_summary,"The federal companion document to MIAC, and the one Alex ran hardest as proof of a patriot roundup. Note what it actually says."
+C-POPLAWSKI-DEFLECTION,S-DHS-RIGHTWING-2009,harm_summary,"DHS cites the 4 Apr 2009 Pittsburgh murders as its worked example, naming gun-confiscation, detention-camp and one-world-government beliefs as the gunman's motivation."
+C-STONE-PIVOT,S-GET-ME-ROGER-STONE-DOC,claim_summary,"Deep-dive material for later, per David: Stone on camera on his own rules and the Trump origin story. No free transcript; we cut and transcribe what we need."
+C-CHRISTCHURCH-FALSE-FLAG,S-NZ-RC-CHRISTCHURCH-2020,falsity_status,Official inquiry: real terrorist attack on masjidain; individual acted alone; ideology includes Great Replacement belief.
+C-CHRISTCHURCH-FALSE-FLAG,S-NZ-RC-INDIVIDUAL-ASSESSMENT,claim_summary,RC assessment: acted alone; Great Replacement among underlying views; multi-shooter claims were false trails.
+C-CHRISTCHURCH-FALSE-FLAG,S-KF-277-WIKI,kf_eps,Index for the day-after InfoWars hour.
+C-SH-DEPOSITION-PSYCHOSIS,S-AJ-SH-DEPOSITION-2019,claim_summary,"Primary videotaped deposition — psychosis line, sourcing, continued doubt."
+C-SH-DEPOSITION-PSYCHOSIS,S-INFOWARS-LAWSUIT-DEPOSITION-PAGE,claim_summary,Plaintiffs' release page confirming Lewis v. Jones deposition.
+C-SH-DEPOSITION-PSYCHOSIS,S-AP-LUCY-RICHARDS-2017,harm_summary,Federal sentencing of Richards for threats to Pozner — harm receipt for the doxxing pipeline discussed in the deposition.
+C-SH-DEPOSITION-PSYCHOSIS,S-KF-279-WIKI,kf_eps,KF index for the deposition episode.
+C-SH-SCRIPTED-JAN2013,S-CT-SA-SANDY-HOOK-2013,falsity_status,Official finding still stands against 'scripted' / multi-actor claims three weeks later.
+C-CHILDHOODS-END-TEMPLATE,S-CHILDHOODS-END-1953,claim_summary,The novel being mapped; method note not a news falsification.
+C-QANON-PUBLIC-OVERTURE,S-KF-282-WIKI,kf_eps,KF index for the April 5 2019 Q overture hour.
+C-SH-CRISIS-ACTORS-ORIGIN,S-KF-288-WIKI,kf_eps,KF dates the on-air crisis-actor turn to this week after Piers Morgan.
+C-SH-CRISIS-ACTORS-ORIGIN,S-NBC-TRACY-FAU-2016,harm_summary,Tracy's later FAU firing and Pozner conflict — harm trail from the originator Alex amplified.
+C-SH-CRISIS-ACTORS-ORIGIN,S-CT-SA-SANDY-HOOK-2013,falsity_status,Official sole-shooter / real-victims finding against any actors claim.
+C-CHRISTCHURCH-MOTIVE-DEFEND,S-NZ-RC-CHRISTCHURCH-2020,falsity_status,Real terrorist attack; ideology included Great Replacement belief — not a motive to defend.
+C-CHRISTCHURCH-MOTIVE-DEFEND,S-KF-290-WIKI,kf_eps,KF index for the defense / ethnic-cleansing hour.
+C-FB-BAN-MAY-2019,S-REUTERS-FB-BAN-2019,claim_summary,Wire confirmation of the May 2 2019 Facebook/Instagram bans.
+C-FB-BAN-MAY-2019,S-VERGE-FB-BAN-2019,claim_summary,Named list of banned accounts and policy basis.
+C-FB-BAN-MAY-2019,S-KF-293-WIKI,kf_eps,KF index for on-air reaction.
+C-UNINTENDED-CONSEQUENCES-REC,S-WIKI-MCVEIGH-UNINTENDED,claim_summary,Secondary summary of McVeigh's New Testament remark — upgrade to original interview before scripting.
+C-SH-LANZA-PATSY,S-CT-SA-SANDY-HOOK-2013,falsity_status,Sole shooter; no accessories or co-conspirators.
+C-WAKEFIELD-VAX-AUTISM,S-LANCET-WAKEFIELD-RETRACTION-2010,falsity_status,Lancet full retraction 2010-02-02.
+C-WAKEFIELD-VAX-AUTISM,S-BMJ-DEER-WAKEFIELD-FRAUD-2011,who_benefited,BMJ documents deliberate financial fraud.
+C-SOMALI-IMMIGRANT-THREAT,S-REUTERS-MALL-OF-AMERICA-ARANDA-2019,falsity_status,"Real MoA attacker Aranda; motive personal, not immigration."
+C-SANDY-HOOK,S-AP-POZNER-FETZER-2019,harm_summary,Court found SH-denial defamatory; $450k jury award.
+C-SANDY-HOOK,S-POZNER-V-FETZER-JUDGMENT,harm_summary,Amended judgment $1.1M (Dane County 18CV3122).
+C-MATTEI-PLANTED-CP,S-AP-JONES-CP-DISCOVERY-2019,claim_summary,AP: CP found in files Jones produced; he accused Mattei on air.
+C-MATTEI-PLANTED-CP,S-CT-LAFFERTY-MATTEI-MOTION-2019,harm_summary,Court motion quotes the June 14 broadcast threats by name.
+C-MATTEI-PLANTED-CP,S-CNN-JONES-SANCTION-2019,falsity_status,Judge Bellis sanctions the frame-up broadcast June 18 2019.
+C-EBOLA-BORDER-BIOWEAPON,S-CDC-EBOLA-2019-NO-US,falsity_status,CDC: no Ebola cases in the United States; US risk low.
+C-PEPE-SETTLEMENT-VICTORY,S-AP-PEPE-SETTLEMENT-2019,falsity_status,AP: InfoWars paid $15k to settle an unauthorized-poster copyright suit.
+C-ANTIFA-ACID-MILKSHAKE,S-SNOPES-PORTLAND-MILKSHAKE-2019,falsity_status,Snopes: no proof of cement or acid in the Portland milkshakes.
+C-GILROY-NO-WS,S-NBC-GILROY-MIGHT-IS-RIGHT-2019,falsity_status,Shooter posted Might is Right on Instagram shortly before the attack.
+C-GILROY-NO-WS,S-REUTERS-GILROY-DT-2019,harm_summary,FBI opened a domestic-terrorism investigation.
+C-OMAR-SEND-BACK,S-AP-SEND-HER-BACK-2019,claim_summary,Greenville rally crowd chants Send her back the same week as the InfoWars pile-on.
+C-FLESH-EATING-IMMIGRANTS,S-AP-NECFAS-MIGRANT-2019,falsity_status,One rare January case; AP notes it rarely spreads. Not an invasion.
+C-SMITH-NWO-ICON,S-ENCYC-COGEA-SMITH,claim_summary,COGEA/Smith taught British Israelism; Newswatch Magazine.
+C-EL-PASO-FALSE-FLAG,S-AP-EL-PASO-MANIFESTO-2019,falsity_status,AP: screed cites Christchurch / Great Replacement and Hispanic invasion — not a leftist false flag.
+C-EL-PASO-FALSE-FLAG,S-ADL-EL-PASO-2019,claim_summary,ADL: manifesto chain from Christchurch and replacement theory.
+C-EL-PASO-FALSE-FLAG,S-FBI-DAYTON-REPORT-2019,harm_summary,FBI Dayton: Betts acted alone; not the leftist op Jones sold.
+C-TRUMP-CHOSEN-ONE-AMPLIFY,S-AP-TRUMP-CHOSEN-ONE-2019,claim_summary,AP: Trump says 'I am the chosen one' Aug 21 2019.
+C-PIECZENIK-SH-ORIGIN,S-KF-340-WIKI,kf_eps,KF deep dive dating first SH false-flag appearance to #338.
+C-PIECZENIK-SH-ORIGIN,S-WIKI-PIECZENIK,who_benefited,Public bio claims; audit against original Toth 1978 reporting before scripting.
+C-BARNES-FALC,S-PPD-FALC-2019,claim_summary,Barnes announces FALC Aug 2019; membership chooses cases.
+C-BARNES-FALC,S-CNS-JONES-SANCTION-APPEAL-2019,harm_summary,Same month: CT high-court fight over Bellis sanctions from the Mattei broadcast.
+C-MATTEI-PLANTED-CP,S-CNS-JONES-SANCTION-APPEAL-2019,status,Sept 2019 appeal of the June sanctions keeps the broadcast on the court record.
+C-BOSTON-FALSE-FLAG,S-DOJ-TSARNAEV-JUDGMENT,falsity_status,Federal judgment: guilty on WMD/bombing counts — not a staged drill.
+C-BOSTON-FALSE-FLAG,S-AP-TSARNAEV-GUILTY-2015,falsity_status,AP: all-counts guilty; three dead at finish line plus MIT officer.
+C-BOSTON-FALSE-FLAG,S-KF-349-WIKI,claim_summary,"KF index: day-of false-flag menu, 1-in-100 real, Family Guy bit."
+C-BOSTON-4CHAN-CRACKED,S-REUTERS-FBI-BOSTON-SUSPECTS-2013,falsity_status,FBI public suspect photos April 18 — InfoWars 4chan 'scoop' was not the case.
+C-BOSTON-4CHAN-CRACKED,S-KF-352-WIKI,claim_summary,"KF index: PJW backpacks, 'we cracked this case,' Navy SEAL simulant talk."
+C-BOSTON-4CHAN-CRACKED,S-DOJ-TSARNAEV-JUDGMENT,falsity_status,Court identifies the actual bombers — not the 4chan backpack theory.
+C-PIECZENIK-TREASON-PATRIOTISM,S-KF-352-WIKI,claim_summary,KF index: Steve — government illegitimate; treason as patriotism.
+C-CIVIL-WAR-100-PERCENT,S-AP-TRUMP-CIVIL-WAR-TWEET-2019,claim_summary,AP: Trump amplifies civil-war fracture quote — Jones piles on to 100%.
+C-GRETA-SOROS-ANTIFA,S-AP-PELOSI-IMPEACH-INQUIRY-2019,claim_summary,Same news week as impeachment inquiry launch; Greta pile-on is the climate side dish.
+C-BOSTON-MARTIAL-LAW,S-AP-BOSTON-SHELTER-2013,falsity_status,AP timeline: shelter-in-place advisory + transit shut — not martial law.
+C-BOSTON-MARTIAL-LAW,S-DOJ-TSARNAEV-JUDGMENT,falsity_status,Federal conviction kills the lingering false-flag / drill frame after capture.
+C-BOSTON-MARTIAL-LAW,S-KF-361-WIKI,claim_summary,"KF index: martial law, 1–3%, eat my hat, Bidondi with Oath Keepers."
+C-FUENTES-INFOWARS-DEBUT,S-DB-FUENTES-INFOWARS-2019,claim_summary,Daily Beast: Oct 2019 among Fuentes' first InfoWars appearances with Jones.
+C-FUENTES-INFOWARS-DEBUT,S-KF-363-WIKI,claim_summary,KF index: Fuentes demographic talk; make GOP white again.
+C-STONE-JUROR-HUNT,S-AP-STONE-JURY-2019,claim_summary,AP: Stone jury selection opens Nov 5 — the live trial InfoWars tries to pierce.
+C-STONE-JUROR-HUNT,S-KF-366-WIKI,claim_summary,KF index: Engels + Jones fail twice to ID the potential juror on air.
+C-STONE-CONVICTION-RAILROAD,S-STONE-VERDICT-AP-2019,falsity_status,"AP: guilty all seven counts — jury verdict, not a railroad."
+C-STONE-CONVICTION-RAILROAD,S-STONE-INDICTMENT-2019,claim_summary,Same charging document the Jan frame-job claim denied.
+C-STONE-CONVICTION-RAILROAD,S-KF-370-WIKI,claim_summary,KF index: railroad framing; pardon last-straw; Biggs protest plan.
+C-TAMERLAN-INFOWARS-DEFLECT,S-CBS-TAMERLAN-AP-2013,claim_summary,AP: relative says Tamerlan took an interest in Infowars + Protocols.
+C-TAMERLAN-INFOWARS-DEFLECT,S-BUZZFEED-TAMERLAN-JONES-2013,claim_summary,Jones to BuzzFeed: gov always connects us to tragedies; Poplawski comparison.
+C-TAMERLAN-INFOWARS-DEFLECT,S-KF-373-WIKI,claim_summary,KF index: on-air damage control day after the AP report.
+C-EMJ-PLATFORMED-2019,S-KF-375-WIKI,claim_summary,KF index: EMJ antisemitic hour; Hitler defense; Jones keeps the guest.
+C-DEW-PROUD-SH-STOPPED-GUNS,S-BUZZFEED-DEW-DEPOSITION-2019,falsity_status,Dew on record: proud SH coverage stopped gun legislation.
+C-DEW-PROUD-SH-STOPPED-GUNS,S-STATESMAN-DEPOSITIONS-DEFAULT-2019,claim_summary,Depositions filed with default-judgment motion in Travis County.
+C-DEW-PROUD-SH-STOPPED-GUNS,S-KF-378-WIKI,claim_summary,KF index: Dew proud / unprepared corporate rep.
+C-PJW-SH-KILLING-US,S-STATESMAN-DEPOSITIONS-DEFAULT-2019,claim_summary,Statesman quotes PJW 2015 'killing us' / harass parents email from deposition.
+C-PJW-SH-KILLING-US,S-STATESMAN-JONES-DEPOSITION-2019,claim_summary,Jones deposition coverage; same filing wave.
+C-PJW-SH-KILLING-US,S-KF-378-WIKI,claim_summary,KF index: PJW deposition brand-protect / SH email.
+C-IMPEACHMENT-KILL-WHO,S-AP-TRUMP-IMPEACHED-2019,claim_summary,AP: House impeaches Dec 18 — crisis news under the kill-call hour.
+C-IMPEACHMENT-KILL-WHO,S-KF-380-WIKI,claim_summary,KF index: when/who to kill; demon-possessed not murder.
+C-COVID-ENGINEERED-2020,S-NEJM-FIRST-US-COVID-2020,falsity_status,NEJM/CDC: real novel coronavirus case confirmed in US Jan 20 — not a Gates drill.
+C-COVID-ENGINEERED-2020,S-CDC-COVID-FIRST-CASE-2020,claim_summary,CDC media release on first travel-related US case.
+C-COVID-ENGINEERED-2020,S-KF-391-WIKI,claim_summary,KF: first COVID ad-pivot on the show.
+C-COVID-ENGINEERED-2020,S-KF-392-WIKI,claim_summary,KF: engineered plague + Adams second-wave vaccine lore.
+C-PIECZENIK-HOLOCAUST-REVISION,S-AP-SOLEIMANI-2020,claim_summary,Soleimani-week news hour that hosted the revisionism.
+C-AUSTRALIA-FIRES-ARSON,S-KF-391-WIKI,claim_summary,Placeholder index adjacency — primary fire science still open; claim kept for method.
+C-AUSTRALIA-FIRES-ARSON,S-KF-385-WIKI,claim_summary,KF index: arson / space lasers / carbon-tax framing.
+C-Q-COOPT-ADMIT,S-KF-385-WIKI,claim_summary,KF index: Alex wanted to co-opt Q.
+C-RICHMOND-GUN-RALLY-FF,S-KF-389-WIKI,claim_summary,KF index: Richmond Lobby Day will be a false flag.
+C-SPENCER-WN-SLIDE,S-KF-388-WIKI,claim_summary,KF index: Spencer controlled-opp interview slides.
+C-PIECZENIK-HOLOCAUST-REVISION,S-KF-384-WIKI,claim_summary,KF index: Steve Holocaust denial talk.
+C-COVID-RACE-BIOWEAPON,S-KF-397-WIKI,claim_summary,Race-specific bioweapon mutation + Boyle.
+C-COVID-RACE-BIOWEAPON,S-NEJM-FIRST-US-COVID-2020,falsity_status,Real novel coronavirus — not ethnic warfare.
+C-COVID-NANO-SILVER,S-KF-394-WIKI,claim_summary,Super silver immune gargle sales during COVID week.
+C-COVID-NANO-SILVER,S-FDA-SILVER-NOT-COVID,falsity_status,FDA: no silver COVID cure; fraud-product warnings.
+C-OUTLAW-DEMOCRATS-2020,S-KF-399-WIKI,claim_summary,Outlaw Dems + due-process carve-outs.
+C-TRUMP-COVERT-MURDERS-2020,S-KF-399-WIKI,claim_summary,Kill talk / covert murders hour.
+C-COVID-DISSIDENT-ROUNDUP,S-KF-399-WIKI,claim_summary,COVID as dissident roundup excuse.
+C-OBAMA-SOLD-COVID-CHINA,S-KF-402-WIKI,claim_summary,Obama sold COVID to China on sentencing day.
+C-STONE-CONVICTION-RAILROAD,S-AP-STONE-SENTENCE-2020,falsity_status,40-month sentence for lying to Congress / obstruction / witness tampering.
+C-STONE-CONVICTION-RAILROAD,S-KF-402-WIKI,claim_summary,Sentencing-day railroad + pardon miss + Tarrio optics.
+C-COVID-HOAX-REOPEN,S-KF-412-WIKI,claim_summary,Hoax/reopen flip week.
+C-COVID-HOAX-REOPEN,S-WHO-PANDEMIC-20200311,falsity_status,WHO pandemic declaration Mar 11 — not a flu hoax.
+C-COVID-MARTIAL-LAW-2020,S-KF-404-WIKI,claim_summary,Context week; martial talk thickens on #406.
+C-SH-HESLIN-SANCTIONS-2020,S-STATESMAN-HESLIN-SANCTIONS-2020,falsity_status,3rd COA sanctions ~$22k for frivolous TCPA appeal.
+C-SH-HESLIN-SANCTIONS-2020,S-KF-413-WIKI,claim_summary,On-air barely addresses SH loss while raging at Android.
+C-ANDROID-BAN-COVID-2020,S-WIRED-ANDROID-BAN-2020,falsity_status,Google confirms Play ban for COVID misinfo.
+C-ANDROID-BAN-COVID-2020,S-KF-413-WIKI,claim_summary,Religious persecution frame + ad pivot.
+C-CPAC-FUENTES-RALLY-2020,S-KF-404-WIKI,claim_summary,Fuentes/Groyper CPAC-adjacent stage.
+C-COVID-NANO-SILVER,S-NYAG-JONES-COVID-CD-2020,falsity_status,NYAG C&D: stop marketing toothpaste/supplements as COVID cures.
+C-COVID-ENGINEERED-2020,S-WHO-PANDEMIC-20200311,claim_summary,Timeline floor for March panic sales week.
+C-COVID-HCQ-CURE,S-KF-415-WIKI,claim_summary,HCQ+Z-pack+zinc kill COVID pitch.
+C-COVID-HCQ-CURE,S-FDA-HCQ-CAUTION-20200424,falsity_status,FDA: serious heart-rhythm risks outside hospital/trial.
+C-COVID-CANCEL-ELECTION-GATES,S-KF-417-WIKI,claim_summary,Gates psyop to cancel election / force vaccines.
+C-Q-IDENTITY-REVEAL-TEASE,S-KF-415-WIKI,claim_summary,War on Q + identity tease.
+C-FDA-SILVER-WARNING-2020,S-FDA-INFOWARS-WARNING-20200409,falsity_status,FDA warning letter on silver COVID products.
+C-FDA-SILVER-WARNING-2020,S-KF-421-RESEARCH,claim_summary,Redoubt flee / FDA letter adjacency on return show.
+C-COVID-WUHAN-LAB-AP-LIE,S-KF-421-RESEARCH,claim_summary,AP conflated with Fox for Wuhan-lab claim.
+C-COVID-NANO-SILVER,S-FDA-INFOWARS-WARNING-20200409,falsity_status,Federal letter closes silver-cure sales claims.
+C-OBAMA-SOLD-COVID-CHINA,S-KF-415-WIKI,claim_summary,Boyle/Alex overwhelm Obama-sold-COVID + supplements.
+C-EAT-NEIGHBORS-2020,S-KF-426-RESEARCH,claim_summary,Eat-neighbors meltdown day.
+C-EAT-NEIGHBORS-2020,S-KF-428-RESEARCH,claim_summary,Satire/PR rewrite after media coverage.
+C-FAUCI-PLANNED-TRUMP-PANDEMIC,S-KF-424-RESEARCH,falsity_status,2017 Fauci emerging-disease remarks misread as planned hit.
+C-HOSPITALS-COVID-PAY-KILL,S-FACTCHECK-HOSPITAL-COVID-PAY-2020,falsity_status,No evidence of kill/pad-for-pay; CARES add-on context.
+C-HOSPITALS-COVID-PAY-KILL,S-KF-424-RESEARCH,claim_summary,Hospital pay / DNR lore on air.
+C-WAR-CHINA-TRUMP-2020,S-KF-428-RESEARCH,claim_summary,Declare war on China push + Zagami.
+C-PLANDEMIC-MIKOVITS-2020,S-NPR-PLANDEMIC-20200508,falsity_status,Plandemic falsehoods; Mikovits Science retraction context.
+C-PLANDEMIC-MIKOVITS-2020,S-KF-430-RESEARCH,claim_summary,InfoWars rides Plandemic/Mikovits.
+C-FLOYD-DRUG-DEFLECTION,S-AP-FLOYD-CHAUVIN-CHARGED-2020,falsity_status,Chauvin charged with murder — not a drug-death rewrite.
+C-FLOYD-DRUG-DEFLECTION,S-KF-438-RESEARCH,claim_summary,Racist narrative build begins.
+C-FLOYD-DRUG-DEFLECTION,S-KF-440-RESEARCH,claim_summary,Powder video + fentanyl exaggerate; ME still homicide.
+C-SOROS-ANTIFA-PAY-PROTEST-2020,S-KF-439-RESEARCH,falsity_status,Fake Antifa/Soros contracts from 4chan revived.
+C-ACME-BRICKS-GATES,S-KF-440-RESEARCH,falsity_status,QAnon Twitter → Acme/Gates brick lore; Berkshire sub.
+C-CURFEW-POLICE-STATE-FLIP,S-KF-440-RESEARCH,claim_summary,Accepts military police curfew arrests.
+C-NURSE-COVID-HOAX-KILL,S-KF-444-WIKI,claim_summary,Olszewski Elmhurst hoax/kill video obsession + hang talk.
+C-CHAZ-AFRICAN-WARLORD,S-KF-444-WIKI,claim_summary,CHAZ African warlord smear.
+C-WE-CANT-BREATHE-ANTIMASK,S-KF-449-WIKI,claim_summary,We Can't Breathe anti-mask launch + fake exemption cards.
+C-RHODES-OPEN-SEASON-BLM,S-KF-451-WIKI,claim_summary,Rhodes open-season talk + Jones kill-when-God.
+C-STONE-CONVICTION-RAILROAD,S-KF-451-WIKI,claim_summary,Stone on air begging pardon; COVID-prison death lore.
+C-STONE-COMMUTATION-2020,S-AP-STONE-COMMUTATION-2020,falsity_status,Commutation of 40-month sentence for lying to Congress / obstruction / witness tampering — not a jury exoneration.
+C-STONE-COMMUTATION-2020,S-KF-456-RESEARCH,claim_summary,Clemency-week InfoWars reaction.
+C-STONE-COMMUTATION-2020,S-KF-458-RESEARCH,claim_summary,On-air commutation-paper signing theater.
+C-WAYFAIR-HUMAN-TRAFFICKING,S-KF-457-RESEARCH,claim_summary,Honey-trap → actually selling humans flip.
+C-RUN-OVER-PROTESTERS-2020,S-KF-456-RESEARCH,claim_summary,Owen obstacles-to-freedom / run-over support.
+C-ANTIFA-POLICE-TAKEOVER-2020,S-KF-464-WIKI,claim_summary,Six police departments takeover scare that did not happen.
+C-COVID-DEATHS-FAKE-PEOPLE,S-KF-470-RESEARCH,claim_summary,Context week; fake-person path thickens on #468–#469.
+C-SHADOWGATE-WEAVER-ARREST,S-CLEVELAND-WEAVER-ARREST-2020,falsity_status,Indictment: family altercation charges — not documentary FOIA raid.
+C-SHADOWGATE-WEAVER-ARREST,S-KF-470-RESEARCH,claim_summary,ShadowGate claim teardown + arrest timing.
+C-SHADOWGATE-WEAVER-ARREST,S-KF-471-WIKI,claim_summary,Jones distances then floats arrested-for-doc lore.
+C-BANNON-ARREST-SMEAR-2020,S-AP-BANNON-ARREST-2020,falsity_status,Federal We Build the Wall fraud charges — not a smear op.
+C-KENOSHA-BLAKE-DEFLECTION-2020,S-AP-BLAKE-KENOSHA-2020,claim_summary,AP floor: Blake shot in the back Aug 23 Kenosha.
+C-KENOSHA-BLAKE-DEFLECTION-2020,S-KF-475-WIKI,claim_summary,Jones late/lies; Ali didn't-shoot-enough.
+C-RITTENHOUSE-DEFEND-2020,S-AP-RITTENHOUSE-ARREST-2020,claim_summary,AP floor: arrest after two killed.
+C-RITTENHOUSE-DEFEND-2020,S-KF-475-WIKI,claim_summary,Be nice to Kyle / virtue-signal arrest.
+C-STONE-SEIZE-NEVADA-BALLOTS,S-GUARDIAN-STONE-MARTIAL-LAW-2020,claim_summary,Seize Nevada ballots + martial law / Insurrection Act.
+C-STONE-SEIZE-NEVADA-BALLOTS,S-KF-480-WIKI,claim_summary,Stone on #480; Nevada seize talk.
+C-TRUMP-VAX-PLACEBO-GATES-2020,S-KF-483-WIKI,claim_summary,Trump-vax call-in spin / Gates chip skip.
+C-RBG-BLOOD-SACRIFICE-2020,S-AP-RBG-DEATH-2020,claim_summary,AP floor: Ginsburg died Sep 18 2020 of pancreatic cancer complications.
+C-RBG-BLOOD-SACRIFICE-2020,S-KF-484-WIKI,claim_summary,Blood sacrifice / dead-for-weeks / witch celebration.
+C-DEBATE-CIVIL-WAR-IF-LOSE-2020,S-KF-488-WIKI,claim_summary,Civil war if lose; ballot illegitimacy.
+C-TRUMP-COVID-FALSE-POSITIVE-2020,S-AP-TRUMP-COVID-2020,falsity_status,Trump announced positive COVID test — not a false-positive psyop.
+C-TRUMP-COVID-FALSE-POSITIVE-2020,S-KF-489-WIKI,claim_summary,False positive → assassination → Walter Reed kill → meltdown.
+C-WHITMER-PLOT-ANTIFA-FLIP-2020,S-AP-WHITMER-PLOT-2020,falsity_status,FBI/DOJ: anti-government militia plot — not Antifa.
+C-WHITMER-PLOT-ANTIFA-FLIP-2020,S-KF-490-WIKI,claim_summary,More-like-Antifa flip + food sales.
+C-BREONNA-TAYLOR-LIES-2020,S-KF-485-WIKI,claim_summary,Lies about Breonna + abortion whataboutism.
+C-WHITMER-KIDNAP-JUSTIFIED-2020,S-AP-WHITMER-PLOT-2020,falsity_status,FBI foiled anti-government plot — not a justified op.
+C-WHITMER-KIDNAP-JUSTIFIED-2020,S-KF-494-WIKI,claim_summary,Vindicating clip / militia-is-FBI framing.
+C-NURSING-HOME-BALLOTS-2020,S-KF-496-WIKI,claim_summary,Nursing-home ballots as steal setup.
+C-ELECTION-STOLEN-2020,S-AP-BIDEN-WINS-2020,falsity_status,"AP projected Biden winner Nov 7 — certified process, not a steal."
+C-ELECTION-STOLEN-2020,S-KF-500-WIKI,claim_summary,Stolen-election build; nullify / new election.
+C-ELECTION-STOLEN-2020,S-KF-501-WIKI,claim_summary,79 Days; Hammer/Scorecard; do not concede.
+C-SEIZE-POWER-79-DAYS-2020,S-KF-501-WIKI,claim_summary,Storm White House / seize power path.
+C-SEIZE-POWER-79-DAYS-2020,S-KF-502-WIKI,claim_summary,Caravan; Stone faithless electors; Rhodes ready to fight.
+C-ROGAN-3-LOCKSTEP-CAUGHT-2020,S-KF-497-WIKI,claim_summary,Jamie finds Lockstep doc; Alex caught.
+C-GEORGIA-CAPITAL-STORM-2020,S-KF-504-WIKI,claim_summary,Everyone to Georgia capital; storm Kemp mansion.
+C-GEORGIA-CAPITAL-STORM-2020,S-KF-505-WIKI,claim_summary,Atlanta with Ali/Fuentes; stop certification plan.
+C-DOMINION-STEAL-2020,S-KF-508-WIKI,claim_summary,Dominion USB/China; martial law; doxx threat.
+C-12-12-RALLIES-2020,S-KF-511-WIKI,claim_summary,Jericho/Women for America First; Flynn/Lindell/Ali/Jones.
+C-NASHVILLE-BOMBING-FF-2020,S-AP-NASHVILLE-DOMINION-FF-2020,falsity_status,No Dominion/ATT audit link — AP fact-check.
+C-NASHVILLE-BOMBING-FF-2020,S-KF-514-WIKI,claim_summary,Christmas special FF framing.
+C-JAN6-ANTIFA-FALSE-FLAG,S-HILL-FBI-NO-ANTIFA-2021,falsity_status,FBI WFO Jan 8: no indication Antifa involved.
+C-JAN6-ANTIFA-FALSE-FLAG,S-NBC-WRAY-NO-ANTIFA-2021,falsity_status,Wray: no evidence of antifa/anarchist VE on Jan 6.
+C-JAN6-ANTIFA-FALSE-FLAG,S-AP-JAN6-STORM-2021,claim_summary,"Day-of: Trump-loyal mob trying to overturn the election, not a left-wing raid."
+C-JAN6-LED-MARCH-PEACEFUL,S-J6-JONES-LETTER-2021,claim_summary,Jones said White House told him to lead the march; he marched with Ali.
+C-JAN6-LED-MARCH-PEACEFUL,S-CNN-JONES-JAN6-ORG-2021,who_benefited,Jones helped jumpstart Ellipse organizing and funding.
+C-JAN6-LED-MARCH-PEACEFUL,S-AP-SHROYER-PLEA-2023,falsity_status,Shroyer: death to tyrants + 1776 on the steps. Prosecutors: that is not de-escalation.
+C-JAN6-SHOOTING-FAKE-MARTYR,S-AP-JAN6-STORM-2021,falsity_status,AP: a woman was shot and killed inside the Capitol. Not a fake.
+C-SULLIVAN-ANTIFA-LEADER-JAN6,S-POLITIFACT-SULLIVAN-2021,falsity_status,No proof he led the riot or was Antifa.
+C-Q-PSYOP-DUMP-2021,S-CBS-CHANSLEY-SENTENCE-2021,claim_summary,"Q Shaman was a Trump/Q adherent who stormed the Senate, not an Antifa actor."
+C-JAN6-JUST-TRESPASSING,S-AP-JAN6-STORM-2021,falsity_status,Violent mob; Congress hid; not a trespass footnote.
+C-MRNA-VAX-BIOWEAPON-2021,S-REUTERS-COVID-VAX-HIV-FC,falsity_status,No evidence COVID vaccines increase HIV risk.
+C-TEXAS-BLACKOUT-GREAT-RESET-2021,S-AP-TEXAS-STORM-2021,falsity_status,"Failures across gas, coal, nuclear, and wind. Skipped winterization after 2011."
+C-TEXAS-BLACKOUT-GREAT-RESET-2021,S-TRIBUNE-ERCOT-WIND-2021,falsity_status,ERCOT update: gas losses several times wind at the peak.
+C-TEXAS-BLACKOUT-GREAT-RESET-2021,S-FERC-URI-2021,claim_summary,"FERC/NERC: freeze of thermal plants and gas supply, not a Gates plot."
+C-COVID-VAX-KILLS-THOUSANDS-2021,S-REUTERS-VAERS-DEATHS-FC,falsity_status,VAERS death reports do not prove the vaccine killed anyone.
+C-COVID-VAX-KILLS-THOUSANDS-2021,S-CDC-VAERS-GUIDE,falsity_status,CDC/FDA: a VAERS report is not documentation of causation.
+C-TRUMP-STILL-PRESIDENT-2021,S-AP-TRUMP-IMPEACH2-ACQUIT-2021,falsity_status,Acquittal is not a restoration of the presidency. Transfer happened Jan 20.
+C-BIDEN-DEATH-CAMPS-2021,S-ADL-POPLAWSKI-POSTINGS,harm_summary,Same FEMA-camp myth already on the harm sheet: a believer murdered three Pittsburgh officers.
+C-VAX-KILLED-CELEBRITIES-2021,S-FACTCHECK-AARON-VAX-2021,falsity_status,"Fulton County ME: natural causes, not the vaccine."
+C-VAX-KILLED-CELEBRITIES-2021,S-FACTCHECK-HAGLER-VAX-2021,falsity_status,Widow: for sure wasn't the vaccine. Official site: natural causes.
+C-VAX-KILLED-CELEBRITIES-2021,S-AP-HANK-AARON-DEATH-2021,claim_summary,"AP obituary: died in his sleep. Vaccine was public advocacy two weeks earlier, not a cause."
+C-SPARS-PLAN-2021,S-JHU-SPARS-2017,falsity_status,Document says it is a hypothetical scenario for communicators.
+C-SPARS-PLAN-2021,S-JHU-SPARS-ANNOUNCE-2017,claim_summary,"Public 2017 release: self-guided training exercise, not a leaked plot."
+C-BORDER-VAN-RESCUE-2021,S-SNOPES-JONES-BORDER-VAN-2021,falsity_status,Snopes False: not a smuggling rescue; charity van; seatbelt warning.
+C-BORDER-VAN-RESCUE-2021,S-CCUSA-PIMENTEL-VAN-2021,claim_summary,Pimentel: staged confrontation; mothers/children to testing and respite; no smuggling network.
+C-CHAUVIN-SHOW-TRIAL-2021,S-AP-CHAUVIN-VERDICT-2021,falsity_status,AP: guilty all three counts. Not a show trial.
+C-SARS-VAX-MICE-PROOF-2021,S-PLOS-TSENG-SARS-VAX-2012,falsity_status,2012 SARS-CoV-1 mouse challenge study; not COVID mRNA; not bled-out deaths.
+C-VAX-KILLED-CELEBRITIES-2021,S-USATODAY-DMX-VAX-2021,falsity_status,USA TODAY: no evidence DMX heart attack was the vaccine.
+C-VAX-KILLED-CELEBRITIES-2021,S-VULTURE-DMX-ME-2021,claim_summary,Westchester ME office later: cocaine-induced cardiac arrest.
+C-JAN6-JUST-TRESPASSING,S-VARIETY-MONTOYA-ARREST-2021,claim_summary,InfoWars employee arrested April 13 for entering the Capitol; Senate press office: no credentials.
+C-SULLIVAN-ANTIFA-LEADER-JAN6,S-VARIETY-MONTOYA-ARREST-2021,claim_summary,#549 still sells Sullivan as CNN-paid Capitol entry while Jones's own cameraman is the one charged.
+C-COLONIAL-PIPELINE-BIDEN-2021,S-AP-COLONIAL-PIPELINE-2021,falsity_status,DarkSide ransomware; company shutdown; White House tried to keep fuel moving.
+C-COLONIAL-PIPELINE-BIDEN-2021,S-HOUSE-BLOUNT-COLONIAL-2021,claim_summary,CEO: Colonial employees issued stop-work after the ransom note. Biden did not shut the pipeline.
+C-FAUCI-EMAILS-SMOKING-GUN-2021,S-FACTCHECK-FAUCI-EMAILS-2021,falsity_status,Viral wraps distort the FOIA dump; Feb 2020 mask email was then-public guidance.
+C-FAUCI-EMAILS-SMOKING-GUN-2021,S-BUZZFEED-FAUCI-EMAILS-2021,claim_summary,The emails exist. Jones teases them as smoking gun then mostly skips them.
+C-LINDELL-TRUMP-AUGUST-2021,S-USATODAY-LINDELL-AUGUST-2021,falsity_status,No constitutional path to reinstatement after certification and inauguration.
+C-VACCINE-MAGNET-2021,S-REUTERS-VAX-MAGNET-2021,falsity_status,No magnetic metals or microchips in the shots.
+C-VACCINE-MAGNET-2021,S-USATODAY-VAX-MAGNET-2021,claim_summary,Tenpenny Ohio testimony same week: keys on the forehead. EUA shots have no metals.
+C-SIGN-CLINTON-HIT-2021,S-HILL-SIGN-DEATH-2021,falsity_status,"Hoover PD: investigated as suicide, not a professional hit."
+C-MCAFEE-ASSASSINATED-2021,S-AP-MCAFEE-DEATH-2021,falsity_status,Prison death hours after extradition ruling; authorities: suicide.
+C-MCAFEE-ASSASSINATED-2021,S-ELPAIS-MCAFEE-AUTOPSY-2021,claim_summary,Preliminary autopsy: hanging. Note in pocket.
+C-AUG11-LOCKDOWN-2021,S-POLITIFACT-POSOBIEC-LOCKDOWN-2021,falsity_status,PolitiFact False: no WH lockdown plan; Biden/Fauci were arguing the opposite.
+C-SPARS-PLAN-2021,S-HHS-CRIMSON-CONTAGION-2019,claim_summary,"Crimson Contagion is a 2019 HHS H7N9 exercise AAR, not SPARS and not a leaked plot."
+C-SPARS-PLAN-2021,S-NYT-CRIMSON-CONTAGION-2020,falsity_status,NYT: the drill found the US underprepared. Jones can't keep SPARS and Crimson Contagion straight.
+C-LINDELL-TRUMP-AUGUST-2021,S-WASHIMES-LINDELL-SYMPOSIUM-2021,falsity_status,Symposium ends without packet-capture proof. Lindell's hired expert says the data cannot prove a China hack.
+C-IVERMECTIN-CURES-COVID-2021,S-FDA-IVERMECTIN-2021,falsity_status,FDA: not authorized for COVID; horse paste is not a human drug.
+C-FDA-RESIGN-VAX-KILLING-2021,S-NYT-FDA-GRUBER-KRAUSE-2021,falsity_status,"They left over booster timing, not a kill confession."
+C-FAUCI-MADE-COVID-GRANTS-2021,S-INTERCEPT-ECOHEALTH-2021,claim_summary,Real FOIA files. Not a Fauci-made-SARS-CoV-2 confession.
+C-FAUCI-MADE-COVID-GRANTS-2021,S-INTERCEPT-DARPA-DEFUSE-2021,claim_summary,DARPA rejected DEFUSE. Jones sells the rejection as proof it happened.
+C-JAN6-LED-MARCH-PEACEFUL,S-AP-SHROYER-CHARGED-2021,harm_summary,Owen charged Aug 20 2021 for the restricted-area/disorderly case. Later guilty plea.
+C-SANDY-HOOK,S-AP-SANDY-HOOK-DEFAULT-2021,harm_summary,Texas default judgments Sept 27 2021: liable for defamation after discovery abuse.
+C-NEWSOM-VAX-PARALYZED-2021,S-POLITIFACT-KIRSCH-NEWSOM-2021,falsity_status,"PolitiFact False on Kirsch. Unnamed sources, not medical records."
+C-NEWSOM-VAX-PARALYZED-2021,S-AP-NEWSOM-ABSENCE-2021,claim_summary,Newsom on camera: that's made up. No booster reaction.
+C-ASTROWORLD-BLOOD-RITUAL-2021,S-NBC-ASTROWORLD-2021,claim_summary,Crowd compressed toward the stage. Not a ritual.
+C-ASTROWORLD-BLOOD-RITUAL-2021,S-AP-ASTROWORLD-ME-2021,falsity_status,"ME: compression asphyxia, accident."
+C-SANDY-HOOK,S-AP-SANDY-HOOK-CT-DEFAULT-2021,harm_summary,Bellis default Nov 15: willful noncompliance. Fourth family case lost.
+C-JAN6-LED-MARCH-PEACEFUL,S-AP-J6-SUBPOENA-JONES-2021,who_benefited,House J6 committee: Jones helped organize the Ellipse rally. Subpoena Nov 22.
+C-RITTENHOUSE-DEFEND-2020,S-AP-RITTENHOUSE-ACQUIT-2021,claim_summary,Acquittal Nov 19. The 2020 'be nice to Kyle' product meets a verdict.
+C-JAN6-LED-MARCH-PEACEFUL,S-REUTERS-JONES-J6-LAWSUIT-2021,harm_summary,Dec 20: sues the committee and says he will take the Fifth. Same organizing the committee named in the subpoena.
+C-RAY-EPPS-FED-JAN6,S-DOJ-RHODES-INDICT-2022-WB,claim_summary,Jan 13: Rhodes + 10 charged with seditious conspiracy. The arrest is the news; Epps-as-cover is the rewrite.
+C-RAY-EPPS-FED-JAN6,S-NPR-RHODES-INDICT-2022,falsity_status,Same-day: arrested in Texas; most serious Jan 6 case to that date.
+C-RAY-EPPS-FED-JAN6,S-AP-EPPS-NOT-FED-2022,falsity_status,J6 committee two days earlier: Epps testified he was not working for law enforcement.
+C-RAY-EPPS-FED-JAN6,S-CNN-JONES-RHODES-2022,who_benefited,Jones platformed Rhodes from 2009 through the Jan 6 orbit.
+C-JAN6-JUST-TRESPASSING,S-DOJ-RHODES-INDICT-2022-WB,falsity_status,"Seditious conspiracy indictment, not trespassing."
+C-CANADA-TRUCKER-MILLION-2022,S-CTA-CONVOY-2022,falsity_status,Industry body denounced roadway/border protests; majority vaccinated.
+C-UKRAINE-INVASION-GLOBALIST-2022,S-AP-RUSSIA-INVADES-2022,falsity_status,Full-scale invasion with strikes on cities. Not a walkover and not a Soros coup.
+C-UKRAINE-US-BIOWEAPONS-2022,S-DOD-UKRAINE-BTRP-2022,falsity_status,Ukrainian-owned diagnostic labs under CTR/BTRP. Not US bioweapon factories.
+C-CANADA-TRUCKER-MILLION-2022,S-CTV-CTA-CONVOY-2022,falsity_status,Industry group denounced the convoy before it reached Ottawa. Not a million-trucker uprising.
+C-BUFFALO-FALSE-FLAG-2022,S-AP-BUFFALO-2022,falsity_status,Real racist massacre. Not a false flag. Not a prediction.
+C-UVALDE-PSYCH-MEDS-FF-2022,S-AP-UVALDE-2022,falsity_status,Real school massacre. 19 children and 2 teachers. Not psych-meds theater and not staged.
+C-MONKEYPOX-FROM-VAX-2022,S-AP-MONKEYPOX-VAX-FC-2022,falsity_status,Chimp adenovirus vector cannot cause monkeypox.
+C-SH-TX-VERDICT-2022,S-AP-SH-TX-PUNITIVE-2022,harm_summary,Jury numbers: $4.1M + $45.2M. On-stand 100% real.
+C-SH-TX-VERDICT-2022,S-AP-SH-TX-KANGAROO-2022,claim_summary,Kangaroo-court presser; skipped parent testimony to host the show.
+C-GUIDESTONES-BOMB-CHEER-2022,S-AP-GUIDESTONES-2022,claim_summary,GBI bombing then safety demolition. The explosion happened; the satanic-NWO wrap is the product.
+C-SANDY-HOOK,S-AP-SH-TX-PUNITIVE-2022,harm_summary,Travis County Aug 2022: $4.1M compensatory + $45.2M punitive. Same public floor as C-SH-TX-VERDICT-2022.
+C-SH-DAY-OF-STAGED,S-AP-SH-TX-PUNITIVE-2022,harm_summary,Where the day-of staged claim ends up in court.
+C-SH-FABLE-TO-FALSE-FLAG,S-AP-SH-TX-PUNITIVE-2022,harm_summary,The fortnight ladder's court receipt.
+C-SH-BLAME-PARENTS,S-AP-SH-TX-PUNITIVE-2022,harm_summary,The parent-blame product is what the Texas jury numbered.
+C-SH-CT-VERDICT-2022,S-AP-SH-CT-965M-2022,harm_summary,Jury number: $965M. Second SH judgment after Texas.
+C-SH-CT-VERDICT-2022,S-AP-SANDY-HOOK-CT-DEFAULT-2021,claim_summary,Same case that defaulted Nov 15 2021; this is the damages trial.
+C-PELOSI-ATTACK-FF-2022,S-AP-PELOSI-ATTACK-2022,claim_summary,"Day-of AP: break-in, hammer, skull fracture. Not a fetish hoax."
+C-SANDY-HOOK,S-AP-SH-CT-965M-2022,harm_summary,Connecticut $965M — the bigger number after Texas.
+C-YE-FUENTES-INFOWARS-2022,S-AP-YE-INFOWARS-HITLER-2022,claim_summary,AP: Fuentes on Infowars with the celebrity guest; Hitler praise. Jones hosted.
+C-FUENTES-INFOWARS-DEBUT,S-AP-YE-INFOWARS-HITLER-2022,harm_summary,2019 debut lands Dec 1 2022 as a celebrity Holocaust-denial hour. Sister C-YE-FUENTES-INFOWARS-2022.
+C-IW-WAGNER-RECRUIT-2023,S-TREAS-WAGNER-TCO-2023,harm_summary,Treasury already designated Wagner a TCO (Jan 26) when InfoWars played the ad (Feb 2).
+C-IW-WAGNER-RECRUIT-2023,S-BI-WAGNER-VETS-2023,claim_summary,The US-veteran recruitment video existed; Prigozhin claimed it. InfoWars aired it.
+C-UKRAINE-INVASION-GLOBALIST-2022,S-TREAS-WAGNER-TCO-2023,society_effect,Ukraine rewrite lands as a Wagner recruitment hour on InfoWars (#773).
+C-TRUMP-INDICT-HIT-2023,S-AP-TRUMP-ARRAIGN-2023,claim_summary,"AP: 34 felony counts, arraignment Apr 4. Not a DA plot."
+C-TRUMP-INDICT-HIT-2023,S-AP-TRUMP-DOCS-INDICT-2023,claim_summary,AP: federal classified-documents indictment Jun 8. Same hit product on #818.
+C-TUCKER-FIRED-PLOT-2023,S-AP-TUCKER-FIRED-2023,claim_summary,AP: Fox ousts Carlson Apr 24; no explanation; week after Dominion payout.
+C-DOMINION-STEAL-2020,S-AP-TUCKER-FIRED-2023,harm_summary,Fox paid Dominion $787M the week before firing Carlson — the steal product had a price.
+C-MAUI-FF-2023,S-AP-MAUI-FIRE-2023,claim_summary,AP: deadliest US wildfire in over a century; 102 dead. Not a plot.
+C-MAUI-FF-2023,S-AP-MAUI-DEW-FAKE-2023,falsity_status,AP: the laser video is a transformer explosion in Chile.
+C-TRUMP-INDICT-HIT-2023,S-AP-TRUMP-JAN6-INDICT-2023,claim_summary,AP: DC election-interference indictment Aug 1. Third hit product on #834.
+C-TRUMP-INDICT-HIT-2023,S-AP-TRUMP-GA-INDICT-2023,claim_summary,AP: Georgia RICO Aug 14. Fourth hit product on #839.
+C-JAN6-JUST-TRESPASSING,S-AP-BIGGS-SENTENCE-2023,falsity_status,AP: 17 years for seditious conspiracy. Not trespassing.
+C-JONES-BK-NO-SHIELD-2023,S-AP-JONES-BK-NOSHIELD-2023,claim_summary,AP: cannot use bankruptcy to avoid $1.1B+; willful and malicious.
+C-SANDY-HOOK,S-AP-JONES-BK-NOSHIELD-2023,harm_summary,AP Oct 19: bankruptcy does not discharge the SH judgments.
+C-ELECTION-STOLEN-2020,S-AP-CO-TRUMP-BALLOT-2023,claim_summary,AP Dec 19: Colorado kicks Trump off the primary ballot under the insurrection clause. Jones covers as a hit on #879.
+C-TEXAS-BORDER-FED-WAR-2024,S-AP-TX-RAZOR-WIRE-2024,claim_summary,"AP: SCOTUS let BP cut Texas wire. A lawsuit, not an invasion of Texas."
+C-KEY-BRIDGE-FF-2024,S-AP-KEY-BRIDGE-NTSB-2024,falsity_status,AP/NTSB: blackouts and lost steering. Six dead. Not a cyberattack.
+C-TRUMP-INDICT-HIT-2023,S-AP-TRUMP-GUILTY-2024,claim_summary,AP: guilty all 34. Same hit product on #930.
+C-TRUMP-INDICT-HIT-2023,S-AP-TRUMP-IMMUNITY-2024,claim_summary,AP: SCOTUS immunity 6-3. Jones covers on #940.
+C-JONES-BK-NO-SHIELD-2023,S-AP-JONES-BK-LIQUIDATE-2024,claim_summary,AP Jun 14: personal assets liquidated; FSS case dismissed.
+C-SANDY-HOOK,S-AP-JONES-BK-LIQUIDATE-2024,harm_summary,AP Jun 14: personal estate to be sold toward the judgments.
+C-TRUMP-ASSASS-FF-2024,S-AP-TRUMP-BUTLER-2024,claim_summary,AP: lone shooter from a roof; one dead; two wounded. Jones covers as a globalist hit on #944.
+C-TRUMP-ASSASS-FF-2024,S-AP-TRUMP-GOLF-2024,falsity_status,AP: rifle in bushes; no shots at Trump. Not a chemical-weapon hit or a robot swap (#966).
+C-JONES-BK-NO-SHIELD-2023,S-AP-ONION-AUCTION-2024,claim_summary,AP Nov 14: Onion named winner with family backing. Jones covers the morning he learns on #981.
+C-JONES-BK-NO-SHIELD-2023,S-AP-ONION-REJECT-2024,claim_summary,AP Dec 10: Lopez rejects the sale. Same docket as Oct 2023 and Jun 2024.
+C-SANDY-HOOK,S-AP-ONION-AUCTION-2024,harm_summary,AP: families backed the Onion bid so the store would stop selling the lie.
+C-SANDY-HOOK,S-AP-ONION-REJECT-2024,harm_summary,AP: judge rejects the sale; families still waiting on the judgments.
+C-LA-FIRES-FF-2025,S-AP-LA-FIRES-2025,claim_summary,AP: twin fires Jan 7; 31 dead. Jones covers as a plot on #997.
+C-MN-SHOOTING-ACTORS-2025,S-AP-MN-SHOOTING-2025,claim_summary,AP: targeted political violence; two dead. Jones covers as actors on #1053.
+C-JONES-BK-NO-SHIELD-2023,S-AP-JONES-SHIELD-5M-2025,claim_summary,AP: trustee says he hid $5M. Court week on #1045/#1048.
+C-SANDY-HOOK,S-AP-JONES-SHIELD-5M-2025,harm_summary,AP: $5M transfers alleged while families are still unpaid.
+C-EPSTEIN-DOJ-COVERUP-2025,S-AP-EPSTEIN-NO-LIST-2025,claim_summary,AP: DOJ says no client list. Jones covers as Trump cover-up #1061–#1067.
+C-EPSTEIN-DOJ-COVERUP-2025,S-DOJ-EPSTEIN-MEMO-2025,claim_summary,DOJ/FBI memo: no incriminating client list; suicide finding stands.
+C-KIRK-PODESTA-FF-2025,S-AP-KIRK-SHOT-2025,claim_summary,AP: targeted campus shooting; one dead. Jones covers as Podesta plan #1076.
+C-JONES-BK-NO-SHIELD-2023,S-AP-JONES-RECEIVER-2025,claim_summary,AP Aug 13: receiver appointed to seize/sell Infowars. Jones covers #1071.
+C-SANDY-HOOK,S-AP-JONES-RECEIVER-2025,harm_summary,AP: receiver is how families collect. Same unpaid judgments.
+C-J6-PIPEBOMB-PATSY-2025,S-AP-J6-PIPEBOMB-2025,claim_summary,AP: FBI arrest; explosives charges. Jones covers as patsy #1107.
+C-EPSTEIN-DOJ-COVERUP-2025,S-AP-EPSTEIN-EMAILS-2025,claim_summary,AP Nov 12: estate emails released. Jones spins #1094–#1097.
+C-JAN6-ANTIFA-FALSE-FLAG,S-AP-J6-PIPEBOMB-2025,claim_summary,"AP: real bombs, real arrest. Same invert family as the Antifa flip."
+C-ICE-KILLING-OK-2026,S-AP-ICE-MPLS-JAN7-2026,claim_summary,AP: ICE kills a driver Jan 7. Jones covers as justified #1110/#1111.
+C-ICE-KILLING-OK-2026,S-AP-ICE-MPLS-JAN24-2026,claim_summary,AP: second federal killing Jan 24. Jones defends and drops gun rights #1112.
+C-JONES-BK-NO-SHIELD-2023,S-AP-ONION-LICENSE-2026,claim_summary,AP: Onion back via receiver license. Jones learns #1136.
+C-SANDY-HOOK,S-AP-ONION-LICENSE-2026,harm_summary,AP: proceeds still meant for the families. Same unpaid judgments.
+C-Y2K-CIVILIZATION-COLLAPSE,S-SENATE-Y2K-FINAL-2000,falsity_status,"Senate final report: hundreds of problems, none causing serious disruptions. $100B spent, threat judged real, collapse did not occur."
+C-Y2K-CIVILIZATION-COLLAPSE,S-SENATE-Y2K-IMPACT-1999,claim_summary,"1999 committee report: problem real and under-addressed, but 'death of civilization... greatly exaggerated.' The responsible position existed publicly."
+C-Y2K-CIVILIZATION-COLLAPSE,S-ICE-SCARY-GARY-1999,claim_summary,North's collapse forecast and the 1.5 billion deaths figure.
+C-Y2K-CIVILIZATION-COLLAPSE,S-DESERET-Y2K-BLAME-2000,claim_summary,Yourdon's cascading-failure case and his more bizarre predictions; Y2K was a genuine problem that got fixed.
+C-Y2K-CIVILIZATION-COLLAPSE,S-WIRED-Y2-A-OK-2000,falsity_status,Doom forecasters including North surprised when the predicted breakdowns did not happen.
+C-Y2K-CIVILIZATION-COLLAPSE,S-UPI-Y2K-SURVIVALISTS-2000,harm_summary,"Followers cashed IRAs with tax penalties, bought gold and bulk food, then had to admit they were wrong."
+C-Y2K-CIVILIZATION-COLLAPSE,S-SPOKESMAN-Y2K-SWANSON-2000,harm_summary,"Named case: 18 months and more than $50,000; may have to sell the property to cover the loans."
+C-Y2K-CIVILIZATION-COLLAPSE,S-BBC-Y2K-COUPLE-2000,harm_summary,"Relocated family later divorced, citing publicity and the strain of stockpiling."
+C-Y2K-NORTH-DELIVERANCE,S-ICE-SCARY-GARY-1999,claim_summary,"Full 'Y2K is our deliverance' quote, cited to Rob Boston, Church & State, March 1999."
+C-Y2K-NORTH-DELIVERANCE,S-TAPIA-Y2K-ENCULTURATION,claim_summary,"Independent second copy of the same quote, cited directly to garynorth.com/y2k."
+C-Y2K-NORTH-DELIVERANCE,S-WIRED-Y2-A-OK-2000,falsity_status,No Western government was destroyed; North named as surprised by the non-event.
+C-Y2K-GODS-JUDGMENT,S-WAPO-FALWELL-Y2K-1999,claim_summary,"Falwell's $28 tape, sales figure, and the food/sugar/gasoline/ammunition line."
+C-Y2K-GODS-JUDGMENT,S-AMRW-Y2K-LEGACY,claim_summary,'Could this be God's way to bring revival to America?' and the mortal-danger-of-attack passage.
+C-Y2K-GODS-JUDGMENT,S-CT-SECULAR-APOCALYPSE-1999,claim_summary,Falwell three-part sermon video and National Liberty Journal alerts; CBN conference 320+ from 30 states; Assemblies of God refusing the panic.
+C-Y2K-GODS-JUDGMENT,S-RNS-CHRISTIANS-RECONSIDER-1999,claim_summary,"Robertson still expecting serious dislocations in Oct 1999; Dobson's $650,000; Hanegraaff's warning."
+C-Y2K-GODS-JUDGMENT,S-HEWITT-Y2K-ALARMISTS-1999,society_effect,"Feb 1999, eleven months early: the alarmism called irresponsible in print, with Robertson's segment titles listed."
+C-Y2K-GODS-JUDGMENT,S-MCO-FALSE-PROFITEERS,harm_summary,Dobson's on-air apology and Hyatt's apology letter.
+C-Y2K-PREP-INDUSTRY,S-CT-Y2KRAZY-1999,claim_summary,"The $3,395 package and the 'turn friends and neighbors into adversaries' pressure; Christian retail told to build endcaps."
+C-Y2K-PREP-INDUSTRY,S-CNN-Y2K-MARKETING-1999,claim_summary,The $89 kit with an abacus; Falwell's $28 tape. The product economy in one contemporary piece.
+C-Y2K-PREP-INDUSTRY,S-CT-Y2K-WORTH-IT-2000,who_benefited,"Feldhahn's 250,000 copies and donated royalties; Hyatt still selling the threat days after the rollover."
+C-Y2K-PREP-INDUSTRY,S-SPOKESMAN-Y2K-SWANSON-2000,harm_summary,"What the shopping list cost one buyer: $50,000+, including $14,000 in solar panels."
+C-Y2K-PREP-INDUSTRY,S-AMRW-Y2K-LEGACY,society_effect,Gun sales spiked; Fed added $50B in circulation; $100B+ total spend.
+C-Y2K-NWO-MARTIAL-LAW,S-FBI-MEGIDDO-1999,claim_summary,FBI documents the militia belief that Y2K failures would trigger a UN/NWO takeover and martial law; quotes Olson.
+C-Y2K-NWO-MARTIAL-LAW,S-SENATE-Y2K-FINAL-2000,falsity_status,"No takeover, no martial law: minor, localized, short-lived problems only."
+C-Y2K-BANK-COLLAPSE,S-ADL-Y2K-EXTREMISTS-1999,claim_summary,"Wickstrom's total-collapse prediction and the antisemitic banking frame. CAREFUL -- cite, do not replay."
+C-Y2K-BANK-COLLAPSE,S-AMRW-Y2K-LEGACY,falsity_status,Federal Reserve added $50 billion to circulation as a precaution; no banking collapse.
+C-Y2K-BANK-COLLAPSE,S-FBI-MEGIDDO-1999,claim_summary,Federal documentation of the extremist financial-collapse lane.

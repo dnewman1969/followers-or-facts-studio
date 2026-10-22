@@ -1,0 +1,10 @@
+# Core (setup.ps1 installs these into .venv)
+PySide6>=6.7
+requests>=2.31
+psutil>=5.9
+Pillow>=10.0
+numpy>=1.26
+kokoro-onnx>=0.4      # narration voice (Apache-2.0), runs on the CPU
+pypdf>=4.0            # read text out of PDF sources (court filings etc.)
+faster-whisper>=1.0   # exact word timing for captions (MIT), CPU
+pytest>=8.0

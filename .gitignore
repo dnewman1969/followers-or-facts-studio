@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+config/data-dir.txt
+# media and models never go in git; they live in the data folder (F:\AI\fof-data)
+*.mp4
+*.wav
+*.mp3
+*.safetensors
+*.onnx
+*.bin
+!brand/*.png

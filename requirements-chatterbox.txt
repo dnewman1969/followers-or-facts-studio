@@ -1,0 +1,3 @@
+# Optional voice cloning with Chatterbox (MIT). setup.ps1 -Chatterbox installs
+# CUDA PyTorch first, then this. Only voices with a consent record can be used.
+chatterbox-tts>=0.1

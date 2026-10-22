@@ -1,0 +1,25 @@
+country_id,name,influence_type,documented_vectors,key_cases,notes
+X-RUSSIA,Russia,state_media,RT appearances; Dugin guest pipeline; geopolitical framing,KF eps covering RT / Dugin / InfoWars flattery,Document pipelines only — not xenophobia. Seed from RUSSIAN-MEDIA arc.
+X-SOUTH-AFRICA,South Africa,other,Suidlanders white-genocide evacuation narrative exported into US media,Simon Roche / Stefan Molyneux KF coverage,Narrative industry targeting US audiences; verify with journalism.
+X-UK,United Kingdom,other,Britain First / Rebel Media adjacent amplification into US feeds,Britain First / Trump retweet KF coverage,Cross-border far-right content pipeline.
+X-CANADA,Canada,other,Rebel Media platform for Posobiec-era amplification,KF Posobiec / Rebel Media eps,Platform geography — not state ops unless sourced.;KF #211 also: false Posse Comitatus/FEMA-camp claim about Canada
+X-CHINA,China,other,Nuke-history misreads on InfoWars,KF #41,Subject of bad history claims — not state ops unless sourced
+X-NORTH-KOREA,North Korea,other,Nuke-history misreads on InfoWars,KF #41,Subject of bad history claims
+X-IRAN,Iran,other,MH370 speculation scapegoat,KF #42,Loose speculation as news — document carefully
+X-MALAYSIA,Malaysia,other,MH370 tragedy coverage,KF #42,Victim geography of a real aviation disaster
+X-GREECE,Greece,other,Bailout crisis used for gold/collapse programming,KF #49,Fear monetization adjacency via GCN/Celente lane
+X-VATICAN,Vatican / Holy See,other,End-times Catholic panic on InfoWars,KF #68 Pope Francis devil framing,Target of recycled Catholic panic — not a state ops claim unless sourced
+X-ISRAEL,Israel,funding_allegation,Tourism ads on GCN/InfoWars era (document as ad money not agent claim),Go Israel 2008 ads on KF #136,Nuance only — no xenophobic agent smear
+X-SYRIA,Syria,other,Chemical-weapon denial target in 2018 face-turn coverage,KF #150 gas-attack denial after US strikes,Document OPCW/wire evidence; no ethnic smear
+X-NORWAY,Norway,other,2011 Breivik massacre used for instant false-flag framing,KF #198 July 22 2011 coverage,CAREFUL — mechanism and documents only; no victim spectacle
+X-MEXICO,Mexico,other,Collapse/invasion panic; Road Warrior and satanic-cartel imagery; MS-13 as political assassins,KF #203 Grayson interview; KF #205 border package,Document the panic mechanism and who profits. No dehumanizing framing.
+X-SAUDI-ARABIA,Saudi Arabia,other,Khashoggi murder used as Obama/Hillary false-flag content on InfoWars,Jamal Khashoggi killed in Istanbul consulate Oct 2 2018; ODNI 2021 assessment MBS approved,Not a Jones guest pipeline. Document the deflection: real state killing rewritten as domestic partisan plot. No ethnic smear.
+X-BRAZIL,Brazil,other,Bolsonaro held up as the model strongman on InfoWars through 2019,"KF #242, #248, #253 praise segments","Authoritarian-admiration thread. Document the praise, not Brazilian politics."
+X-VENEZUELA,Venezuela,other,Maduro / Guaidó coup coverage folded into socialism-is-coming programming,KF #256 January 2019 coverage,Real political crisis used as domestic fear content. Get wire sources before scripting.
+X-SOMALIA,Somalia,other,2009 piracy crisis used for war-crime advocacy and dehumanizing riffs,KF #254 — Maersk Alabama era,"CAREFUL: document the rhetoric, never repeat it. No ethnic framing."
+X-NEW-ZEALAND,New Zealand,other,Christchurch mosque terrorist attack used same-day as InfoWars false-flag / Muslim-blame content,KF #277 March 15 2019 coverage; NZ Royal Commission 2020,Victim geography of a real massacre. CAREFUL forever: courts/docs only; no manifesto reprint; no livestream; no victim spectacle. Use 'the individual' per the Royal Commission when a subject anchor is needed.
+X-POLAND,Poland,other,Far-right documentary tourism (Molyneux 100 Year March) sold to US audiences,KF #285 Lil' Taste of Poland,"Setting of Molyneux's Dec 2018 mini-doc; document the pipeline, not Polish politics as such."
+X-DRC,Democratic Republic of the Congo,other,Subject of 2019 Ebola-at-the-border smear — not a state-influence actor in this row,KF #309,Log only as the community Jones and Adams racialized during the 2018–19 DRC Ebola outbreak. CDC: no US cases; US risk low.
+X-TURKEY,Turkey,other,Syria/Kurd withdrawal coverage subject on InfoWars,KF #354,Coverage subject for Oct 2019 Turkey/Kurds hour — not a state-ops claim unless sourced.
+X-SINGAPORE,Singapore,other,Target of InfoWars China-war adjacency / named professor targeting (KF #422),KF #422,Document targeting mechanism only; no pile-on of the named professor.
+X-UKRAINE,Ukraine,other,Target of InfoWars rewrite during the 2022 invasion,KF #640/#652 Ukraine-as-globalist-plot,"Geography of the claim, not a state-ops row. Putin/RT pipeline stays on X-RUSSIA."
