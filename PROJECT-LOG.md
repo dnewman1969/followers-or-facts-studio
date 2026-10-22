@@ -39,6 +39,14 @@ or the Desktop app on port 8000), or from Settings → services → comfyui_comm
 Closing the Studio stops the ComfyUI it started unless the queue is busy.
 `Update Studio.cmd` pulls updates and remakes the icon. 26 tests pass.
 
+## 2026-10-22 — fix: data folder path
+
+First launch on Dave's PC failed: Windows PowerShell 5's `Set-Content -Encoding UTF8`
+puts a byte-order mark at the start of `config/data-dir.txt`, so the path became
+`\ufeffF:\AI\fof-data`. config.py now reads it with utf-8-sig, setup.ps1 writes it
+without the mark, and `Update Studio.cmd` re-runs `init` and `download-models`
+(both safe to repeat) because the failed setup skipped them.
+
 ## Next
 
 1. Dave: run `setup.ps1`, then make S01E01 (Y2K fear industry) with Animation and Music skipped.

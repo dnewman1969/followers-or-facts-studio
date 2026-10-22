@@ -53,7 +53,8 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
 Step "Data folder: $DataDir"
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 New-Item -ItemType Directory -Force -Path "config" | Out-Null
-Set-Content -Path "config\data-dir.txt" -Value $DataDir -Encoding UTF8
+# plain UTF-8 without the marker Windows PowerShell 5 adds with -Encoding UTF8
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot "config\data-dir.txt"), $DataDir, (New-Object System.Text.UTF8Encoding $false))
 & $venvPy -m fofstudio init
 
 Step "Kokoro narration voice (~340 MB)"

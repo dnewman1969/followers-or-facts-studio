@@ -132,7 +132,8 @@ def data_dir() -> Path:
         return Path(env)
     pointer = REPO / "config" / "data-dir.txt"
     if pointer.exists():
-        text = pointer.read_text(encoding="utf-8").strip()
+        # utf-8-sig drops the invisible marker Windows PowerShell 5 adds to UTF-8 files
+        text = pointer.read_text(encoding="utf-8-sig").strip().strip('"').strip()
         if text:
             return Path(text)
     return Path(DEFAULT_DATA_DIR)

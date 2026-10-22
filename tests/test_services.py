@@ -58,3 +58,13 @@ def test_startup_window_opens_studio_when_both_are_running(data, monkeypatch):
     from fofstudio.app.startup import Startup
     dlg = Startup()
     assert dlg.exec() == 1  # accepted on its own, no click needed
+
+
+def test_data_dir_file_written_by_powershell(tmp_path, monkeypatch):
+    """Windows PowerShell 5 writes UTF-8 with a BOM; the path must still be read cleanly."""
+    monkeypatch.delenv("FOF_DATA", raising=False)
+    pointer = tmp_path / "config" / "data-dir.txt"
+    pointer.parent.mkdir()
+    pointer.write_bytes("\ufeffF:\\AI\\fof-data\r\n".encode("utf-8"))
+    monkeypatch.setattr(config, "REPO", tmp_path)
+    assert str(config.data_dir()) == "F:\\AI\\fof-data"
