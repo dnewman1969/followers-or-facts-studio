@@ -59,4 +59,7 @@ def _selftest(ctx):
 STAGES.append(Stage("selftest", "Worker test", "cpu", (), _selftest, lambda ep: [], hidden=True,
                     description="Checks that the background worker runs jobs."))
 
+STAGES.append(Stage("autopublish", "Automatic upload", "network", (), publish.autopublish, lambda ep: [],
+                    hidden=True, description="After a final render: write it up and upload it as private."))
+
 BY_NAME = {s.name: s for s in STAGES}

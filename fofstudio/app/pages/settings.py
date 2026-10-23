@@ -20,6 +20,7 @@ from .. import sound
 from ..common import GOLD, GREEN, MUTED, RED, button, error, info, label, row
 
 HELP = {
+    "moves": "Owlbert's moves: fly in, point at the evidence, hat trick, wing flourish, fly off",
     "truth_vlog_research": "Folder with truth-vlog's research CSVs (claims/, sources/...)",
     "writer_model": "Writes scripts and storyboards",
     "checker_model": "A different model, for checks",
@@ -174,6 +175,16 @@ class SettingsPage(QWidget):
         self.kids = QCheckBox("Made for kids")
         self.kids.setChecked(bool(cfg["made_for_kids"]))
         form.addRow("", self.kids)
+        self.category = QComboBox()
+        for text, key in (("News & Politics", "25"), ("Education", "27"), ("Science & Technology", "28"),
+                          ("People & Blogs", "22")):
+            self.category.addItem(text, key)
+        self.category.setCurrentIndex(max(0, self.category.findData(str(cfg["category_id"]))))
+        form.addRow("Category", self.category)
+        self.auto = QCheckBox("Upload automatically as private when the final video is rendered, then open "
+                              "YouTube Studio so I can review it")
+        self.auto.setChecked(bool(cfg.get("auto_upload", True)))
+        form.addRow("Automatic", self.auto)
         self._show_account()
         return box
 
@@ -289,6 +300,9 @@ class SettingsPage(QWidget):
         snd["media_backend"] = self.backend.currentData()
         data["youtube"]["privacy"] = self.privacy.currentData()
         data["youtube"]["made_for_kids"] = self.kids.isChecked()
+        data["youtube"]["category_id"] = self.category.currentData()
+        data["youtube"]["auto_upload"] = self.auto.isChecked()
+        data["youtube"]["open_studio_after_upload"] = self.auto.isChecked()
         path = save_settings(data)
         # the preview player picks up the new speaker and volume straight away
         win = self.window()

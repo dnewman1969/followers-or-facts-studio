@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .. import cards, media, owl
+from .. import bits, cards, media, owl
 from ..config import settings
 from ..engines.render import AudioCue, Segment, Timeline, render
 from ..episode import Episode
@@ -74,7 +74,13 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
         tl.presenter = owl.presenter_track(speech, tl.total, ep.path("render", f"owl-{h}"),
                                            height=int(h * float(ocfg["presenter_height"])), fps=fps,
                                            progress=progress)
-        tl.presenter_ranges = [(o["start"], o["start"] + o["duration"]) for o in tl_json["owl"]]
+        ranges = bits.merge([(o["start"], o["start"] + o["duration"]) for o in tl_json["owl"]])
+        moves = tl_json.get("moves") or []
+        if moves and ocfg.get("moves", True):
+            tl.moves, tl.moves_ranges = bits.render_track(moves, speech, tl.total, ep.path("render", f"moves-{h}"),
+                                                          w, h, fps, progress)
+            ranges = bits.subtract(ranges, tl.moves_ranges)   # he can't be in the corner while he's flying
+        tl.presenter_ranges = ranges
         tl.presenter_corner = ocfg["presenter_corner"]
     starts = {s["scene_id"]: s["start"] for s in tl_json.get("speech", [])}
     chapters = [{"scene_id": c["scene_id"], "start": round(c["start"], 2)} for c in video

@@ -214,10 +214,33 @@ to the real ticked IDs (`script.with_known_ids`, enum lists), unknown IDs are dr
 page shows **Remove made-up IDs** (`script.repair`) to fix an existing script without rewriting it.
 66 tests pass.
 
+## 2026-10-23 — v0.4.3: room to think, automatic private upload, Owlbert flies
+
+Three things from Dave's latest test:
+
+- **"The local AI ran out of room."** `llm.chat()` now grows when it needs to: if an answer is cut
+  off, it retries with double the answer room (up to `ollama.max_predict`, 16,384) and a bigger
+  context (up to `max_ctx`, 32,768), plus a little more presence penalty in case it was repeating
+  itself; after four tries it says so plainly. Shot planning asks for 6 shots at a time, telling the
+  AI what's already planned, instead of one giant answer.
+- **Google's uploader** (`fof_youtube_uploader.py`) was merged into our own YouTube code rather than
+  added beside it: tag clean-up to YouTube's 500-character rule (`youtube.sanitize_tags`), the
+  YouTube Studio link (`youtube.studio_url`), and a hidden `autopublish` job queued after every final
+  render: write-up → checks → upload **private** → open YouTube Studio for review. Its separate
+  sign-in, token file and print-outs weren't needed (Settings → YouTube already signs in).
+- **Owlbert's moves** (`rig.py`, `bits.py`, V3 Moves track): he's cut into body, folded wings, cap and
+  tassel, with drawn spread wings, head top, cap inside and props. Moves: fly in, point at the
+  evidence, hat trick (trick card or light bulb out of his cap), wing flourish, fly off. Planned from
+  scene roles with a budget; careful topics get no playful moves; never mirrored. Drawn as full-size
+  transparent frames and laid over the picture; the corner presenter hides while a move plays and no
+  longer blinks out between scenes. Research report: "Owlbert mascot animation methods" (project docs).
+
+79 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.
-2. Owlbert LoRA or Qwen-Image-Edit poses, so his painted scenes can show other poses.
+2. Owlbert: technique props (cherry, mask...), thinking pose, verdict stamp; Qwen-Image-Edit wing drawings.
 2. Fix whatever the first real run turns up in the ComfyUI templates and prompts.
 3. Owlbert on model: turnaround sheet, LoRA, intro/outro shots.
 4. Shorts: vertical clips from the render.

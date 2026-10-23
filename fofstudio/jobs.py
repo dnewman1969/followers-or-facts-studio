@@ -320,6 +320,7 @@ def run_job(job: dict[str, Any]) -> None:
         pipeline.run_now(ep, stage.name, options, log=log.info, progress=progress, cancelled=cancelled)
         db.execute("UPDATE job SET status='done', finished_at=?, progress=?, progress_pct=100 WHERE job_id=?",
                    (utc_now(), "Finished - waiting for your approval", job_id))
+        _after(job, ep, options)
         if settings()["pipeline"]["auto_continue"]:
             log.info("auto_continue is on, but every stage still waits for your approval.")
     except Exception as exc:  # noqa: BLE001 - every failure is recorded and pauses the queue
@@ -336,6 +337,21 @@ def run_job(job: dict[str, Any]) -> None:
         if suspended:
             from . import rendermode
             rendermode.resume_all()
+
+
+def _after(job: dict[str, Any], ep: Episode, options: dict[str, Any]) -> None:
+    """Follow-on jobs: a finished final render is uploaded privately (if you're signed in and want that)."""
+    if job["stage"] != "render" or options.get("draft") or not settings()["youtube"].get("auto_upload"):
+        return
+    from . import youtube
+    if not youtube.account():
+        log.info("Render finished; not uploading automatically because you're not signed in to YouTube.")
+        return
+    try:
+        enqueue(job["project_id"], "autopublish")
+        log.info("Render finished; queued the automatic private upload.")
+    except StageError as exc:
+        log.info("Couldn't queue the automatic upload: %s", exc)
 
 
 def worker_loop(once: bool = False, in_app: bool = False) -> None:

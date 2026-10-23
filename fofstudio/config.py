@@ -32,8 +32,10 @@ DEFAULTS: dict[str, Any] = {
         "writer_model": "qwen3:14b",
         # Checks must not be done by the same model that wrote the draft.
         "checker_model": "qwen3:8b",
-        "num_ctx": 16384,
+        "num_ctx": 16384,               # starting room; grows by itself when an answer needs more
         "num_predict": 6000,
+        "max_ctx": 32768,               # the most it may grow to (more context = more memory)
+        "max_predict": 16384,
         "timeout_seconds": 900,
         "think": False,
         "top_p": 0.8,               # Qwen 3's recommended settings with thinking off
@@ -103,6 +105,8 @@ DEFAULTS: dict[str, Any] = {
         "privacy": "private",
         "category_id": "25",
         "made_for_kids": False,
+        "auto_upload": True,            # upload as PRIVATE as soon as the final video is rendered
+        "open_studio_after_upload": True,
     },
     "rendermode": {
         "suggested": [
@@ -149,6 +153,7 @@ DEFAULTS: dict[str, Any] = {
         "presenter": True,
         "presenter_corner": "bottom_right",
         "presenter_height": 0.34,
+        "moves": True,
         "rhubarb": "",
     },
     "services": {

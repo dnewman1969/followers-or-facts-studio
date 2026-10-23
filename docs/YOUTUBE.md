@@ -29,6 +29,16 @@ applying an old rule to new, unaudited projects; you can still publish by upload
 yourself, or fill in Google's free API audit form. Google's own pages disagree about whether the lock
 still applies in 2026, so this test is the way to find out.
 
+## Automatic upload after the final render
+
+With Settings → YouTube → **Upload automatically** ticked (the default), every final render (not a
+preview) is written up and uploaded straight away as **Private**: title, description with every
+source link and the AI disclosure, tags (trimmed to YouTube's 500-character limit), category and the
+thumbnail. When it's done the Studio opens the video in **YouTube Studio** so you can see YouTube's
+checks (copyright, ad suitability) before you make it public. The Publish page keeps both links.
+If something in the write-up needs your attention (a blocked check), it stops before uploading and
+the Publish page says what to fix.
+
 ## Good to know
 
 - **Uploads are private by default** (Settings → YouTube → Upload as). Check the video, pin the

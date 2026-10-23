@@ -77,9 +77,22 @@ def shots_needed(sc: dict[str, Any], style: styles.Style, card_seconds: float) -
 
 
 # ---------------------------------------------------------------- shot ideas
+SHOTS_PER_REQUEST = 6   # ask for a few shots at a time so every answer fits comfortably
+
+
 def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str], people: list[dict[str, Any]],
                 restrictions: list[str], on_text=None) -> list[dict[str, Any]]:
-    schema = {"type": "object", "properties": {"shots": {"type": "array", "minItems": n, "maxItems": n, "items": {
+    out: list[dict[str, Any]] = []
+    while len(out) < n:
+        k = min(SHOTS_PER_REQUEST, n - len(out))
+        out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text)
+    return out[:n]
+
+
+def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.Style, kinds: list[str],
+                people: list[dict[str, Any]], restrictions: list[str], so_far: list[dict[str, Any]],
+                on_text=None) -> list[dict[str, Any]]:
+    schema = {"type": "object", "properties": {"shots": {"type": "array", "minItems": k, "maxItems": k, "items": {
         "type": "object", "properties": {
             "kind": {"type": "string", "enum": kinds},
             "idea": {"type": "string"},
@@ -88,31 +101,36 @@ def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str
     who = ("\nCaricature cast you may use (by person_id; describe what they're DOING from the narration, never "
            f"their looks or name, those are added automatically): {[{'person_id': p['person_id'], 'who': p.get('role_types')} for p in people]}"
            if "caricature" in kinds else "")
+    part = (f"Plan shots {start + 1} to {start + k} of {n} for this scene, in order"
+            + (f" (the narration is split into {n} equal parts; these cover parts {start + 1}-{start + k})." if n > k else ".")
+            + ("\nShots already planned (don't repeat them): " + " | ".join(x["idea"][:90] for x in so_far)
+               if so_far else ""))
     answer = Ollama().chat_json([
         {"role": "system", "content": (
-            f"You are the art director for a {style.name} video. Plan a sequence of {n} different shots that "
+            f"You are the art director for a {style.name} video. Plan a sequence of different shots that "
             "follow the narration in order, so the pictures change as Owlbert talks and never repeat. Each idea is "
             "one or two sentences: the subject, the setting, the framing (wide, medium, close-up, overhead...), the "
             "light and mood, in this style. Vary the framing from shot to shot. Kinds: 'broll' = places, objects, "
             "documents, crowds seen from behind, visual metaphors; 'owl' = Owlbert the owl professor appears (just "
             "describe the set and what he's doing, he's added from his artwork); 'caricature' = a cartoon "
             "caricature of one of the cast doing the documented thing the narration describes. Never name a real "
-            "person. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature.")},
+            "person. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
+            "Keep each idea short.")},
         {"role": "user", "content": f"Style: {style.look}\nOwlbert's scenes look like: {style.owl_look}\n"
                                     f"Scene visual note: {sc['visual']}\nNarration: {sc['narration']}\n"
-                                    f"Careful-topic rules: {restrictions or 'none'}{who}"},
+                                    f"Careful-topic rules: {restrictions or 'none'}{who}\n\n{part}"},
     ], schema, temperature=0.7, on_text=on_text)
     allowed = {p["person_id"] for p in people}
     out = []
-    for x in (answer.get("shots") or [])[:n]:
+    for x in (answer.get("shots") or [])[:k]:
         kind = x.get("kind") if x.get("kind") in kinds else "broll"
         pid = (x.get("person_id") or "").strip()
         if kind == "caricature" and pid not in allowed:
             kind, pid = "broll", ""
         out.append({"kind": kind, "idea": (x.get("idea") or "").strip() or sc["visual"],
                     "person_id": pid if kind == "caricature" else ""})
-    while len(out) < n:  # the model came back short: fill from the scene's own visual note, varied framing
-        framing = ["wide establishing view", "close-up detail", "overhead view", "symbolic image"][len(out) % 4]
+    while len(out) < k:  # the model came back short: fill from the scene's own visual note, varied framing
+        framing = ["wide establishing view", "close-up detail", "overhead view", "symbolic image"][(start + len(out)) % 4]
         out.append({"kind": "broll", "idea": f"{sc['visual']} ({framing})", "person_id": ""})
     return out
 
@@ -136,8 +154,7 @@ def _place_owlbert(background, out, side: int) -> None:
     owl = owl.crop(owl.getbbox())
     h = int(bg.height * 0.66)
     owl = owl.resize((int(owl.width * h / owl.height), h), Image.LANCZOS)
-    if side:
-        owl = owl.transpose(Image.FLIP_LEFT_RIGHT)
+    # never mirrored: his tassel hangs on one side, so a flipped Owlbert is off model
     x = int(bg.width * 0.08) if side == 0 else bg.width - owl.width - int(bg.width * 0.08)
     y = bg.height - owl.height - int(bg.height * 0.04)
     shadow = Image.new("RGBA", bg.size, (0, 0, 0, 0))

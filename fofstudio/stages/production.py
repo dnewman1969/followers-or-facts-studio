@@ -3,6 +3,7 @@
 Tracks (top to bottom, like a video editor):
   V1 Video    intro bumper, every approved clip in scene order, outro bumper
   V2 Owlbert  when the talking owl presenter shows in the corner
+  V3 Moves    Owlbert's moves: flying in and off, pointing at the evidence, the hat trick
   A1 Speech   Owlbert reading each scene of the script
   A2 Music    the music bed (ducked under his voice when rendered)
 
@@ -15,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import media, owl
+from .. import bits, media, owl
 from ..config import settings
 from ..episode import Episode
 from ..util import StageError, read_json, utc_now, write_json
@@ -159,7 +160,22 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
     if music and music_ok and ep.abs(music["path"]).exists():
         tl["music"].append({"id": "music", "src": music["path"], "start": 0.0, "duration": round(end, 3),
                             "volume": 1.0})
+    tl["moves"] = plan_moves(ep, tl, script)
     return tl
+
+
+def plan_moves(ep: Episode, tl: dict[str, Any], script: dict[str, Any]) -> list[dict[str, Any]]:
+    """Owlbert's moves for this video (none if they're switched off in Settings)."""
+    o = settings()["owl"]
+    if not (o.get("moves", True) and o.get("presenter", True)):
+        return []
+    roles = {sc["scene_id"]: sc.get("role", "") for sc in script.get("scenes", [])}
+    try:
+        from .stories import chosen
+        tricks = (chosen(ep) or {}).get("techniques", [])
+    except Exception:  # noqa: BLE001 - an older project without a chosen story still gets its moves
+        tricks = []
+    return bits.plan(bits.scenes_from_timeline(tl, roles), ep.creative(), tricks, ep.project_id)
 
 
 def _stale_reason(ep: Episode, tl: dict[str, Any]) -> str:

@@ -15,6 +15,7 @@ from .util import StageError
 class Ollama:
     def __init__(self, cfg: dict[str, Any] | None = None):
         self.cfg = cfg or settings()["ollama"]
+        self.retries: list[str] = []   # notes about answers that needed more room
         self.url = self.cfg["url"].rstrip("/")
 
     def _post(self, path: str, payload: dict[str, Any], timeout: float | tuple) -> dict[str, Any]:
@@ -79,30 +80,48 @@ class Ollama:
     def chat(self, messages: list[dict[str, str]], model: str | None = None,
              schema: dict[str, Any] | None = None, temperature: float = 0.4,
              seed: int | None = None, on_text: Callable[[str], None] | None = None) -> str:
-        payload: dict[str, Any] = {
-            "model": model or self.cfg["writer_model"],
-            "messages": messages,
-            "stream": bool(on_text),
-            "think": self.cfg.get("think", False),
-            "options": {"temperature": temperature, "num_ctx": self.cfg["num_ctx"],
-                        "num_predict": self.cfg["num_predict"],
-                        **{k: self.cfg[k] for k in ("top_p", "top_k", "presence_penalty") if k in self.cfg}},
-        }
-        if seed is not None:
-            payload["options"]["seed"] = seed
-        if schema is not None:
-            payload["format"] = schema
-        if on_text:
-            data = self._stream(payload, on_text)
-        else:
-            data = self._post("/api/chat", payload, timeout=(5, self.cfg["timeout_seconds"]))
-        content = (data.get("message") or {}).get("content", "").strip()
-        if not content:
-            raise StageError("The local AI returned an empty answer.")
-        if data.get("done_reason") == "length":
-            raise StageError("The local AI ran out of room before finishing. Raise "
-                             "[ollama] num_predict in Settings or pick fewer claims.")
-        return content
+        """Ask the local AI. If the answer runs out of room, try again with more room (up to
+        [ollama] max_predict / max_ctx in Settings), nudging it away from repeating itself."""
+        predict = int(self.cfg["num_predict"])
+        ctx = int(self.cfg["num_ctx"])
+        max_predict = int(self.cfg.get("max_predict", 16384))
+        max_ctx = int(self.cfg.get("max_ctx", 32768))
+        penalty = float(self.cfg.get("presence_penalty", 0.0))
+        for attempt in range(4):
+            payload: dict[str, Any] = {
+                "model": model or self.cfg["writer_model"],
+                "messages": messages,
+                "stream": bool(on_text),
+                "think": self.cfg.get("think", False),
+                "options": {"temperature": temperature, "num_ctx": ctx, "num_predict": predict,
+                            **{k: self.cfg[k] for k in ("top_p", "top_k") if k in self.cfg},
+                            "presence_penalty": penalty},
+            }
+            if seed is not None:
+                payload["options"]["seed"] = seed
+            if schema is not None:
+                payload["format"] = schema
+            if on_text:
+                data = self._stream(payload, on_text)
+            else:
+                data = self._post("/api/chat", payload, timeout=(5, self.cfg["timeout_seconds"]))
+            content = (data.get("message") or {}).get("content", "").strip()
+            if data.get("done_reason") != "length":
+                if not content:
+                    raise StageError("The local AI returned an empty answer.")
+                return content
+            # out of room: give it more (the prompt plus a bigger answer must fit in the context)
+            prompt_tokens = int(data.get("prompt_eval_count") or 0)
+            if predict >= max_predict and ctx >= max_ctx:
+                break
+            predict = min(max_predict, predict * 2)
+            ctx = min(max_ctx, max(ctx, prompt_tokens + predict + 1024))
+            penalty = min(1.5, penalty + 0.3)   # long answers that run out of room are often repeating
+            self.retries.append(f"answer too long; trying again with room for {predict} tokens")
+            if on_text:
+                on_text("")
+        raise StageError("The local AI kept running out of room (it may be repeating itself). Press Run again; if it "
+                         "happens again, raise [ollama] max_predict and max_ctx in Settings or make the step smaller.")
 
     def chat_json(self, messages: list[dict[str, str]], schema: dict[str, Any],
                   model: str | None = None, **kw: Any) -> Any:

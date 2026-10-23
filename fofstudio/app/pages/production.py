@@ -6,10 +6,10 @@ import json
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QPushButton,
+from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QPushButton,
                                QSlider, QSplitter, QVBoxLayout)
 
-from ... import pipeline
+from ... import bits, pipeline
 from ...stages import production as prod
 from ...util import read_json
 from ..common import PANEL
@@ -119,8 +119,19 @@ class ProductionPage(StagePage):
         undo.addWidget(self.b_redo)
         il.addLayout(undo)
         il.addWidget(self.b_owl)
+        moves = QHBoxLayout()
+        self.move_kind = QComboBox()
+        for key, name in bits.KINDS.items():
+            self.move_kind.addItem(name, key)
+        self.move_kind.setToolTip("Owlbert's moves: he flies in or off, points at the evidence, gives a wing "
+                                  "flourish, or takes off his cap and pulls out the trick of the day")
+        self.b_move = QPushButton("Add move")
+        self.b_move.clicked.connect(self._add_move)
+        moves.addWidget(self.move_kind, 1)
+        moves.addWidget(self.b_move)
+        il.addLayout(moves)
         tip = QLabel("Keys: Space play/pause · Ctrl+Z undo · Ctrl+Y redo · Delete removes the selected "
-                     "Owlbert or music piece")
+                     "Owlbert piece, move or music piece. Moves show in the preview and the final video.")
         tip.setObjectName("muted")
         tip.setWordWrap(True)
         il.addWidget(tip)
@@ -309,13 +320,13 @@ class ProductionPage(StagePage):
         self.i_name.setText(f"<b>{track}</b>: {c.get('label') or c.get('scene_id') or c['id']}")
         self.i_start.setValue(c["start"])
         self.i_dur.setValue(c["duration"])
-        self.i_dur.setEnabled(track != "speech")
+        self.i_dur.setEnabled(track not in ("speech", "moves"))
         self.i_in.setEnabled(track == "video")
         self.i_in.setValue(c.get("inpoint", 0.0))
         self.i_vol.setEnabled(track == "music")
         vol = float(c.get("volume", 1.0))
         self.i_vol.setValue(1.0 if abs(vol - 0.18) < 1e-6 else vol)  # 0.18 was the old fixed music level
-        self.i_delete.setEnabled(track in ("owl", "music"))
+        self.i_delete.setEnabled(track in ("owl", "music", "moves"))
 
     def _apply(self) -> None:
         if not self._sel:
@@ -323,7 +334,7 @@ class ProductionPage(StagePage):
         self._undo_stack.append(json.dumps(self._tl))
         track, c = self._sel
         c["start"] = round(self.i_start.value(), 3)
-        if track != "speech":
+        if track not in ("speech", "moves"):
             c["duration"] = round(max(0.2, self.i_dur.value()), 3)
         if track == "video":
             c["inpoint"] = round(self.i_in.value(), 3)
@@ -333,7 +344,7 @@ class ProductionPage(StagePage):
         self._save()
 
     def _delete(self) -> None:
-        if not self._sel or self._sel[0] not in ("owl", "music"):
+        if not self._sel or self._sel[0] not in ("owl", "music", "moves"):
             return
         self._undo_stack.append(json.dumps(self._tl))
         track, c = self._sel
@@ -349,6 +360,29 @@ class ProductionPage(StagePage):
         t = self.editor.scene.playhead_s
         n = len(self._tl.setdefault("owl", []))
         self._tl["owl"].append({"id": f"owl-extra-{n}", "start": round(t, 3), "duration": 6.0})
+        self.editor.load(self._tl, self.ep.abs)
+        self._save()
+
+    def _add_move(self) -> None:
+        """Add one of Owlbert's moves at the playhead (the hat trick pulls out the story's trick)."""
+        if not self._tl:
+            return
+        self._undo_stack.append(json.dumps(self._tl))
+        kind = self.move_kind.currentData()
+        t = self.editor.scene.playhead_s
+        mv = {"id": f"{kind}-extra-{len(self._tl.setdefault('moves', [])) + 1}", "kind": kind,
+              "start": round(t, 3), "duration": bits.LENGTH[kind], "label": bits.KINDS[kind], "variant": 0}
+        if kind == "hat_trick":
+            from ... import techniques
+            from ...stages.stories import chosen
+            try:
+                keys = (chosen(self.ep) or {}).get("techniques", [])
+            except Exception:  # noqa: BLE001 - no story chosen: a plain card
+                keys = []
+            tech = techniques.get(keys[0]) if keys else None
+            mv["prop"] = {"kind": "card", "text": tech.name if tech else "The Trick"}
+        self._tl["moves"].append(mv)
+        self._tl["moves"].sort(key=lambda m: m["start"])
         self.editor.load(self._tl, self.ep.abs)
         self._save()
 

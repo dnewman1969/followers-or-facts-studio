@@ -209,16 +209,11 @@ def cues_for(wav: Path, text: str | None = None) -> tuple[list[tuple[float, str]
 
 
 # ---------------------------------------------------------------- presenter video
-def presenter_track(speech: list[tuple[float, Path, str]], total: float, out: Path,
-                    height: int = 360, fps: int = 30, progress=lambda t, p=None: None) -> Path:
-    """Owlbert talking for the whole video, as an ffmpeg "concat" list of transparent PNG
-    drawings with how long each one shows. The render lays it straight over the picture,
-    so no big intermediate video file is made. Returns the list file (out with .txt).
-
-    speech: (start time on the timeline, narration WAV, its text) for every line he says.
-    """
+def speech_timeline(speech: list[tuple[float, Path, str]], progress=lambda t, p=None: None
+                    ) -> tuple[list[tuple[float, str]], set[str]]:
+    """Every mouth shape change over the whole video: [(time, Rhubarb letter)], and how it was timed."""
     timeline: list[tuple[float, str]] = [(0.0, "X")]
-    methods = set()
+    methods: set[str] = set()
     for k, (start, wav, text) in enumerate(speech):
         progress(f"Timing Owlbert's beak to line {k + 1}/{len(speech)}", 100 * k / max(1, len(speech)))
         cues, method = cues_for(wav, text)
@@ -227,13 +222,52 @@ def presenter_track(speech: list[tuple[float, Path, str]], total: float, out: Pa
         timeline += [(start + t, s) for t, s in cues if t < length]
         timeline.append((start + length, "X"))
     timeline.sort()
-    rnd = random.Random(7)
+    return timeline, methods
+
+
+def blink_times(total: float, seed: int = 7) -> list[float]:
+    rnd = random.Random(seed)
     blinks: list[float] = []
     t = rnd.uniform(1.5, 3.5)
     while t < total:
         blinks.append(t)
         t += rnd.uniform(2.5, 5.5)
+    return blinks
 
+
+def blink_at(blinks: list[float], t: float) -> float:
+    return next((min(1.0, 1 - abs(t - bt) / 0.09) for bt in blinks if abs(t - bt) < 0.09), 0.0)
+
+
+def shape_at(timeline: list[tuple[float, str]], t: float) -> str:
+    import bisect
+    i = bisect.bisect_right([x[0] for x in timeline], t) - 1
+    return timeline[max(0, i)][1]
+
+
+def home_box(width: int, height: int) -> tuple[int, int, int, int]:
+    """Where the corner presenter sits on screen: left, top, width, height (the render uses the same numbers)."""
+    o = settings()["owl"]
+    ph = int(height * float(o["presenter_height"]))
+    bx0, by0, bx1, by1 = base().getbbox()
+    pw = int((bx1 - bx0) * ph / (by1 - by0))
+    mx, my = int(width * 0.025), int(height * 0.04)
+    corner = o["presenter_corner"]
+    x = width - pw - mx if "right" in corner else mx
+    y = height - ph - my if "bottom" in corner else my
+    return x, y, pw, ph
+
+
+def presenter_track(speech: list[tuple[float, Path, str]], total: float, out: Path,
+                    height: int = 360, fps: int = 30, progress=lambda t, p=None: None) -> Path:
+    """Owlbert talking for the whole video, as an ffmpeg "concat" list of transparent PNG
+    drawings with how long each one shows. The render lays it straight over the picture,
+    so no big intermediate video file is made. Returns the list file (out with .txt).
+
+    speech: (start time on the timeline, narration WAV, its text) for every line he says.
+    """
+    timeline, methods = speech_timeline(speech, progress)
+    blinks = blink_times(total)
     frames_dir = out.parent / (out.stem + "-frames")
     frames_dir.mkdir(parents=True, exist_ok=True)
     cache: dict[tuple[str, float], Path] = {}
@@ -260,7 +294,7 @@ def presenter_track(speech: list[tuple[float, Path, str]], total: float, out: Pa
         while idx + 1 < len(timeline) and timeline[idx + 1][0] <= t:
             idx += 1
         shape = timeline[idx][1] if f < n_frames else "X"
-        b = next((min(1.0, 1 - abs(t - bt) / 0.09) for bt in blinks if abs(t - bt) < 0.09), 0.0)
+        b = blink_at(blinks, t)
         key = (shape, round(b * 4) / 4)
         if key != current or f == n_frames:
             if current is not None:

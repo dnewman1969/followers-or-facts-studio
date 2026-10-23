@@ -134,3 +134,26 @@ def account() -> dict[str, Any] | None:
 def sign_out() -> None:
     for p in (token_path(), account_path()):
         p.unlink(missing_ok=True)
+
+
+def sanitize_tags(tags: list[str]) -> list[str]:
+    """YouTube allows 500 characters of tags in total; no angle brackets; no duplicates."""
+    seen, out = set(), []
+    for tag in tags:
+        t = " ".join(str(tag).replace("<", "").replace(">", "").replace(",", " ").split())[:100]
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            out.append(t)
+    # YouTube counts a tag with a space as if it had quotes around it
+    while out and sum(len(t) + (2 if " " in t else 0) for t in out) + len(out) - 1 > 500:
+        out.pop()
+    return out
+
+
+def studio_url(video_id: str) -> str:
+    """Where to check YouTube's checks (copyright, ad suitability) before making the video public."""
+    return f"https://studio.youtube.com/video/{video_id}/edit"
+
+
+def video_url(video_id: str) -> str:
+    return f"https://youtu.be/{video_id}"

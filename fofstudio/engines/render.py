@@ -75,6 +75,9 @@ class Timeline:
     presenter: Path | None = None
     presenter_ranges: list[tuple[float, float]] = field(default_factory=list)
     presenter_corner: str = "bottom_right"
+    # Owlbert's moves (flying, hat trick...): full-size transparent drawings and when they play
+    moves: Path | None = None
+    moves_ranges: list[tuple[float, float]] = field(default_factory=list)
 
     def layout(self) -> "Timeline":
         """Work out when each segment starts. Segment n+1 starts as segment n begins to fade."""
@@ -270,6 +273,10 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
         if tl.presenter and tl.presenter_ranges:
             owl_in = n + len(tl.narration) + (1 if tl.music else 0)
             args += ["-f", "concat", "-safe", "0", "-i", str(tl.presenter)]
+        moves_in = None
+        if tl.moves and tl.moves_ranges:
+            moves_in = n + len(tl.narration) + (1 if tl.music else 0) + (1 if owl_in is not None else 0)
+            args += ["-f", "concat", "-safe", "0", "-i", str(tl.moves)]
 
         steps: list[str] = []
         v = "0:v"
@@ -288,6 +295,12 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
             steps.append(f"[{v}][owl]overlay=x={x}:y={y}:enable='{when}':eof_action=pass:format=auto,"
                          f"format=yuv420p[vowl]")
             v = "vowl"
+        if moves_in is not None:
+            when = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in tl.moves_ranges)
+            steps.append(f"[{moves_in}:v]fps={tl.fps},format=rgba[moves]")
+            steps.append(f"[{v}][moves]overlay=x=0:y=0:enable='{when}':eof_action=pass:format=auto,"
+                         f"format=yuv420p[vmoves]")
+            v = "vmoves"
         if burn_subs and srt:
             steps.append(f"[{v}]subtitles='{escape_filter_path(srt)}':force_style='FontName=Arial,"
                          "FontSize=22,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"

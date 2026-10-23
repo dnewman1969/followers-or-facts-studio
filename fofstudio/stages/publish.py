@@ -32,6 +32,23 @@ def _chapter_name(scene: dict[str, Any]) -> str:
     return " ".join(words[:7]).rstrip(".,;:") or scene["scene_id"]
 
 
+def keywords(ep: Episode, story: dict[str, Any]) -> list[str]:
+    """Search tags from this video's own story: its subject, the claims, the trick it teaches, the style."""
+    from .. import styles, techniques
+    from ..youtube import sanitize_tags
+    arc = db.one("SELECT title FROM arc WHERE arc_id=?", (ep.info.get("arc_id"),)) or {}
+    claims = [r["short_title"] for r in db.rows(
+        "SELECT c.short_title FROM project_claim pc JOIN claim c USING(claim_id) WHERE pc.project_id=? "
+        "ORDER BY pc.order_no", (ep.project_id,))]
+    tricks = [t.name for t in (techniques.get(k) for k in story.get("techniques", [])) if t]
+    tags = ["Followers or Facts", "fact check", "critical thinking", "media literacy", "Professor Owlbert"]
+    tags += ([arc["title"].split(":")[0][:60]] if arc.get("title") else [])
+    tags += tricks + [c[:60] for c in claims[:6]]
+    tags += [story.get("thumbnail_words", "").title()] if story.get("thumbnail_words") else []
+    tags += ["debunk", "misinformation", "history", styles.get(ep.creative()["style"]).name.lower()]
+    return sanitize_tags(tags)
+
+
 def package(ctx: Context) -> None:
     ep = ctx.episode
     timeline = read_json(ep.path("render", "timeline.json"))
@@ -75,16 +92,14 @@ def package(ctx: Context) -> None:
         ctx.log(f"The description was full, so {left_out} proof link(s) went into proof-links.txt "
                 "(paste them into the pinned comment).")
 
-    arc = db.one("SELECT title FROM arc WHERE arc_id=?", (ep.info.get("arc_id"),)) or {}
-    tags = ["fact check", "Followers or Facts", "conspiracy theories", "media literacy",
-            "debunk", "history"] + ([arc["title"][:60]] if arc.get("title") else [])
-
     from .stories import chosen
     story = chosen(ep) or {}
+    tags = keywords(ep, story)
     thumb_words = (ctx.options.get("thumbnail_text") or story.get("thumbnail_words")
                    or " ".join(title.split()[:4]))
-    first_ai = next((s for s in ep.storyboard().get("shots", [])
-                     if s["type"] == "ai_image" and s.get("image", {}).get("raw")), None)
+    first_ai = next((s for s in board_shots(ep)
+                     if s["type"] == "ai_image" and s.get("kind") != "caricature" and s.get("image", {}).get("raw")),
+                    None)
     background = ep.abs(first_ai["image"]["raw"]) if first_ai else None
     verdict = ctx.options.get("verdict", "FALSE")
     cards.thumbnail(thumb_words, ep.path("publish", "thumbnail.png"), background, verdict)
@@ -204,17 +219,19 @@ def upload(ctx: Context) -> None:
         raise StageError("Approve Package first.")
     from googleapiclient.http import MediaFileUpload  # noqa: imported after _youtube's check
     yt = _youtube()
+    from ..youtube import sanitize_tags, studio_url, video_url
+    privacy = ctx.options.get("privacy") or meta["privacy"]
     body = {
-        "snippet": {"title": meta["title"], "description": meta["description"],
-                    "tags": meta["tags"], "categoryId": meta["category_id"]},
-        "status": {"privacyStatus": meta["privacy"], "selfDeclaredMadeForKids": meta["made_for_kids"],
+        "snippet": {"title": meta["title"][:100], "description": meta["description"][:5000],
+                    "tags": sanitize_tags(meta.get("tags", [])), "categoryId": str(meta["category_id"])},
+        "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": bool(meta["made_for_kids"]),
                    "containsSyntheticMedia": True},
     }
     media = MediaFileUpload(str(ep.abs(meta["video"])), chunksize=8 * 1024 * 1024, resumable=True,
                             mimetype="video/mp4")
     from .. import youtube
     acct = youtube.account() or {}
-    ctx.progress(f"Uploading to {acct.get('title', 'your channel')} as {meta['privacy']}...", 1)
+    ctx.progress(f"Uploading to {acct.get('title', 'your channel')} as {privacy}...", 1)
     request = yt.videos().insert(part="snippet,status", body=body, media_body=media, notifySubscribers=False)
     response, retries = None, 0
     import time as _time
@@ -234,9 +251,11 @@ def upload(ctx: Context) -> None:
             ctx.progress(f"Uploading the video: {int(status.progress() * 100)}%", status.progress() * 95)
     video_id = response["id"]
     db.execute("UPDATE project SET youtube_id=? WHERE project_id=?", (video_id, ep.project_id))
-    write_json(ep.path("publish", "upload.json"), {"youtube_id": video_id, "privacy": meta["privacy"],
-                                                     "uploaded_at": utc_now()})
-    ctx.log(f"Uploaded: https://youtu.be/{video_id} ({meta['privacy']})")
+    write_json(ep.path("publish", "upload.json"), {"youtube_id": video_id, "privacy": privacy,
+                                                     "video_url": video_url(video_id),
+                                                     "studio_url": studio_url(video_id),
+                                                     "channel": acct.get("title"), "uploaded_at": utc_now()})
+    ctx.log(f"Uploaded: {video_url(video_id)} ({privacy}). Review it in YouTube Studio: {studio_url(video_id)}")
     ctx.progress("Uploaded. Setting the thumbnail and captions...", 96)
     try:
         yt.thumbnails().set(videoId=video_id,
@@ -252,9 +271,32 @@ def upload(ctx: Context) -> None:
             ctx.log(f"Captions not uploaded ({exc}); add the .srt in YouTube Studio.")
 
 
+def autopublish(ctx: Context) -> None:
+    """After a final render: write it up and upload it PRIVATE, so you can check YouTube's own checks
+    (copyright, ad suitability) in YouTube Studio before you make it public."""
+    ep = ctx.episode
+    timeline = read_json(ep.path("render", "timeline.json"))
+    if not timeline or timeline.get("draft") or not ep.abs(timeline["output"]).exists():
+        raise StageError("There's no finished render to upload.")
+    from .. import youtube
+    if not youtube.account():
+        raise StageError("Not uploaded automatically: you're not signed in to YouTube (Settings → YouTube).")
+    ctx.progress("Writing the title, description and thumbnail", 2)
+    package(ctx)
+    problems = [c.message for c in check_package(ep) if c.level == BLOCK]
+    if problems:
+        ep.record("package", "awaiting_approval", "written automatically; needs fixing before upload")
+        raise StageError("Not uploaded automatically, the write-up needs fixing first: " + "; ".join(problems))
+    ep.record("package", "awaiting_approval", "written automatically for a private upload")
+    ctx.options["privacy"] = "private"   # always private: you make it public after checking it
+    upload(ctx)
+    ep.record("upload", "awaiting_approval", "uploaded automatically as private; review it in YouTube Studio")
+
+
 def check_upload(ep: Episode) -> list[Check]:
     info = read_json(ep.path("publish", "upload.json"))
     if not info:
         return [Check(BLOCK, "Not uploaded yet.")]
-    return [Check(OK, f"On YouTube as {info['privacy']}: https://youtu.be/{info['youtube_id']}. "
-                      "Check it in YouTube Studio, pin the comment, then make it public.")]
+    studio = info.get("studio_url") or f"https://studio.youtube.com/video/{info['youtube_id']}/edit"
+    return [Check(OK, f"On YouTube as {info['privacy']}: https://youtu.be/{info['youtube_id']}. Check YouTube's "
+                      f"checks in YouTube Studio ({studio}), pin the comment, then make it public.")]

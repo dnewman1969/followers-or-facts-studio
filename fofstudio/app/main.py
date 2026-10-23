@@ -206,6 +206,15 @@ class MainWindow(QMainWindow):
             self.toast.show_message(f"✔ {label} finished for {job['project_id']}. Have a look.", "ok", 6)
             if job["stage"] == "render" and settings()["video"].get("open_folder_after_render", True):
                 self._reveal_render(job["project_id"])
+            if job["stage"] == "render" and settings()["youtube"].get("auto_upload"):
+                from .. import youtube
+                if youtube.account():
+                    self.toast.show_message("Uploading it to YouTube as private next...", "info", 6)
+                else:
+                    self.toast.show_message("Not uploaded automatically: sign in under Settings → YouTube first.",
+                                            "warn", 8)
+            if job["stage"] in ("upload", "autopublish"):
+                self._open_studio(job["project_id"])
         elif job["status"] == "cancelled":
             self.toast.show_message(f"{label} was cancelled.", "warn", 5)
         else:
@@ -214,6 +223,22 @@ class MainWindow(QMainWindow):
         page = self.stack.currentWidget()
         if hasattr(page, "refresh"):
             page.refresh()
+
+    def _open_studio(self, project_id: str) -> None:
+        """After an upload: open the video in YouTube Studio to check YouTube's checks before going public."""
+        try:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+
+            from ..util import read_json
+            up = read_json(Episode.load(project_id).path("publish", "upload.json"))
+            if up:
+                self.toast.show_message(f"✔ Uploaded as {up['privacy']}. Opening YouTube Studio to review it.", "ok", 8)
+                if settings()["youtube"].get("open_studio_after_upload", True):
+                    QDesktopServices.openUrl(QUrl(up.get("studio_url") or
+                                                  f"https://studio.youtube.com/video/{up['youtube_id']}/edit"))
+        except Exception as exc:  # noqa: BLE001 - never break the window over this
+            self.toast.show_message(f"Uploaded, but couldn't open YouTube Studio: {exc}", "warn", 6)
 
     def _reveal_render(self, project_id: str) -> None:
         """Open the folder with the finished video selected."""

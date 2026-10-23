@@ -24,8 +24,9 @@ TRACK_H = 54
 MIN_PPS, MAX_PPS = 1.0, 400.0  # pixels per second: whole hour visible ... single frames
 RULER_H = 26
 SNAP_PX = 8
-TRACKS = [("video", "V1  Video"), ("owl", "V2  Owlbert"), ("speech", "A1  Speech"), ("music", "A2  Music")]
-COLORS = {"bumper": "#b8860b", "clip": "#2f5d9e", "clip_ai": "#3a4f8f", "owl": "#6b4c9a",
+TRACKS = [("video", "V1  Video"), ("owl", "V2  Owlbert"), ("moves", "V3  Moves"), ("speech", "A1  Speech"),
+          ("music", "A2  Music")]
+COLORS = {"bumper": "#b8860b", "clip": "#2f5d9e", "clip_ai": "#3a4f8f", "owl": "#6b4c9a", "moves": "#9a4c7d",
           "speech": "#2f7d4f", "music": "#21717a"}
 
 
@@ -294,6 +295,8 @@ class TimelineEditor(QWidget):
                     label, wav = c.get("label", c["id"]), None
                 elif track == "owl":
                     color, label, wav = COLORS["owl"], "Owlbert on screen", None
+                elif track == "moves":
+                    color, label, wav = COLORS["moves"], c.get("label", c.get("kind", "Move")), None
                 elif track == "speech":
                     color, label = COLORS["speech"], f"{c.get('scene_id', '')}  {c.get('text', '')[:60]}"
                     wav = str(self.resolve(c["src"]))

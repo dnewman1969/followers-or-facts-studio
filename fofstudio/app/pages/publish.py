@@ -134,9 +134,13 @@ class PublishPage(StagePage):
                 self.thumb.setText("The thumbnail appears here")
         up = read_json(self.ep.path("publish", "upload.json"))
         if up:
+            studio = up.get("studio_url") or f"https://studio.youtube.com/video/{up['youtube_id']}/edit"
             self.uploaded.setText(f"<span style='color:{GREEN}'>✔ Uploaded ({up['privacy']}):</span> "
                                   f"<a style='color:{GOLD}' href='https://youtu.be/{up['youtube_id']}'>"
-                                  f"https://youtu.be/{up['youtube_id']}</a>")
+                                  f"https://youtu.be/{up['youtube_id']}</a> &nbsp;·&nbsp; "
+                                  f"<a style='color:{GOLD}' href='{studio}'><b>Review it in YouTube Studio</b></a> "
+                                  "(copyright and ad-suitability checks, then make it public)")
+            self.uploaded.setOpenExternalLinks(True)
         elif not rendered:
             self.uploaded.setText(f"<span style='color:{MUTED}'>Render and approve the final video first "
                                   "(Production page).</span>")

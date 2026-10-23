@@ -8,6 +8,7 @@ import pytest
 
 from fofstudio import jobs, pipeline
 from fofstudio.stages import production, storyboard, video
+from fofstudio.util import read_json
 from tests.test_pipeline import episode, research_and_story  # noqa: F401 - shared fixture
 
 
@@ -128,3 +129,62 @@ def test_queue_page_and_worker_test_button(app, episode):
     q.refresh()
     assert any(j["stage"] == "selftest" and j["status"] == "done" for j in jobs.jobs())
     assert not app.problems, app.problems
+
+
+def test_render_is_uploaded_privately_with_a_studio_link(app, episode, monkeypatch):
+    """Google's uploader idea, our way: after a final render, write it up and upload it PRIVATE."""
+    from fofstudio import youtube
+    from fofstudio.stages import publish
+    ep = episode
+    _finish(ep)
+    pipeline.approve(ep, "production")
+    pipeline.run_now(ep, "render")
+    sent = {}
+
+    class Req:
+        def __init__(self, result):
+            self.result = result
+
+        def next_chunk(self):
+            return None, self.result
+
+        def execute(self):
+            return {}
+
+    class Fake:
+        def videos(self):
+            return self
+
+        def insert(self, part, body, media_body, notifySubscribers):  # noqa: N803 - YouTube's name
+            sent.update(body=body, notify=notifySubscribers)
+            return Req({"id": "abc123"})
+
+        def thumbnails(self):
+            return self
+
+        def set(self, videoId, media_body):  # noqa: N803
+            sent["thumb"] = True
+            return Req({})
+
+        def captions(self):
+            return self
+    monkeypatch.setattr(publish, "_youtube", lambda: Fake())
+    monkeypatch.setattr(youtube, "account", lambda: {"title": "Followers or Facts", "channel_id": "UC1"})
+    pipeline.run_now(ep, "autopublish")
+    body = sent["body"]
+    assert body["status"]["privacyStatus"] == "private" and body["status"]["containsSyntheticMedia"]
+    assert sent["notify"] is False and sent["thumb"]
+    tags = body["snippet"]["tags"]
+    assert "critical thinking" in tags and sum(len(t) for t in tags) + len(tags) <= 500
+    up = read_json(ep.path("publish", "upload.json"))
+    assert up["studio_url"] == "https://studio.youtube.com/video/abc123/edit" and up["privacy"] == "private"
+    assert ep.stage_status("upload")["status"] == "awaiting_approval"
+
+
+def test_tags_are_trimmed_to_youtubes_limit():
+    from fofstudio.youtube import sanitize_tags
+    assert sanitize_tags(["fact check", "Fact Check", " fact   check "]) == ["fact check"]
+    assert sanitize_tags(["<b>owl</b>"]) == ["bowl/b"]
+    tags = sanitize_tags(["x" * 120] + [f"tag number {i}" for i in range(60)])
+    assert sum(len(t) + (2 if " " in t else 0) for t in tags) + len(tags) - 1 <= 500
+    assert all(len(t) <= 100 for t in tags)

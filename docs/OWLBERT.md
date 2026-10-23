@@ -7,6 +7,32 @@ Owlbert narrates every video and appears throughout it:
   On the Production page the **V2 Owlbert** track shows when he's on screen. Drag or trim
   those bars, delete one, or use **Add Owlbert at playhead**.
 - **Outro bumper** (8 s): "Follow the facts", with the note that every source is in the description.
+- **Moves** (V3 Moves track on the Production page): he flies in, points at the evidence, pulls the
+  trick out of his hat, gives the verdict a wing flourish, and flies off. See below.
+
+## His moves
+
+Owlbert is cut into parts (`fofstudio/rig.py`): body, two folded wings, cap, tassel. The program
+also draws what the picture doesn't show: spread wings for flying, the top of his head under the
+cap, the inside of the cap, and the props. He is never flipped left-to-right, so the tassel always
+hangs on the viewer's right.
+
+| Move | When the planner uses it | What he does |
+|---|---|---|
+| Fly in | Start of the first scene | Flies in from the far side, flaps, flares his wings and lands in the corner |
+| Point at the evidence | Claim, record, harm and benefit scenes (at most every 25 s) | Looks toward the picture and raises his wing at it |
+| Hat trick | The "tell" scene (the trick's name on a card) and the "toolkit" scene (a light bulb) | Waves his wing, his cap pops off, turns over, and the card rises out of it with sparkles; the picture dims while it's held up |
+| Wing flourish | The verdict | Spreads both wings and gives a little hop |
+| Fly off | End of the last scene | Crouches, spreads his wings and flies off the near edge |
+
+Rules (`fofstudio/bits.py`): at most one big move a scene, big moves at least 20 s apart, at most
+two hat tricks a video, never two moves at once. Careful topics (deaths, victims, court-only
+stories) get no hat trick and no flourish. Humor 0 drops the flourish. His beak keeps moving with
+his words while he flies, and he hides from the corner while a move plays.
+
+On the Production page the moves are pink bars on **V3 Moves**: drag one to move it, press Delete
+to remove it, or pick a move under the inspector and press **Add move** to put one at the playhead.
+Settings → owl → `moves` switches them all off.
 
 ## How he talks
 
@@ -45,5 +71,7 @@ clip, but only your own voice or a consenting person's, with a rights record. Se
 
 ## Coming later
 
-- More poses (pointing, thinking) made with Qwen-Image-Edit (Apache-2.0) from the profile picture.
+- More props from the technique catalogue (a cherry for cherry picking, a mask for the fake expert),
+  a thinking pose, and a verdict stamp.
+- Hand-finished spread-wing drawings (Qwen-Image-Edit-2511, Apache-2.0) to replace the drawn ones.
 - A character LoRA so Owlbert can appear inside the AI scenes themselves.
