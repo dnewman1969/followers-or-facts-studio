@@ -5,9 +5,11 @@
       powershell -ExecutionPolicy Bypass -File .\scripts\get-comfy-models.ps1 -ComfyDir F:\AI\ComfyUI
 
   Z-Image Turbo (images) is already installed on Dave's PC, so it isn't downloaded here.
-  About 45 GB in total. All Apache-2.0.
+  About 45 GB in total (+ about 10 GB with -TextToVideo). All Apache-2.0.
+
+      -TextToVideo   also get Wan 2.2 TI2V-5B, for b-roll clips made from words alone
 #>
-param([string]$ComfyDir = "F:\AI\ComfyUI", [switch]$SkipMusic)
+param([string]$ComfyDir = "F:\AI\ComfyUI", [switch]$SkipMusic, [switch]$TextToVideo)
 $ErrorActionPreference = "Stop"
 $m = Join-Path $ComfyDir "models"
 $wan = "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files"
@@ -21,6 +23,10 @@ $files = @(
     @("$wan/vae/wan_2.1_vae.safetensors", "vae"),
     @("$wan21/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors", "text_encoders")
 )
+if ($TextToVideo) {
+    $files += ,@("$wan/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors", "diffusion_models")
+    $files += ,@("$wan/vae/wan2.2_vae.safetensors", "vae")
+}
 if (-not $SkipMusic) {
     $files += ,@("https://huggingface.co/Comfy-Org/ACE-Step_ComfyUI_repackaged/resolve/main/all_in_one/ace_step_v1_3.5b.safetensors", "checkpoints")
 }

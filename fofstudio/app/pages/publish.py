@@ -124,6 +124,9 @@ class PublishPage(StagePage):
             if meta:
                 self.title_edit.setText(meta["title"])
                 self.desc.setPlainText(meta["description"])
+            if not self.thumb_words.text().strip():
+                from ...stages.stories import chosen
+                self.thumb_words.setText((chosen(self.ep) or {}).get("thumbnail_words", ""))
             thumb = self.ep.path("publish", "thumbnail.png")
             if thumb.exists():
                 self.thumb.setPixmap(QPixmap(str(thumb)).scaled(480, 270, Qt.KeepAspectRatio, Qt.SmoothTransformation))

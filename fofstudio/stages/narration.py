@@ -47,6 +47,18 @@ def run(ctx: Context) -> None:
         raise StageError("The script has no narration text.")
 
 
+def synth_line(text: str, out) -> float:
+    """One line in Owlbert's voice (used by Settings → Sound → Play Owlbert's voice)."""
+    cfg, owl = settings()["voice"], settings()["owl"]
+    from pathlib import Path
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    info = get_engine(cfg["engine"]).synthesize(text, out, voice=owl.get("voice") or cfg["voice"],
+                                                speed=float(owl.get("speed") or cfg["speed"]), emotion=0.5)
+    pitch = float(owl.get("pitch_semitones", 0))
+    return shift_pitch(out, pitch) if pitch else info["seconds"]
+
+
 def shift_pitch(wav, semitones: float) -> float:
     """Raise or lower the voice without changing its speed (ffmpeg only, nothing to install)."""
     from .. import media

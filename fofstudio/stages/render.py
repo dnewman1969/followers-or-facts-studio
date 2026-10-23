@@ -44,6 +44,12 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
             t = c["start"]
         nxt = video[i + 1] if i + 1 < len(video) else None
         overlap = max(0.0, (c["start"] + c["duration"]) - nxt["start"]) if nxt else 0.0
+        if c.get("still") and ep.abs(c["still"]).exists():   # a camera move, redrawn at exactly this length
+            segments.append(Segment(ep.abs(c["still"]), c["duration"], kind="image", camera=c.get("camera", "zoom_in"),
+                                    transition="fade" if overlap > 0.05 else "cut",
+                                    transition_seconds=min(overlap, c["duration"] * 0.45), label=c["label"]))
+            t = c["start"] + c["duration"] - overlap
+            continue
         segments.append(Segment(ep.abs(c["src"]), c["duration"], kind="clip", inpoint=c.get("inpoint", 0.0),
                                 overlay=label_png if c.get("ai") else None,
                                 transition="fade" if overlap > 0.05 else "cut",
@@ -51,9 +57,16 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
         t = c["start"] + c["duration"] - overlap
     cues = [AudioCue(ep.abs(s["src"]), s["start"]) for s in tl_json.get("speech", [])]
     music = tl_json.get("music") or []
+    mix = production.mix(tl_json)
+    snd = settings()["sound"]
+    clip_gain = float(music[0].get("volume", 1.0)) if music else 1.0
+    if abs(clip_gain - 0.18) < 1e-6:  # timelines from v0.3 and earlier stored the old fixed music level here
+        clip_gain = 1.0
     tl = Timeline(segments, cues, music=ep.abs(music[0]["src"]) if music else None,
-                  music_volume=float(music[0].get("volume", 0.18)) if music else 0.18,
-                  duck=bool(settings()["video"]["duck_music"]), width=w, height=h, fps=fps)
+                  music_volume=clip_gain * 10 ** (mix["music_db"] / 20),
+                  duck=bool(settings()["video"]["duck_music"]), width=w, height=h, fps=fps,
+                  speech_db=mix["speech_db"], master_db=mix["master_db"],
+                  loudness_lufs=float(snd["loudness_lufs"]) if snd["normalize_loudness"] else None)
     ocfg = settings()["owl"]
     if tl_json.get("owl") and ocfg["presenter"]:
         tl.layout()
@@ -73,7 +86,7 @@ def run(ctx: Context) -> None:
     ep = ctx.episode
     cfg = settings()["video"]
     draft = bool(ctx.options.get("draft"))
-    w, h, fps = (640, 360, 15) if draft else (int(cfg["width"]), int(cfg["height"]), int(cfg["fps"]))
+    w, h, fps = (854, 480, 24) if draft else (int(cfg["width"]), int(cfg["height"]), int(cfg["fps"]))
     ctx.progress("Getting the timeline ready", 2)
     tl, starts, chapters = build(ep, w, h, fps, ctx.progress)
     name = "preview" if draft else ep.project_id
@@ -118,5 +131,11 @@ def check(ep: Episode) -> list[Check]:
         checks.append(Check(BLOCK, str(exc)))
     if info.get("timeline_saved_at") != production.load(ep).get("saved_at"):
         checks.append(Check(BLOCK, "You changed the timeline after this render. Render again."))
-    checks.append(Check(OK, f"{info['seconds'] / 60:.1f} min video. Watch all of it before approving."))
+    target = float(ep.creative().get("minutes", 0) or 0)
+    if target and info["seconds"] < target * 60 * 0.95:
+        checks.append(Check(WARN, f"The video is {info['seconds'] / 60:.1f} minutes; you asked for {target:g}. "
+                                  "The length comes from the script: on the Script page press Make it longer, "
+                                  "then redo the speech track."))
+    checks.append(Check(OK, f"{info['seconds'] / 60:.1f} min video (in the folder that just opened). "
+                            "Watch all of it before approving."))
     return checks

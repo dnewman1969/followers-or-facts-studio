@@ -19,7 +19,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-ROLES = ("intro", "claim", "record", "benefit", "harm", "verdict", "outro", "credits")
+# tell = Owlbert names the trick; toolkit = the question to ask next time
+ROLES = ("intro", "claim", "record", "benefit", "harm", "tell", "toolkit", "verdict", "outro", "credits")
 SECTIONS = ("VISUAL", "NARRATION", "ON_SCREEN_TEXT", "SOURCES", "CLIP", "NOTES")
 
 

@@ -38,13 +38,23 @@ EYE_R = 101                           # radius of the eye whites inside the glas
 FEATHER = (36, 54, 98, 255)
 MOUTH = (70, 22, 26, 255)
 
+RIM = (236, 226, 200)  # a soft cream outline around him
+
 # Rhubarb mouth shapes -> how far the jaw drops (pixels at 1024 px) and how wide
 SHAPES = {"X": 0, "A": 0, "B": 7, "C": 15, "D": 24, "E": 13, "F": 10, "G": 6, "H": 9}
 
 
+# The studio background in the art is a flat near-black navy (it varies by at most ~5 levels).
+# His black cap is only ~20 levels away from it, so the cut must be tight or the cap vanishes.
+BG_TOLERANCE = 11
+
+
 @lru_cache(maxsize=1)
 def base() -> Image.Image:
-    """The owl with the studio background removed (full 1024 canvas, positions unchanged)."""
+    """The owl with the studio background removed (full 1024 canvas, positions unchanged).
+    A flood fill from the edges takes only pixels within BG_TOLERANCE of the background colour,
+    then the edge is smoothed and a thin light rim is added so the black cap and dark-blue wings
+    still read against dark scenes."""
     if not ART.exists():
         raise StageError(f"Owlbert's picture is missing: {ART}")
     img = Image.open(ART).convert("RGBA")
@@ -53,6 +63,8 @@ def base() -> Image.Image:
     bg = px[2, 2]
     from collections import deque
     seen = bytearray(w * h)
+    mask = Image.new("L", (w, h), 255)
+    mpx = mask.load()
     q = deque([(x, 0) for x in range(w)] + [(x, h - 1) for x in range(w)] +
               [(0, y) for y in range(h)] + [(w - 1, y) for y in range(h)])
     while q:
@@ -61,11 +73,18 @@ def base() -> Image.Image:
             continue
         seen[y * w + x] = 1
         r, g, b, a = px[x, y]
-        if abs(r - bg[0]) + abs(g - bg[1]) + abs(b - bg[2]) > 60:
+        if abs(r - bg[0]) + abs(g - bg[1]) + abs(b - bg[2]) > BG_TOLERANCE:
             continue
-        px[x, y] = (r, g, b, 0)
+        mpx[x, y] = 0
         q.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
-    return img
+    mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.8))  # clean, soft edge
+    # a thin cream rim just outside the outline
+    rim_alpha = mask.filter(ImageFilter.MaxFilter(7)).filter(ImageFilter.GaussianBlur(1.5))
+    rim = Image.new("RGBA", (w, h), RIM + (0,))
+    rim.putalpha(rim_alpha.point(lambda v: int(v * 0.85)))
+    img.putalpha(mask)
+    rim.alpha_composite(img)
+    return rim
 
 
 def mouth_frame(shape: str, blink: float = 0.0) -> Image.Image:
@@ -269,7 +288,7 @@ def _bumper_frames(kind: str, title: str, w: int, h: int, fps: int, seconds: flo
     big = cards.font("serif_bold", size)
     small = cards.font("sans_bold", h // 24)
     n = int(seconds * fps)
-    bg = cards._background(w, h)
+    bg = cards.owl_backdrop(w, h, 0.25, 0.55)
     for i in range(n):
         t = i / fps
         img = bg.copy()
@@ -281,6 +300,15 @@ def _bumper_frames(kind: str, title: str, w: int, h: int, fps: int, seconds: flo
             bob = int(6 * np.sin(t * 2.2))
             x = int(-o.width + (w * 0.08 + o.width) * ease) if kind == "intro" else int(w * 0.08)
             img.paste(o, (x, int(h * 0.2) + bob), o)
+            # name plate: Owlbert is the mascot of Critical Thinking
+            plate = cards.font("sans_bold", max(12, h // 40))
+            label = "PROF. OWLBERT  ·  CRITICAL THINKING"
+            tw = d.textlength(label, font=plate)
+            px0 = x + o.width // 2 - int(tw) // 2 - 18
+            py0 = int(h * 0.2) + oh + 4
+            d.rounded_rectangle((px0, py0, px0 + int(tw) + 36, py0 + plate.size + 18), radius=8,
+                                fill=(24, 30, 48), outline=(212, 160, 23), width=2)
+            d.text((px0 + 18, py0 + 8), label, font=plate, fill=(212, 160, 23))
         alpha = int(255 * min(1.0, max(0.0, (t - 0.5) / 0.7)))
         layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         ld = ImageDraw.Draw(layer)
@@ -293,7 +321,7 @@ def _bumper_frames(kind: str, title: str, w: int, h: int, fps: int, seconds: flo
         sub = title if kind == "intro" else "Every source is in the description. Corrections are pinned."
         for k, part in enumerate(cards._wrap(ld, sub, small, int(w * 0.48))[:3]):
             ld.text((int(w * 0.46), y + 40 + k * int(small.size * 1.4)), part, font=small,
-                    fill=(212, 160, 23, alpha))
+                    fill=(250, 240, 220, alpha))
         img = Image.alpha_composite(img.convert("RGBA"), layer)
         fade = min(1.0, t / 0.4, (seconds - t) / 0.5)
         if fade < 1:

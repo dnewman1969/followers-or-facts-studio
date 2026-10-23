@@ -15,8 +15,8 @@ from ..widgets import StagePage, click_feedback
 
 class ScriptPage(StagePage):
     TITLE = "Script"
-    HELP = ("Step 4. Owlbert's narration, written from the story you chose. Every scene lists the proof it "
-            "relies on. Change any words you like, press Save, and the checks run again.")
+    HELP = ("Step 4. Owlbert's narration, written scene by scene from the story you chose, in the video's style. Every "
+            "scene lists the proof it relies on. Change any words you like, press Save, and the checks run again.")
     APPROVE_STAGE = "script"
 
     def __init__(self, window):
@@ -31,9 +31,14 @@ class ScriptPage(StagePage):
         self.write_btn = QPushButton("Write the script")
         self.write_btn.setObjectName("primary")
         click_feedback(self.write_btn, self._write)
+        self.longer_btn = QPushButton("Make it longer")
+        self.longer_btn.setToolTip("Rewrite only the scenes that are shorter than their share of the length")
+        click_feedback(self.longer_btn, lambda: self.run_stage("script", {"expand": True, "minutes": self.minutes.value()},
+                                                               "Lengthening the short scenes"))
         row.addWidget(QLabel("Length"))
         row.addWidget(self.minutes)
         row.addWidget(self.direction, 1)
+        row.addWidget(self.longer_btn)
         row.addWidget(self.write_btn)
         self.body.addLayout(row)
         # the script uses evidence you haven't ticked
@@ -62,6 +67,13 @@ class ScriptPage(StagePage):
         save_row.addWidget(self.save_btn)
         save_row.addStretch(1)
         self.body.addLayout(save_row)
+
+    def set_episode(self, ep) -> None:
+        if ep:
+            self.minutes.blockSignals(True)
+            self.minutes.setValue(float(ep.creative().get("minutes", 8)))
+            self.minutes.blockSignals(False)
+        super().set_episode(ep)
 
     def _write(self) -> None:
         opts = {"minutes": self.minutes.value()}
@@ -108,6 +120,11 @@ class ScriptPage(StagePage):
         busy = self.busy("script")
         ok_to_write = bool(self.ep) and self.stage_status("stories")["status"] == "approved"
         self.write_btn.setEnabled(ok_to_write and not busy)
+        self.longer_btn.setEnabled(ok_to_write and not busy and bool(self.ep) and self.ep.path("script.md").exists())
+        if self.ep:
+            from ... import styles
+            self.help.setText(self.HELP + f"  Style: {styles.get(self.ep.creative()['style']).name} (change it on "
+                              "the Stories page).")
         self.save_btn.setEnabled(bool(self.ep) and not busy)
         self.editor.setReadOnly(busy)
         if self.ep and not self.editor.document().isModified() or busy:

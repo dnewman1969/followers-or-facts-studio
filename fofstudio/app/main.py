@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import traceback
 
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QHBoxLayout, QLabel, QLi
 
 from .. import APP_NAME, __version__, db, jobs, pipeline
 from ..comfy import Comfy
-from ..config import DEFAULTS, REPO, Paths, save_settings, settings_path
+from ..config import DEFAULTS, REPO, Paths, save_settings, settings, settings_path
 from ..db import importer
 from ..episode import Episode, list_episodes
 from ..llm import Ollama
@@ -98,6 +99,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(QWidget())  # the separator row
         for t in self.tools:
             self.stack.addWidget(t)
+        self.pages_and_tools = self.pages + self.tools
         content = QWidget()
         cl = QVBoxLayout(content)
         cl.setContentsMargins(18, 12, 18, 12)
@@ -204,6 +206,8 @@ class MainWindow(QMainWindow):
         label = pipeline.stage(job["stage"]).label if job["stage"] in pipeline.BY_NAME else job["stage"]
         if job["status"] == "done":
             self.toast.show_message(f"✔ {label} finished for {job['project_id']}. Have a look.", "ok", 6)
+            if job["stage"] == "render" and settings()["video"].get("open_folder_after_render", True):
+                self._reveal_render(job["project_id"])
         elif job["status"] == "cancelled":
             self.toast.show_message(f"{label} was cancelled.", "warn", 5)
         else:
@@ -212,6 +216,17 @@ class MainWindow(QMainWindow):
         page = self.stack.currentWidget()
         if hasattr(page, "refresh"):
             page.refresh()
+
+    def _reveal_render(self, project_id: str) -> None:
+        """Open the folder with the finished video selected."""
+        try:
+            from ..util import read_json, reveal
+            ep = Episode.load(project_id)
+            info = read_json(ep.path("render", "timeline.json"))
+            if info and not info.get("draft") and ep.abs(info["output"]).exists():
+                reveal(ep.abs(info["output"]))
+        except Exception as exc:  # noqa: BLE001 - opening a folder must never break the window
+            self.toast.show_message(f"Couldn't open the folder: {exc}", "warn", 6)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt name
         """Close the ComfyUI we started, unless the queue still needs it."""
@@ -231,6 +246,13 @@ class MainWindow(QMainWindow):
 
 
 def main() -> None:
+    # the playback engine must be chosen before Qt starts (Settings → Sound → Playback engine)
+    try:
+        backend = settings()["sound"]["media_backend"]
+        if backend in ("ffmpeg", "windows"):
+            os.environ["QT_MEDIA_BACKEND"] = backend
+    except Exception:  # noqa: BLE001 - no settings yet on the very first run
+        pass
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setStyleSheet(STYLE)

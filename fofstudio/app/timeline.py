@@ -18,9 +18,10 @@ import numpy as np
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import (QGraphicsItem, QGraphicsLineItem, QGraphicsRectItem, QGraphicsScene,
-                               QGraphicsView, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget)
+                               QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget)
 
 TRACK_H = 54
+MIN_PPS, MAX_PPS = 1.0, 400.0  # pixels per second: whole hour visible ... single frames
 RULER_H = 26
 SNAP_PX = 8
 TRACKS = [("video", "V1  Video"), ("owl", "V2  Owlbert"), ("speech", "A1  Speech"), ("music", "A2  Music")]
@@ -169,6 +170,7 @@ class ClipItem(QGraphicsRectItem):
 
 class TimelineView(QGraphicsView):
     seek = Signal(float)
+    zoom = Signal(float, float)  # factor, the second under the mouse
 
     def __init__(self, scene: TimelineScene):
         super().__init__(scene)
@@ -196,6 +198,18 @@ class TimelineView(QGraphicsView):
             p.drawText(QPointF(x + 3, rect.top() + 15), f"{int(t // 60)}:{int(t % 60):02d}")
             t += step
 
+    def wheelEvent(self, e):  # noqa: N802
+        """Ctrl + wheel zooms around the mouse; the plain wheel scrolls along the timeline."""
+        dy = e.angleDelta().y() or e.angleDelta().x()
+        if e.modifiers() & Qt.ControlModifier:
+            at = self.sc.s_of(self.mapToScene(e.position().toPoint()).x())
+            self.zoom.emit(1.25 if dy > 0 else 0.8, at)
+            e.accept()
+            return
+        bar = self.horizontalScrollBar()
+        bar.setValue(bar.value() - dy)
+        e.accept()
+
     def mousePressEvent(self, e):  # noqa: N802
         pos = self.mapToScene(e.position().toPoint())
         if pos.y() < self.mapToScene(0, RULER_H).y():
@@ -216,17 +230,29 @@ class TimelineEditor(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         bar = QHBoxLayout()
-        self.zoom_out = QPushButton("−  Zoom out")
-        self.zoom_in = QPushButton("+  Zoom in")
-        self.fit_btn = QPushButton("Fit")
+        self.zoom_out = QPushButton("−")
+        self.zoom_in = QPushButton("+")
+        for b in (self.zoom_out, self.zoom_in):
+            b.setFixedWidth(36)
+        self.zoom_out.setToolTip("Zoom out (or hold Ctrl and roll the mouse wheel)")
+        self.zoom_in.setToolTip("Zoom in (or hold Ctrl and roll the mouse wheel)")
+        self.fit_btn = QPushButton("Fit whole video")
         self.zoom_out.clicked.connect(lambda: self.set_zoom(self.scene.pps / 1.5))
         self.zoom_in.clicked.connect(lambda: self.set_zoom(self.scene.pps * 1.5))
         self.fit_btn.clicked.connect(self.fit)
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, 1000)
+        self.slider.setFixedWidth(220)
+        self.slider.setToolTip("Zoom: left shows the whole video, right shows every second up close")
+        self.slider.valueChanged.connect(self._slid)
+        self.zoom_label = QLabel("")
+        self.zoom_label.setObjectName("muted")
+        self.zoom_label.setMinimumWidth(110)
         self.info = QLabel("")
         self.info.setObjectName("muted")
-        for w in (self.zoom_out, self.zoom_in, self.fit_btn, self.info):
+        zl = QLabel("Zoom")
+        for w in (zl, self.zoom_out, self.slider, self.zoom_in, self.zoom_label, self.fit_btn, self.info):
             bar.addWidget(w)
-        bar.addStretch(1)
         lay.addLayout(bar)
         row = QHBoxLayout()
         heads = QWidget()
@@ -245,6 +271,7 @@ class TimelineEditor(QWidget):
         self.view = TimelineView(self.scene)
         self.view.setMinimumHeight(RULER_H + TRACK_H * len(TRACKS) + 24)
         self.view.seek.connect(self._seek)
+        self.view.zoom.connect(lambda f, at: self.set_zoom(self.scene.pps * f, at))
         self.scene.selectionChanged.connect(self._selection)
         row.addWidget(self.view, 1)
         lay.addLayout(row)
@@ -283,12 +310,29 @@ class TimelineEditor(QWidget):
         self.playhead.setZValue(1000)
         self.scene.addItem(self.playhead)
         self.set_playhead(self.scene.playhead_s)
-        self.info.setText(f"{end / 60:.1f} min  ·  drag clips to move them, drag their ends to trim, "
-                          "click the ruler to jump")
+        self.info.setText(f"{end / 60:.1f} min  ·  drag clips to move, drag ends to trim, click the ruler to "
+                          "jump, Ctrl + mouse wheel to zoom")
 
-    def set_zoom(self, pps: float) -> None:
-        self.scene.pps = max(2.0, min(400.0, pps))
+    def set_zoom(self, pps: float, anchor_s: float | None = None) -> None:
+        """Change how many pixels one second takes, keeping anchor_s (default: the middle of the view,
+        or the playhead if it's on screen) at the same place on screen."""
+        view = self.view.viewport().width()
+        left = self.view.horizontalScrollBar().value()
+        if anchor_s is None:
+            ph = self.scene.x_of(self.scene.playhead_s)
+            anchor_s = self.scene.playhead_s if left <= ph <= left + view else self.scene.s_of(left + view / 2)
+        screen_x = self.scene.x_of(anchor_s) - left
+        self.scene.pps = max(MIN_PPS, min(MAX_PPS, pps))
         self._build()
+        self.view.horizontalScrollBar().setValue(int(self.scene.x_of(anchor_s) - screen_x))
+        self.slider.blockSignals(True)
+        self.slider.setValue(int(1000 * math.log(self.scene.pps / MIN_PPS) / math.log(MAX_PPS / MIN_PPS)))
+        self.slider.blockSignals(False)
+        shown = view / self.scene.pps
+        self.zoom_label.setText(f"showing {shown / 60:.1f} min" if shown >= 90 else f"showing {shown:.0f} s")
+
+    def _slid(self, v: int) -> None:
+        self.set_zoom(MIN_PPS * (MAX_PPS / MIN_PPS) ** (v / 1000))
 
     def fit(self) -> None:
         end = max((c["start"] + c["duration"] for t, _ in TRACKS for c in self.tl.get(t, [])), default=60)

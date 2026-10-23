@@ -33,23 +33,46 @@ def fake_llm(get_packet):
             ev = [e["id"] for e in get_packet()["evidence"]][:2]
             return {"title": "The Y2K Fear Machine", "logline": "A real bug, sold as doom.", "angle": "money",
                     "opening_hook": "Midnight, 1999.", "owl_moments": ["opens at his desk"],
+                    "techniques": ["fear", "not-a-real-trick"], "thumbnail_words": "fear for sale, folks",
                     "beats": [{"role": r, "beat": f"The {r} beat.", "evidence_ids": ev + ["E-MADE-UP"]}
                               for r in ("intro", "claim", "record", "benefit", "harm", "verdict")]}
-        if "scenes" in props:
+        if "central_question" in props:   # the script outline
             claims = get_packet()["claims"]
             scenes = []
-            for role, c in zip(["intro", "claim", "record", "benefit", "harm", "verdict"], (claims * 6)[:6]):
-                prim = [s["source_id"] for s in c["sources"] if s["is_primary"]][:2]
-                scenes.append({"role": role, "visual": "An old desk with a newspaper and a clock",
-                               "narration": f"This is the {role} part. It is short and plain. "
-                                            "People were scared, and someone sold that fear.",
-                               "on_screen_text": "December 31, 1999" if role == "intro" else "",
-                               "claim_ids": [] if role in ("intro", "verdict") else [c["claim_id"]],
-                               "source_ids": [] if role in ("intro", "verdict") else prim, "excerpt_ids": []})
-            return {"title": "The Y2K Fear Machine", "scenes": scenes}
-        if "ideas" in props:
-            return {"ideas": ["a radio studio at night", "a close-up of a clock at midnight",
-                              "a candle beside a stack of canned food"]}
+            for role, c in zip(["intro", "claim", "record", "benefit", "harm", "tell", "toolkit", "verdict"],
+                               (claims * 8)[:8]):
+                facts = role not in ("intro", "verdict", "toolkit", "tell")
+                prim = [x["source_id"] for x in c["sources"] if x["is_primary"]][:2]
+                scenes.append({"role": role, "purpose": f"the {role}", "link": "therefore",
+                               "claim_ids": [c["claim_id"]] if facts else [], "source_ids": prim if facts else [],
+                               "excerpt_ids": [], "owl_on_camera": role == "intro",
+                               "visual_idea": "An old desk with a newspaper and a clock"})
+            return {"title": "The Y2K Fear Machine", "central_question": "Who sold the fear?", "scenes": scenes}
+        if "narration" in props and "visual" in props:   # one scene
+            text = messages[-1]["content"]
+            import json as _j
+            import re as _re
+            m = _re.search(r"about (\d+) words", text)
+            target = int(m.group(1)) if m else 40
+            facts = text.split("Facts for this scene:\n", 1)[-1] if "Facts for this scene:" in text else \
+                text.split("Facts:\n", 1)[-1]
+            try:
+                fl = _j.loads(facts)
+            except ValueError:
+                fl = []
+            cids = [fl[0]["claim_id"]] if fl else []
+            sids = [x["source_id"] for x in fl[0]["sources"]][:2] if fl else []
+            sentence = "People were scared, and someone sold that fear for money. "
+            words = (sentence * (target // 10 + 1)).split()[:target]
+            return {"narration": "This part is short and plain. " + " ".join(words),
+                    "visual": "An old desk with a newspaper and a clock",
+                    "on_screen_text": "December 31, 1999" if not cids else "",
+                    "claim_ids": cids, "source_ids": sids, "excerpt_ids": []}
+        if "shots" in props:   # storyboard shot ideas
+            n = props["shots"].get("minItems", 3)
+            kinds = props["shots"]["items"]["properties"]["kind"]["enum"]
+            return {"shots": [{"kind": kinds[i % len(kinds)], "idea": f"shot idea {i} {messages[-1]['content'][-30:]}",
+                               "person_id": ""} for i in range(n)]}
         if "how_it_plays" in props:
             return {"how_it_plays": "The camera drifts toward the clock.", "motion_prompt": "slow push in",
                     "camera": "zoom_in", "seconds": 4}
@@ -61,6 +84,7 @@ def fake_llm(get_packet):
 def episode(data, fakes):
     b = subjects.breakdown("story", "A-Y2K-FEAR-INDUSTRY")
     ep = Episode.create("S01E01", b["title"], "A-Y2K-FEAR-INDUSTRY", b["claim_ids"])
+    ep.set_creative(minutes=1.5)   # short, so the tests run fast
     fakes.setattr(Ollama, "chat_json", fake_llm(lambda: read_json(ep.path("research.json"))))
     fakes.setattr(search, "search_all", lambda q: [{"title": "Test v. Jones", "url": FOUND_URL, "snippet": "",
                                                      "finder": "courtlistener"}])
@@ -108,12 +132,20 @@ def test_full_episode(episode):
     pipeline.run_now(ep, "script")
     pipeline.approve(ep, "script")
     pipeline.run_now(ep, "storyboard")
-    with pytest.raises(StageError, match="pick at least one"):
-        pipeline.approve(ep, "storyboard")
-    for s in ep.storyboard()["scenes"]:
-        assert len([c for c in s["candidates"] if c]) == 3
-        storyboard.set_picks(ep, s["scene_id"], [0, 2])
+    board = ep.storyboard()
+    assert board["version"] == 2
+    for s in board["scenes"]:
+        # enough shots to cover the narration at the style's shot length, two versions of each
+        from fofstudio import styles
+        st = styles.get(board["style"])
+        assert len(s["shots"]) >= max(1, int((s["seconds"] - 6) / st.shot_seconds))
+        assert all(len([c for c in sh["candidates"] if c]) == 2 for sh in s["shots"])
+    tell = [c for s in board["scenes"] for c in s["cards"] if c["type"] == "technique_card"]
+    assert tell, "the 'tell' scene gets Owlbert's Tell card"
+    first = board["scenes"][1]["shots"][0]["shot_id"]
+    storyboard.set_pick(ep, first, 1)
     pipeline.approve(ep, "storyboard")
+    assert any(sh["image"]["path"].endswith("-c1.png") for sh in storyboard.shots(ep) if sh["shot_id"] == first)
 
     pipeline.run_now(ep, "video_plan")
     pipeline.approve(ep, "video_plan")
@@ -121,7 +153,7 @@ def test_full_episode(episode):
     with pytest.raises(StageError, match="not approved"):
         pipeline.approve(ep, "video")
     plan = video.load_plan(ep)
-    assert {s["method"] for s in plan["shots"]} == {"animate", "camera_move"}
+    assert {"animate", "camera_move"} <= {s["method"] for s in plan["shots"]}
     for s in plan["shots"]:
         video.update_shot(ep, s["shot_id"], approved=True)
     pipeline.approve(ep, "video")
@@ -135,7 +167,10 @@ def test_full_episode(episode):
     pipeline.run_now(ep, "production")
     tl = production.load(ep)
     assert tl["video"][0]["kind"] == "bumper" and tl["video"][-1]["kind"] == "bumper"
-    assert len(tl["speech"]) == 6 and len(tl["owl"]) == 6 and tl["music"]
+    assert len(tl["speech"]) == 8 and len(tl["owl"]) == 8 and tl["music"]
+    srcs = [c["src"] for c in tl["video"]]
+    assert len(srcs) == len(set(srcs)), "no clip is used twice"
+    assert any(c.get("still") for c in tl["video"]), "camera moves are redrawn at their exact length"
     pipeline.approve(ep, "production")
 
     pipeline.run_now(ep, "preview")  # works any time, no approval needed
@@ -206,7 +241,8 @@ def test_unverified_quote_is_blocked(episode):
     pipeline.run_now(ep, "script")
     text = ep.path("script.md").read_text(encoding="utf-8")
     ep.path("script.md").write_text(text.replace(
-        "This is the record part.", 'The report said "the grid will fail on New Year\'s Day".', 1), encoding="utf-8")
+        "This part is short and plain.", 'The report said "the grid will fail on New Year\'s Day".', 1),
+        encoding="utf-8")
     with pytest.raises(StageError, match="verified quote"):
         pipeline.approve(ep, "script")
 
@@ -218,9 +254,8 @@ def test_real_person_in_picture_idea_is_blocked(episode):
     pipeline.approve(ep, "script")
     pipeline.run_now(ep, "storyboard")
     board = ep.storyboard()
-    for s in board["scenes"]:
-        s["picked"] = [0]
-    board["scenes"][0]["candidates"][0]["prompt"] = "Alex Jones shouting into a microphone"
+    shot = board["scenes"][0]["shots"][0]
+    shot["candidates"][0]["prompt"] = shot["candidates"][0]["full_prompt"] = "Alex Jones shouting into a microphone"
     ep.save_storyboard(board)
     with pytest.raises(StageError, match="real person"):
         pipeline.approve(ep, "storyboard")

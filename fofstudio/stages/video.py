@@ -3,8 +3,11 @@
 Step 1, "Write scene instructions" (video_plan): for each picture the local AI writes how
 the shot plays out in plain words, the motion prompt for the animation model, the camera
 move, how long it lasts, and HOW it will be made:
-    animate      Wan 2.2 image-to-video in ComfyUI (about 5-6 minutes per clip on the 3060)
-    camera_move  a slow zoom or pan over the still, made by ffmpeg in seconds
+    animate        Wan 2.2 image-to-video in ComfyUI (about 5-6 minutes per clip on the 3060). The picture
+                   is the first frame, so Owlbert and caricatures stay exactly as drawn.
+    text_to_video  Wan 2.2 TI2V-5B makes the clip from the words alone: for b-roll with no particular
+                   character (crowds, places, weather, metaphors). About 5-10 minutes per clip.
+    camera_move    a smooth zoom or pan over the still (drawn frame by frame, no jitter), in seconds
 You can edit any of it. Step 2, "Make the clips" (video), makes every clip.
 """
 
@@ -28,9 +31,8 @@ PLAN_SCHEMA = {
         "how_it_plays": {"type": "string"},
         "motion_prompt": {"type": "string"},
         "camera": {"type": "string", "enum": CAMERA_MOVES},
-        "seconds": {"type": "number"},
     },
-    "required": ["how_it_plays", "motion_prompt", "camera", "seconds"],
+    "required": ["how_it_plays", "motion_prompt", "camera"],
 }
 
 
@@ -56,8 +58,13 @@ def plan(ctx: Context) -> None:
     if not shots:
         raise StageError("Approve the Storyboard first (pick at least one picture per scene).")
     old = {s["shot_id"]: s for s in load_plan(ep)["shots"]}
-    per_scene = int(settings()["storyboard"]["animate_shots_per_scene"])
+    sb = settings()["storyboard"]
+    per_scene = int(sb["animate_shots_per_scene"])
+    t2v_per_scene = int(sb.get("t2v_shots_per_scene", 0))
+    from .. import styles
+    style = styles.get(ep.creative()["style"])
     animated: dict[str, int] = {}
+    t2v: dict[str, int] = {}
     out = []
     llm = Ollama()
     for n, shot in enumerate(shots):
@@ -66,28 +73,39 @@ def plan(ctx: Context) -> None:
         if prev and prev["image"] == shot["image"]["path"] and not ctx.options.get("redo_all"):
             out.append(prev)
             continue
+        seconds = float(shot.get("seconds") or style.shot_seconds)
         if shot["type"] == "ai_image":
             ctx.progress(f"Writing instructions for {shot['shot_id']} ({n + 1}/{len(shots)})",
                          100 * n / len(shots))
             p = llm.chat_json([
                 {"role": "system", "content": (
-                    "You direct short documentary b-roll shots made from a still picture. Describe how "
+                    f"You direct short shots for a {style.name} video, made from a still picture. Describe how "
                     "the shot plays out in one or two plain sentences, then write a motion prompt for an "
-                    "image-to-video model (what moves and how: drifting smoke, flickering light, slow "
-                    "push-in; never add people, text or logos), pick a camera move, and a length of "
-                    "3 to 6 seconds.")},
-                {"role": "user", "content": f"Picture: {shot['prompt']}"},
+                    f"image-to-video model (what moves and how, in this style: {style.motion}; keep characters "
+                    "exactly as drawn; never add people, text or logos), and pick a camera move.")},
+                {"role": "user", "content": f"Picture: {shot['prompt']}\nShot length: {seconds:.1f} seconds"},
             ], PLAN_SCHEMA, temperature=0.5)
-            animate = animated.get(shot["scene_id"], 0) < per_scene
-            animated[shot["scene_id"]] = animated.get(shot["scene_id"], 0) + int(animate)
+            kind = shot.get("kind", "broll")
+            sid = shot["scene_id"]
+            # characters get the animation first (the picture fixes how they look); b-roll can be text-to-video
+            if kind in ("owl", "caricature") and animated.get(sid, 0) < per_scene:
+                method = "animate"
+            elif kind == "broll" and t2v.get(sid, 0) < t2v_per_scene:
+                method = "text_to_video"
+            elif animated.get(sid, 0) < per_scene and kind == "broll" and \
+                    not any(x.get("kind") in ("owl", "caricature") for x in shots if x["scene_id"] == sid):
+                method = "animate"
+            else:
+                method = "camera_move"
+            animated[sid] = animated.get(sid, 0) + (method == "animate")
+            t2v[sid] = t2v.get(sid, 0) + (method == "text_to_video")
             entry = {"how_it_plays": p["how_it_plays"], "motion_prompt": p["motion_prompt"],
                      "camera": p["camera"] if p["camera"] in CAMERA_MOVES else "zoom_in",
-                     "seconds": max(2.0, min(8.0, float(p["seconds"]))),
-                     "method": "animate" if animate else "camera_move"}
+                     "seconds": max(2.0, min(10.0, seconds)), "method": method, "kind": kind}
         else:
             entry = {"how_it_plays": f"{shot['type'].replace('_', ' ')} holds on screen: \"{shot.get('text', '')[:80]}\"",
-                     "motion_prompt": "", "camera": "zoom_in" if shot["type"] == "quote_card" else "static",
-                     "seconds": 4.0 if shot["type"] == "title_card" else 6.0, "method": "camera_move"}
+                     "motion_prompt": "", "camera": "zoom_in" if shot["type"] != "title_card" else "static",
+                     "seconds": seconds, "method": "camera_move", "kind": "card"}
         out.append({"shot_id": shot["shot_id"], "scene_id": shot["scene_id"], "type": shot["type"],
                     "image": shot["image"]["path"], "raw": shot["image"].get("raw"),
                     "prompt": shot.get("prompt", ""), **entry, "clip": None, "approved": False})
@@ -113,8 +131,9 @@ def check_plan(ep: Episode) -> list[Check]:
     if current != {s["shot_id"] for s in p["shots"]}:
         return [Check(BLOCK, "The picked pictures changed. Write scene instructions again.")]
     n = sum(1 for s in p["shots"] if s["method"] == "animate")
-    return [Check(OK, f"{len(p['shots'])} shots planned: {n} animated with Wan 2.2 "
-                      f"(about {n * 6} minutes), the rest with camera moves.")]
+    t = sum(1 for s in p["shots"] if s["method"] == "text_to_video")
+    return [Check(OK, f"{len(p['shots'])} shots planned: {n} animated from their picture (about {n * 6} minutes), "
+                      f"{t} made from words (about {t * 8} minutes), the rest with smooth camera moves.")]
 
 
 def run(ctx: Context) -> None:
@@ -133,7 +152,22 @@ def run(ctx: Context) -> None:
         if s.get("clip") and s["clip"].get("digest") == digest and ep.abs(s["clip"]["path"]).exists() \
                 and s["shot_id"] not in redo:
             continue
-        if s["method"] == "animate":
+        if s["method"] == "text_to_video":
+            ctx.progress(f"Making {s['shot_id']} from words with Wan 2.2 ({n + 1}/{total}, several minutes each)",
+                         100 * n / total)
+            seed = new_seed()
+            t2v = settings()["comfyui"]
+            saved, meta = run_template("t2v_workflow", {
+                "PROMPT": f"{s['prompt']}. {s['motion_prompt']}. {MOTION_SUFFIX}", "SEED": seed,
+                "WIDTH": t2v.get("t2v_width", 1280), "HEIGHT": t2v.get("t2v_height", 704),
+                "FRAMES": t2v.get("t2v_frames", 121), "FPS": t2v.get("t2v_fps", 24),
+                "FILENAME_PREFIX": f"fof/{ep.project_id}/{s['shot_id']}-t2v",
+            }, ep.path("video", f"{s['shot_id']}-t2v-{seed}"), on_progress=ctx.progress, cancelled=ctx.cancelled)
+            clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
+            s["clip"] = {"path": ep.rel(clip), "kind": "text_to_video", "seed": seed,
+                         "model": t2v.get("t2v_model_name", "Wan 2.2 TI2V-5B"), "workflow": meta["workflow"],
+                         "digest": digest, "made_at": utc_now(), "ai": True}
+        elif s["method"] == "animate":
             if not s.get("raw"):
                 raise StageError(f"{s['shot_id']} has no AI picture to animate; set it to camera_move.")
             ctx.progress(f"Animating {s['shot_id']} with Wan 2.2 ({n + 1}/{total}, a few minutes each)",
@@ -158,7 +192,8 @@ def run(ctx: Context) -> None:
             _render_segment(tl, seg, out, media.encoder("libx264"))
             # the still already carries its "AI illustration" stamp, so no second label at render
             s["clip"] = {"path": ep.rel(out), "kind": "camera_move", "digest": digest, "made_at": utc_now(),
-                         "ai": False, "ai_image": s["type"] == "ai_image"}
+                         "ai": False, "ai_image": s["type"] == "ai_image",
+                         "still": s["image"], "camera": s["camera"]}
         s["approved"] = False
         save_plan(ep, p)
     ctx.progress("All clips made. Watch each one and approve or redo.", 100)

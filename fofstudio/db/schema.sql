@@ -203,3 +203,13 @@ SELECT a.arc_id, a.title, a.status,
        MAX(r.careful) AS careful
 FROM arc a LEFT JOIN claim_readiness r ON r.arc_id = a.arc_id
 GROUP BY a.arc_id;
+
+-- Caricature designs: how a public figure who sold a lie is drawn as a cartoon. Written once,
+-- approved by Dave, reused in every episode (so they look the same each time).
+CREATE TABLE IF NOT EXISTS caricature (
+    person_id TEXT PRIMARY KEY,
+    design TEXT NOT NULL,           -- hair, glasses, build, clothes, props; never the person's name
+    approved INTEGER NOT NULL DEFAULT 0,
+    approved_at TEXT,
+    notes TEXT
+);

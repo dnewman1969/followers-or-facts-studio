@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .. import styles, techniques
 from ..episode import Episode
 from ..llm import Ollama
 from ..util import StageError, read_json, utc_now, write_json
@@ -18,7 +19,7 @@ from .base import BLOCK, OK, WARN, Check, Context
 BEAT_SCHEMA = {
     "type": "object",
     "properties": {
-        "role": {"type": "string", "enum": ["intro", "claim", "record", "benefit", "harm", "verdict"]},
+        "role": {"type": "string", "enum": ["intro", "claim", "record", "benefit", "harm", "tell", "verdict"]},
         "beat": {"type": "string"},
         "evidence_ids": {"type": "array", "items": {"type": "string"}},
     },
@@ -33,32 +34,55 @@ STORY_SCHEMA = {
         "opening_hook": {"type": "string"},
         "beats": {"type": "array", "items": BEAT_SCHEMA},
         "owl_moments": {"type": "array", "items": {"type": "string"}},
+        "thumbnail_words": {"type": "string"},
+        "techniques": {"type": "array", "items": {"type": "string", "enum": list(techniques.TECHNIQUES)}},
     },
-    "required": ["title", "logline", "angle", "opening_hook", "beats", "owl_moments"],
+    "required": ["title", "logline", "angle", "opening_hook", "beats", "owl_moments", "thumbnail_words",
+                 "techniques"],
 }
 THREE_SCHEMA = {"type": "object", "properties": {"stories": {"type": "array", "items": STORY_SCHEMA}},
                 "required": ["stories"]}
 
 ANGLES = [
-    "Follow the money: tell it through who sold the fear and what they earned.",
-    "Then and now: walk the timeline from the first rumor to what the record shows today.",
-    "The people it hurt: tell it through the real-world harm, respectfully, courts and documents only.",
+    "How the lie was built: tell it like a con, beat by beat. The kernel of truth at the start, who saw "
+    "an opportunity, the twist they put on it, how they spread it, what they gained, who paid the price, "
+    "the reveal of what really happened, and the lesson.",
+    "Follow the money: tell it through who sold the fear and what they earned, receipts first.",
+    "Then and now: walk the timeline from the first rumor to what the record shows today, and what it did "
+    "to real people (respectfully; courts and documents only for victims).",
 ]
-
-RULES = """You plan stories for "Followers or Facts", a calm, kind fact-check channel narrated by
-Professor Owlbert McFinnegan, a warm, curious cartoon owl professor.
+RULES = """You plan stories for "Followers or Facts", a fact-check channel narrated by Professor Owlbert
+McFinnegan, a warm, curious cartoon owl professor and the mascot of Critical Thinking. The goal is not
+only to correct one claim but to show HOW the information was twisted into a lie, so viewers learn to
+spot the trick next time.
 Rules: use only facts in the evidence list; every beat names the evidence IDs it relies on
 (E-numbers and S-IDs from the list, nothing else); never mock the people who believed it;
 aim criticism at the people who sold it; respect every careful-topic rule; plain words.
 Every story must have beats for: claim (what was claimed), record (what the record says),
 benefit (who benefited), harm (what it did to people), and end with a verdict.
 owl_moments: 2-4 places where Owlbert appears on camera (e.g. "opens at his desk").
+Structure: open on a true, surprising fact (not the myth). Show the myth only once, clearly as a claim
+someone sold, attributed to its seller. Then show how it was built. Include a "tell" beat where Owlbert
+names the manipulation trick (pick 1 or 2 from the techniques list) with a harmless everyday example,
+then shows it in this case. End on the fact again. Link beats with "but" or "therefore", never "and then".
+techniques: the keys of the 1-2 tricks this story teaches.
+thumbnail_words: 2 to 4 big, punchy words for the YouTube thumbnail that make people curious and fit
+this story's angle (e.g. "FEAR FOR SALE", "WHO GOT PAID?"). No names of private people, no victims.
 """
 
 
 def _packet(ep: Episode) -> dict[str, Any]:
     from .research import selected
     return selected(read_json(ep.path("research.json")) or {})
+
+
+def style_note(ep: Episode) -> str:
+    c = ep.creative()
+    st = styles.get(c["style"])
+    humor = ["no jokes at all", "a light touch of warmth", "some gentle humor aimed at the trick or the sellers",
+             "plenty of satire, always punching up at the sellers, never at believers or victims"][c["humor"]]
+    return (f"\nVideo style: {st.name}. {st.tone}\nHumor: {humor}.\n"
+            f"Tricks you can name: {json.dumps(techniques.for_prompt())}\n")
 
 
 def evidence_for_prompt(ep: Episode) -> str:
@@ -86,9 +110,17 @@ def _valid_ids(ep: Episode) -> set[str]:
     return ids
 
 
+def thumbnail_words(text: str) -> str:
+    """At most four words, upper case, tidy."""
+    words = [w.strip(" .,;:\"'") for w in (text or "").split()]
+    return " ".join([w for w in words if w][:4]).upper()
+
+
 def _clean(story: dict[str, Any], valid: set[str]) -> dict[str, Any]:
     for b in story.get("beats", []):
         b["evidence_ids"] = [e for e in b.get("evidence_ids", []) if e in valid]
+    story["thumbnail_words"] = thumbnail_words(story.get("thumbnail_words") or story.get("title", ""))
+    story["techniques"] = [t for t in story.get("techniques", []) if t in techniques.TECHNIQUES][:2]
     return story
 
 
@@ -108,7 +140,7 @@ def run(ctx: Context) -> None:
         ctx.progress(f"Rewriting story {i + 1} with your notes", 20)
         new = llm.chat_json([
             {"role": "system", "content": RULES},
-            {"role": "user", "content": f"Evidence:\n{evidence_for_prompt(ep)}\n\nHere is a story plan:\n"
+            {"role": "user", "content": f"{style_note(ep)}Evidence:\n{evidence_for_prompt(ep)}\n\nHere is a story plan:\n"
                                         f"{json.dumps(old, ensure_ascii=False)}\n\nRewrite it with these notes "
                                         f"from the producer: {rewrite['notes']}"},
         ], STORY_SCHEMA, temperature=0.6, on_text=ctx.writing(f"Rewriting story {i + 1}", 20, 95, 450))
@@ -124,8 +156,8 @@ def run(ctx: Context) -> None:
             ctx.progress(f"Writing story option {n + 1} of 3: {angle.split(':')[0]}", 10 + n * 30)
             story = llm.chat_json([
                 {"role": "system", "content": RULES},
-                {"role": "user", "content": f"Evidence:\n{evidence_for_prompt(ep)}\n\nPlan ONE story with this "
-                                            f"angle: {angle}\n6 to 10 beats."},
+                {"role": "user", "content": f"{style_note(ep)}Evidence:\n{evidence_for_prompt(ep)}\n\nPlan ONE "
+                                            f"story with this angle: {angle}\n7 to 11 beats."},
             ], STORY_SCHEMA, temperature=0.8,
                 on_text=ctx.writing(f"Writing story {n + 1} of 3", 10 + n * 30, 38 + n * 30, 450))
             story = _clean(story, valid)

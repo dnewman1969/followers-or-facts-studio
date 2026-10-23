@@ -73,6 +73,35 @@ class Episode:
     def info(self) -> dict[str, Any]:
         return read_json(self.path("episode.json"), {})
 
+    def creative(self) -> dict[str, Any]:
+        """How this video is told: style, humor (0-3), caricatures on/off, target length.
+        Careful topics (victims: courts only) always get humor 0 and no caricatures."""
+        from . import styles
+        c = dict(self.info.get("creative") or {})
+        style = styles.get(c.get("style"))
+        c["style"] = style.key
+        c.setdefault("humor", style.humor)
+        c.setdefault("caricatures", style.caricature)
+        c.setdefault("minutes", 8.0)
+        careful = bool(db.one("""SELECT 1 FROM content_restriction r JOIN project_claim pc
+                                 ON (r.subject_type='claim' AND r.subject_id=pc.claim_id)
+                                 WHERE pc.project_id=? AND r.rule IN ('courts_only','no_names')""",
+                              (self.project_id,))) or (
+            bool(self.info.get("arc_id")) and bool(db.one(
+                "SELECT 1 FROM content_restriction WHERE subject_type='arc' AND subject_id=? "
+                "AND rule IN ('courts_only','no_names')", (self.info["arc_id"],))))
+        c["careful"] = careful
+        if careful:
+            c["humor"], c["caricatures"] = 0, False
+        c["caricatures"] = bool(c["caricatures"]) and style.caricature
+        c["humor"] = max(0, min(3, int(c["humor"])))
+        return c
+
+    def set_creative(self, **fields: Any) -> None:
+        info = self.info
+        info["creative"] = {**(info.get("creative") or {}), **fields}
+        write_json(self.path("episode.json"), info)
+
     @property
     def title(self) -> str:
         return self.info.get("title", self.project_id)

@@ -34,6 +34,18 @@ def duration(path: Path) -> float:
     return float(value)
 
 
+def fps(path: Path) -> float:
+    """Frames per second of a video's first picture stream (0 if unknown)."""
+    for st in probe(path).get("streams", []):
+        if st.get("codec_type") == "video":
+            num, _, den = str(st.get("avg_frame_rate") or st.get("r_frame_rate") or "0/1").partition("/")
+            try:
+                return float(num) / float(den or 1) if float(den or 1) else 0.0
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
 def has_audio(path: Path) -> bool:
     return any(s.get("codec_type") == "audio" for s in probe(path).get("streams", []))
 

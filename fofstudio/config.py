@@ -36,6 +36,9 @@ DEFAULTS: dict[str, Any] = {
         "num_predict": 6000,
         "timeout_seconds": 900,
         "think": False,
+        "top_p": 0.8,               # Qwen 3's recommended settings with thinking off
+        "top_k": 20,
+        "presence_penalty": 0.5,    # discourages repeating itself in long scripts
     },
     "comfyui": {
         "url": "http://127.0.0.1:8188",
@@ -49,6 +52,12 @@ DEFAULTS: dict[str, Any] = {
         "video_height": 480,
         "video_frames": 81,
         "video_fps": 16,
+        "t2v_workflow": "comfy_workflows/wan22_ti2v5b_t2v.json",
+        "t2v_model_name": "Wan 2.2 TI2V-5B",
+        "t2v_width": 1280,
+        "t2v_height": 704,
+        "t2v_frames": 121,
+        "t2v_fps": 24,
         "music_workflow": "comfy_workflows/acestep_music.json",
         "music_model_name": "ACE-Step",
         "timeout_seconds": 3600,
@@ -78,11 +87,16 @@ DEFAULTS: dict[str, Any] = {
         "transition_seconds": 0.6,
         "music_volume": 0.18,
         "duck_music": True,
+        "smooth_clips": True,           # blend in-between frames so AI clips (16 fps) play smoothly
+        "open_folder_after_render": True,
     },
     "storyboard": {
         "mode": "llm",
-        "max_shots_per_scene": 5,
-        "animate_shots_per_scene": 1,
+        "max_shots_per_scene": 5,       # (old setting, no longer used)
+        "shot_limit_per_scene": 24,
+        "candidates_per_shot": 2,       # versions painted of each shot (1-3); the first is used unless you pick another
+        "animate_shots_per_scene": 1,   # Wan 2.2 image-to-video clips per scene (Owlbert and caricatures first)
+        "t2v_shots_per_scene": 0,       # Wan 2.2 text-to-video b-roll clips per scene (needs the TI2V-5B model)
     },
     "youtube": {
         "client_secrets": "",
@@ -117,6 +131,16 @@ DEFAULTS: dict[str, Any] = {
         "factcheck_key": "",
         "archive_access_key": "",
         "archive_secret_key": "",
+    },
+    "sound": {
+        "device": "",               # speaker id (blank = Windows' default speaker)
+        "listen_volume": 80,        # 0-100, how loud the preview plays on this PC
+        "media_backend": "auto",    # auto | ffmpeg | windows (restart the Studio after changing)
+        "speech_db": 0.0,           # default mix for new videos (each video keeps its own mix)
+        "music_db": -14.0,
+        "master_db": 0.0,
+        "normalize_loudness": True, # make every video equally loud for YouTube
+        "loudness_lufs": -14.0,
     },
     "owl": {
         "voice": "bm_george:0.7,bm_fable:0.3",

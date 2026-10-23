@@ -1,5 +1,5 @@
 # Core (setup.ps1 installs these into .venv)
-PySide6>=6.7
+PySide6>=6.9          # 6.7.3 had a "no sound on Windows 11" bug
 requests>=2.31
 psutil>=5.9
 Pillow>=10.0
@@ -9,4 +9,7 @@ pypdf>=4.0            # read text out of PDF sources (court filings etc.)
 faster-whisper>=1.0   # exact word timing for captions (MIT), CPU
 ddgs>=9.0             # web search for the research agents (MIT), no key needed
 trafilatura>=2.0      # reads the article text out of web pages (Apache-2.0)
+google-api-python-client>=2.100   # YouTube upload (Apache-2.0)
+google-auth-oauthlib>=1.2        # YouTube sign-in (Apache-2.0)
+opencv-python-headless>=4.9      # smooth camera moves (Apache-2.0)
 pytest>=8.0

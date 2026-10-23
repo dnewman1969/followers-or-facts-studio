@@ -123,9 +123,62 @@ chips and boxes red): `common.tint()`.
 
 44 tests pass.
 
+## 2026-10-23 — v0.4: creative styles, smooth video, sound, YouTube sign-in
+
+Dave's first full test: scripts read like a dry documentary; the video jittered; pictures repeated to
+fill time; the video came out shorter than the length set; Owlbert's hat looked washed out; no sound in
+the preview; he wanted volume controls, timeline zoom, the folder opened after a render, YouTube sign-in
+in Settings, and the AI to suggest 4 thumbnail words per story. Research report: "Creative styles and
+studio polish" (in the Truth Web page project).
+
+- **Styles** (`styles.py`): 12 presets, each with tone, pace (wpm), shot length, picture recipe, motion
+  recipe, Owlbert staging, a sample passage, default humor, and whether caricatures are allowed.
+  Per-episode `creative` settings (style, minutes, humor 0-3, caricatures) in episode.json; careful topics
+  force humor 0 and no caricatures (`Episode.creative`). Panel on the Stories page (`app/creative.py`).
+- **Critical thinking** (`techniques.py`): 12 "Tell" cards (FLICC + Roozenbeek's five + follow the money).
+  Stories name 1-2; the script has `tell` and `toolkit` roles; the storyboard draws Owlbert's Tell card.
+- **Writer** (`stages/script.py`): outline pass, then one call per scene with Owlbert's voice bible, the
+  style's tone and sample, only that scene's facts and the end of the previous scene; one fix-up for
+  short or stock-phrase scenes; per-scene word budgets from the target length. Script blocks below 80%
+  of the length; `expand` option = **Make it longer**. Streamed word counts. Qwen 3 sampling settings.
+- **Storyboard v2** (`stages/storyboard.py`): shots per scene = narration seconds / style shot length;
+  shot kinds broll / owl (painted set + Owlbert's real art composited, so he's always on model) /
+  caricature; 2 versions per shot (setting), pick, skip, remake, replan. Old boards are blocked with a
+  message to remake.
+- **Caricatures** (`cast.py`, Cast window): only people linked to the ticked claims as said_it /
+  amplified / benefited / platformed, never targets/victims/families/private; written design approved by
+  Dave, never the name in prompts; caption + AI label; only in sourced scenes; description note.
+  Editorial rule changed on purpose (was "never draw real people").
+- **Video**: new `text_to_video` method (Wan 2.2 TI2V-5B workflow `wan22_ti2v5b_t2v.json`, untested on the
+  PC; `get-comfy-models.ps1 -TextToVideo`); characters are animated first.
+- **Jitter fixed**: camera moves are drawn per frame with OpenCV at exact fractional positions (zoompan
+  rounded to whole pixels; measured shake 0.145 → 0.013 px/frame). AI clips: no more `-stream_loop`
+  repeats; slow-motion capped at 1.35x with minterpolate in-betweens; hold the last frame if still short.
+  Camera-move shots are redrawn at their exact timeline length. Production shares each scene's time:
+  clips keep their length, camera moves and cards fill the rest. BT.709 tags; preview 854x480 at 24 fps.
+- **Owlbert's hat**: the cut-out's background tolerance was 60 and his cap is only ~20 away from the
+  backdrop, so the cap was cut away. Now 11, with a soft edge and a cream rim. Thumbnails, bumpers and the
+  Tell card use a teal backdrop instead of navy. Name plate "PROF. OWLBERT · CRITICAL THINKING".
+- **Sound** (`app/sound.py`): the player only connected to speakers if Windows had listed them at startup;
+  now always (chosen speaker or default, follows plug/unplug), mute + volume on the player, Settings →
+  Sound (speaker, test chime, Owlbert test voice, listening volume, default mix, loudness, playback
+  engine). Mix per video on Production (speech/music/master dB) → render (`volume`, loudnorm to -14 LUFS,
+  384k AAC 48 kHz stereo). PySide6 ≥ 6.9.
+- **Timeline zoom**: slider, +/−, Fit, Ctrl + wheel at the mouse, view stays anchored.
+- **Folder opens** after the final render (`util.reveal`, Explorer /select).
+- **YouTube** (`youtube.py`, Settings → YouTube): choose client file (checked: must be Desktop app),
+  sign in (browser, consent, in a thread), shows the channel, sign out. Uploads never open a browser
+  mid-job; retries 5xx; notifySubscribers false. docs/YOUTUBE.md rewritten (In production to stop the
+  7-day expiry; private-lock test; 2026 quota).
+- **Thumbnail words**: each story's `thumbnail_words` (max 4) pre-fill Publish.
+
+56+ tests pass. Not yet run on Dave's PC: the new writer prompts with qwen3:14b, the TI2V-5B workflow,
+minterpolate speed on his CPU, real speaker selection, YouTube sign-in.
+
 ## Next
 
-1. Dave: run Update Studio.cmd, then carry on with S01E02 (press Write it again on Script) or start fresh; report anything odd.
+1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.
+2. Owlbert LoRA or Qwen-Image-Edit poses, so his painted scenes can show other poses.
 2. Fix whatever the first real run turns up in the ComfyUI templates and prompts.
 3. Owlbert on model: turnaround sheet, LoRA, intro/outro shots.
 4. Shorts: vertical clips from the render.

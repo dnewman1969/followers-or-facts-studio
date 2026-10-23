@@ -42,28 +42,13 @@ def font(kind: str, size: int) -> ImageFont.FreeTypeFont:
 
 @lru_cache(maxsize=1)
 def owl() -> Image.Image | None:
-    """The mascot with its square studio background keyed out to transparent."""
+    """The mascot cut out of its studio background (the same careful cut as the talking puppet,
+    which keeps his black cap), cropped to him."""
     if not OWL.exists():
         return None
-    img = Image.open(OWL).convert("RGBA")
-    bg = img.getpixel((2, 2))
-    px = img.load()
-    w, h = img.size
-    # flood from the edges so dark parts inside the owl are kept
-    from collections import deque
-    seen = set()
-    q = deque([(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for x in (0, w - 1) for y in range(h)])
-    while q:
-        x, y = q.popleft()
-        if (x, y) in seen or not (0 <= x < w and 0 <= y < h):
-            continue
-        seen.add((x, y))
-        r, g, b, a = px[x, y]
-        if abs(r - bg[0]) + abs(g - bg[1]) + abs(b - bg[2]) > 60:
-            continue
-        px[x, y] = (r, g, b, 0)
-        q.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
-    return img.crop(img.getbbox() or (0, 0, w, h))
+    from .owl import base
+    img = base()
+    return img.crop(img.getbbox())
 
 
 def _wrap(draw: ImageDraw.ImageDraw, text: str, fnt, max_width: int) -> list[str]:
@@ -91,6 +76,24 @@ def _fit(draw, text: str, kind: str, max_width: int, max_height: int, start: int
         size -= 4
     fnt = font(kind, minimum)
     return fnt, _wrap(draw, text, fnt, max_width), minimum
+
+
+# Behind Owlbert: teal, never navy or black, so his black cap and dark-blue feathers stand out
+TEAL_TOP = (72, 146, 150)
+TEAL_BOTTOM = (24, 78, 90)
+SPOT = (250, 228, 176)
+
+
+def owl_backdrop(w: int, h: int, spot_x: float = 0.25, spot_y: float = 0.55) -> Image.Image:
+    """A teal gradient with a warm spotlight where Owlbert stands."""
+    grad = Image.linear_gradient("L").resize((w, h))
+    img = Image.composite(Image.new("RGB", (w, h), TEAL_BOTTOM), Image.new("RGB", (w, h), TEAL_TOP), grad)
+    mask = Image.new("L", (w, h), 0)
+    r = int(h * 0.42)
+    cx, cy = int(w * spot_x), int(h * spot_y)
+    ImageDraw.Draw(mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=150)
+    mask = mask.filter(ImageFilter.GaussianBlur(h // 7))
+    return Image.composite(Image.new("RGB", (w, h), SPOT), img, mask)
 
 
 def _background(w: int, h: int) -> Image.Image:
@@ -132,6 +135,57 @@ def title_card(text: str, out: Path, size=(1920, 1080), kicker: str = "") -> Pat
         d.text(((w - d.textlength(ln, font=fnt)) / 2, y), ln, font=fnt, fill=WHITE)
         y += int(fs * 1.25)
     d.rectangle(((w - 160) // 2, y + 24, (w + 160) // 2, y + 30), fill=GOLD)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out)
+    return out
+
+
+def technique_card(name: str, meaning: str, ask: str, out: Path, size=(1920, 1080)) -> Path:
+    """Owlbert's "Tell" card: the name of the trick, what it is, and the question to ask next time."""
+    w, h = size
+    img = owl_backdrop(w, h, 0.18, 0.6)
+    d = ImageDraw.Draw(img)
+    mascot = owl()
+    if mascot:
+        m = mascot.copy()
+        m.thumbnail((int(w * 0.3), int(h * 0.7)))
+        img.paste(m, (int(w * 0.04), h - m.height - int(h * 0.08)), m)
+    x0, x1 = int(w * 0.38), int(w * 0.94)
+    d.rounded_rectangle((x0 - 40, int(h * 0.14), x1 + 20, int(h * 0.86)), radius=28, fill=(250, 244, 230),
+                        outline=GOLD, width=8)
+    k = font("sans_bold", max(20, h // 30))
+    d.text((x0, int(h * 0.19)), "OWLBERT'S TELL", font=k, fill=(150, 110, 10))
+    fnt, lines, fs = _fit(d, name, "serif_bold", x1 - x0, int(h * 0.2), 96, 40)
+    y = int(h * 0.26)
+    for ln in lines:
+        d.text((x0, y), ln, font=fnt, fill=(24, 30, 48))
+        y += int(fs * 1.15)
+    body = font("sans", max(18, h // 26))
+    for ln in _wrap(d, meaning, body, x1 - x0)[:3]:
+        d.text((x0, y + 20), ln, font=body, fill=(40, 46, 66))
+        y += int(body.size * 1.35)
+    ask_f = font("sans_bold", max(18, h // 28))
+    y = max(y + 50, int(h * 0.62))
+    d.text((x0, y), "ASK:", font=ask_f, fill=(192, 57, 43))
+    for ln in _wrap(d, ask, ask_f, x1 - x0 - int(ask_f.size * 3))[:3]:
+        d.text((x0 + int(ask_f.size * 2.8), y), ln, font=ask_f, fill=(24, 30, 48))
+        y += int(ask_f.size * 1.3)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out)
+    return out
+
+
+def name_caption(src: Path, out: Path, name: str) -> Path:
+    """'Caricature: <name>' banner at the top left of a caricature picture (keeps its AI label)."""
+    img = Image.open(src).convert("RGB")
+    d = ImageDraw.Draw(img, "RGBA")
+    size = max(18, img.height // 34)
+    fnt = font("sans_bold", size)
+    text = f"Caricature: {name}"
+    pad = size // 2
+    tw = d.textlength(text, font=fnt)
+    d.rounded_rectangle((pad * 2, pad * 2, pad * 4 + tw, pad * 4 + size), radius=pad, fill=(192, 57, 43, 220))
+    d.text((pad * 3, pad * 3 - 2), text, font=fnt, fill=(255, 255, 255, 255))
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out)
     return out
@@ -213,8 +267,13 @@ def thumbnail(words: str, out: Path, background: Path | None = None, verdict: st
     if background and Path(background).exists():
         img = ImageOps.fit(Image.open(background).convert("RGB"), (w, h))
         img = Image.blend(img, Image.new("RGB", (w, h), STUDIO), 0.55)
+        # a teal pool behind the owl so his cap doesn't vanish into a dark picture
+        pool = owl_backdrop(w, h, 0.2, 0.62)
+        m = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(m).ellipse((-120, 120, 560, 820), fill=230)
+        img = Image.composite(pool, img, m.filter(ImageFilter.GaussianBlur(60)))
     else:
-        img = _background(w, h)
+        img = owl_backdrop(w, h, 0.2, 0.62)
     d = ImageDraw.Draw(img)
     mascot = owl()
     if mascot:

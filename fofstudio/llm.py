@@ -85,7 +85,8 @@ class Ollama:
             "stream": bool(on_text),
             "think": self.cfg.get("think", False),
             "options": {"temperature": temperature, "num_ctx": self.cfg["num_ctx"],
-                        "num_predict": self.cfg["num_predict"]},
+                        "num_predict": self.cfg["num_predict"],
+                        **{k: self.cfg[k] for k in ("top_p", "top_k", "presence_penalty") if k in self.cfg}},
         }
         if seed is not None:
             payload["options"]["seed"] = seed

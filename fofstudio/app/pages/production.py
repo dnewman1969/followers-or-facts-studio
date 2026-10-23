@@ -8,7 +8,7 @@ import json
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QPushButton,
-                               QSplitter, QVBoxLayout, QWidget)
+                               QSlider, QSplitter, QVBoxLayout, QWidget)
 
 from ... import pipeline
 from ...stages import production as prod
@@ -72,6 +72,7 @@ class ProductionPage(StagePage):
         self.player = Player()
         self.player.position_changed.connect(self._player_moved)
         pl.addWidget(self.player, 1)
+        pl.addWidget(self._mixer())
         top.addWidget(pv)
         insp = QFrame()
         insp.setStyleSheet(f"QFrame {{ background:{PANEL}; border-radius:8px; }}")
@@ -89,13 +90,14 @@ class ProductionPage(StagePage):
             w.setDecimals(2)
             w.setSingleStep(0.1)
             w.setSuffix(suf)
-        self.i_vol.setRange(0, 1)
-        self.i_vol.setSingleStep(0.02)
+        self.i_vol.setRange(0, 2)
+        self.i_vol.setSingleStep(0.05)
+        self.i_vol.setToolTip("1.00 = the Music level on the mixer below; 0.5 = half as loud")
         form.addRow(self.i_name)
         form.addRow("Starts at", self.i_start)
         form.addRow("Length", self.i_dur)
         form.addRow("Start inside clip", self.i_in)
-        form.addRow("Music volume", self.i_vol)
+        form.addRow("Music clip level", self.i_vol)
         il.addLayout(form)
         btns = QHBoxLayout()
         self.i_apply = QPushButton("Apply")
@@ -196,6 +198,66 @@ class ProductionPage(StagePage):
         self._undo_stack = self._undo_stack[-50:]
         self._redo_stack.clear()
 
+    # ------------------------------------------------------------ mixer
+    MIX = [("speech_db", "Speech", -24, 12), ("music_db", "Music", -40, 6), ("master_db", "Master", -24, 12)]
+
+    def _mixer(self) -> QFrame:
+        """One row under the player: Speech, Music and Master levels, baked into the video."""
+        box = QFrame()
+        box.setStyleSheet("QFrame { background:#1d2133; border-radius:6px; }")
+        row = QHBoxLayout(box)
+        row.setContentsMargins(10, 6, 10, 6)
+        mix_label = QLabel("<b>Sound mix</b>")
+        mix_label.setToolTip("Baked into the video. Speech and Music balance the voice against the music; Master "
+                             "makes the whole video louder or quieter. Press Make preview to hear a change.")
+        row.addWidget(mix_label)
+        self.mix_sliders: dict[str, tuple[QSlider, QLabel]] = {}
+        for key, name, lo, hi in self.MIX:
+            val = QLabel("0 dB")
+            val.setMinimumWidth(58)
+            sl = QSlider(Qt.Horizontal)
+            sl.setRange(lo * 2, hi * 2)  # half-dB steps
+            sl.setMinimumWidth(110)
+            sl.valueChanged.connect(lambda x, lab=val: lab.setText(f"{x / 2:+.1f} dB"))
+            sl.sliderReleased.connect(self._mix_changed)
+            sl.valueChanged.connect(lambda _x, s_=sl: None if s_.isSliderDown() else self._mix_changed())
+            row.addWidget(QLabel(name))
+            row.addWidget(sl, 1)
+            row.addWidget(val)
+            self.mix_sliders[key] = (sl, val)
+        reset = QPushButton("Reset")
+        reset.setToolTip("Back to the default mix from Settings → Sound")
+        reset.clicked.connect(self._mix_reset)
+        row.addWidget(reset)
+        self._mix_loading = False
+        return box
+
+    def _show_mix(self) -> None:
+        self._mix_loading = True
+        m = prod.mix(self._tl or {})
+        for key, (sl, val) in self.mix_sliders.items():
+            sl.setValue(int(round(m[key] * 2)))
+            val.setText(f"{m[key]:+.1f} dB")
+        self._mix_loading = False
+
+    def _mix_changed(self) -> None:
+        if self._mix_loading or not self._tl:
+            return
+        new = {k: sl.value() / 2 for k, (sl, _) in self.mix_sliders.items()}
+        if new == prod.mix(self._tl):
+            return
+        self._snapshot_after_edit()
+        self._tl["mix"] = new
+        self._save_timer.start(400)
+        self.state.setText("Sound mix changed. Press ▶ Make preview to hear it.")
+
+    def _mix_reset(self) -> None:
+        if self._tl:
+            self._snapshot_after_edit()
+            self._tl.pop("mix", None)
+            self._show_mix()
+            self._save_timer.start(400)
+
     def _edited(self) -> None:
         self._snapshot_after_edit()
         self._save_timer.start(400)
@@ -222,6 +284,7 @@ class ProductionPage(StagePage):
         self._redo_stack.append(json.dumps(self._tl))
         self._tl = json.loads(self._undo_stack.pop())
         self.editor.load(self._tl, self.ep.abs)
+        self._show_mix()
         self._save()
 
     def _redo(self) -> None:
@@ -230,6 +293,7 @@ class ProductionPage(StagePage):
         self._undo_stack.append(json.dumps(self._tl))
         self._tl = json.loads(self._redo_stack.pop())
         self.editor.load(self._tl, self.ep.abs)
+        self._show_mix()
         self._save()
 
     def _select(self, sel) -> None:
@@ -248,7 +312,8 @@ class ProductionPage(StagePage):
         self.i_in.setEnabled(track == "video")
         self.i_in.setValue(c.get("inpoint", 0.0))
         self.i_vol.setEnabled(track == "music")
-        self.i_vol.setValue(c.get("volume", 0.18))
+        vol = float(c.get("volume", 1.0))
+        self.i_vol.setValue(1.0 if abs(vol - 0.18) < 1e-6 else vol)  # 0.18 was the old fixed music level
         self.i_delete.setEnabled(track in ("owl", "music"))
 
     def _apply(self) -> None:
@@ -353,6 +418,7 @@ class ProductionPage(StagePage):
             self._tl = tl
             self._last_saved = json.dumps(tl) if tl else None
             self.editor.load(self._tl, self.ep.abs)
+            self._show_mix()
         self._status_line()
         self._load_player()
 

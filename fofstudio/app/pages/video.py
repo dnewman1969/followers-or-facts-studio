@@ -14,7 +14,9 @@ from ..common import GOLD, GREEN, MUTED, PANEL, RED, error
 from ..player import PlayerDialog
 from ..widgets import StagePage, click_feedback
 
-METHODS = {"animate": "Animate (Wan 2.2, ~6 min)", "camera_move": "Camera move (seconds)"}
+METHODS = {"animate": "Animate the picture (Wan 2.2, ~6 min)",
+           "text_to_video": "Make from words (Wan 2.2 5B, ~8 min, b-roll only)",
+           "camera_move": "Smooth camera move (seconds)"}
 
 
 class ShotRow(QFrame):
@@ -43,7 +45,9 @@ class ShotRow(QFrame):
         self.method = QComboBox()
         for k, v in METHODS.items():
             self.method.addItem(v, k)
-        self.method.setCurrentIndex(0 if shot["method"] == "animate" else 1)
+        self.method.setCurrentIndex(max(0, self.method.findData(shot["method"])))
+        if shot.get("kind") in ("owl", "caricature"):   # characters must start from their picture to stay on model
+            self.method.model().item(self.method.findData("text_to_video")).setEnabled(False)
         self.method.setEnabled(shot["type"] == "ai_image")
         self.camera = QComboBox()
         self.camera.addItems(vs.CAMERA_MOVES)
@@ -140,7 +144,9 @@ class VideoPage(StagePage):
         self.make_btn.setEnabled(bool(plan["shots"]) and not busy)
         self.all_btn.setEnabled(bool(plan["shots"]) and not busy)
         n_anim = sum(1 for s in plan["shots"] if s["method"] == "animate")
-        self.summary.setText(f"{len(plan['shots'])} shots · {n_anim} animated (about {n_anim * 6} min of GPU time)"
+        n_t2v = sum(1 for s in plan["shots"] if s["method"] == "text_to_video")
+        self.summary.setText(f"{len(plan['shots'])} shots · {n_anim} animated, {n_t2v} made from words (about "
+                             f"{n_anim * 6 + n_t2v * 8} min of GPU time), the rest smooth camera moves"
                              if plan["shots"] else "")
         sig = (busy, str(plan))
         if sig == self._sig:

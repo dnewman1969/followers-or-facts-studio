@@ -33,6 +33,16 @@ def path(ep: Episode):
     return ep.path("production.json")
 
 
+MIX_KEYS = ("speech_db", "music_db", "master_db")
+
+
+def mix(tl: dict[str, Any]) -> dict[str, float]:
+    """This video's sound mix in dB: its own if you moved the sliders, else the defaults from Settings."""
+    snd = settings()["sound"]
+    own = tl.get("mix") or {}
+    return {k: float(own.get(k, snd[k])) for k in MIX_KEYS}
+
+
 def load(ep: Episode) -> dict[str, Any]:
     return read_json(path(ep), {}) or {}
 
@@ -58,6 +68,38 @@ def make_bumpers(ep: Episode, title: str) -> tuple[str, str]:
     if not outro.exists():
         owl.bumper("outro", title, outro, int(v["width"]), int(v["height"]), int(v["fps"]))
     return ep.rel(intro), ep.rel(outro)
+
+
+def _fit_lengths(ep: Episode, shots: list[dict[str, Any]], total: float) -> list[float]:
+    """Share a scene's time between its shots without repeating anything: animated clips keep about their
+    own length (up to a little slow motion), and camera moves and cards stretch or shrink to fill the rest."""
+    fixed, flex = {}, []
+    for i, s in enumerate(shots):
+        if s["clip"].get("still") or s["clip"].get("kind") == "camera_move":
+            flex.append(i)
+        else:
+            try:
+                fixed[i] = media.duration(ep.abs(s["clip"]["path"]))
+            except Exception:  # noqa: BLE001 - treat an unreadable clip like a still
+                flex.append(i)
+    lengths = [0.0] * len(shots)
+    for i, d in fixed.items():
+        lengths[i] = d
+    rest = total - sum(fixed.values())
+    if flex:
+        want = [max(1.5, float(shots[i].get("seconds", 4.0))) for i in flex]
+        scale = max(rest, 1.5 * len(flex)) / sum(want)
+        for i, w in zip(flex, want):
+            lengths[i] = max(1.5, w * scale)
+    elif fixed and rest > 0:   # only animated clips: slow them a little (smoothly), then hold the last frame
+        factor = total / sum(fixed.values())
+        for i in fixed:
+            lengths[i] = fixed[i] * factor
+    elif fixed and rest < 0:   # too much footage: trim clips evenly
+        factor = total / sum(fixed.values())
+        for i in fixed:
+            lengths[i] = max(1.0, fixed[i] * factor)
+    return lengths
 
 
 def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
@@ -88,8 +130,7 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
         if not shots:
             continue
         scene_len = (LEAD + m["seconds"] + TAIL) if m else sum(s["seconds"] for s in shots)
-        weights = [max(1.0, float(s["seconds"])) for s in shots]
-        total_w = sum(weights)
+        lengths = _fit_lengths(ep, shots, scene_len + FADE * (len(shots) - 1))
         if m:
             tl["speech"].append({"id": f"say-{sc['scene_id']}", "src": m["path"], "start": round(t + LEAD, 3),
                                  "duration": round(m["seconds"], 3), "scene_id": sc["scene_id"],
@@ -97,13 +138,16 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
             if settings()["owl"]["presenter"]:
                 tl["owl"].append({"id": f"owl-{sc['scene_id']}", "start": round(t + LEAD, 3),
                                   "duration": round(m["seconds"], 3)})
-        for k, (s, w) in enumerate(zip(shots, weights)):
+        for k, (s, length) in enumerate(zip(shots, lengths)):
             last = k == len(shots) - 1
             overlap = SCENE_FADE if last else FADE
-            dur = scene_len * w / total_w + overlap
-            tl["video"].append({"id": s["shot_id"], "src": s["clip"]["path"], "start": round(t, 3),
-                                "duration": round(dur, 3), "inpoint": 0.0, "label": s["shot_id"],
-                                "kind": "clip", "ai": bool(s["clip"].get("ai")), "scene_id": sc["scene_id"]})
+            dur = length + (SCENE_FADE - FADE if last else 0.0)
+            item = {"id": s["shot_id"], "src": s["clip"]["path"], "start": round(t, 3),
+                    "duration": round(dur, 3), "inpoint": 0.0, "label": s["shot_id"],
+                    "kind": "clip", "ai": bool(s["clip"].get("ai")), "scene_id": sc["scene_id"]}
+            if s["clip"].get("still"):  # camera moves are redrawn at exactly this length when rendering
+                item["still"], item["camera"] = s["clip"]["still"], s["clip"].get("camera", "zoom_in")
+            tl["video"].append(item)
             t += dur - overlap
     outro_len = media.duration(ep.abs(outro))
     tl["video"].append({"id": "outro", "src": outro, "start": round(t, 3), "duration": round(outro_len, 3),
@@ -114,7 +158,7 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
         (ep.stage_status("music").get("note") or "").startswith("SKIPPED")
     if music and music_ok and ep.abs(music["path"]).exists():
         tl["music"].append({"id": "music", "src": music["path"], "start": 0.0, "duration": round(end, 3),
-                            "volume": float(v["music_volume"])})
+                            "volume": 1.0})
     return tl
 
 

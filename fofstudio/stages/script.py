@@ -1,8 +1,14 @@
-"""Stage 2 - Script.
+"""Script: Owlbert's narration, written the way a story writer works, not in one go.
 
-The local AI drafts the script from the research packet only. Every scene
-carries the claim IDs and source IDs it relies on, and quotes may only come
-from verified excerpts. You can edit script.md by hand and press Re-check.
+1. Outline: the local AI plans the scenes from the chosen story, the ticked evidence and the
+   video style: the fact first, the myth shown once as a claim, how the lie was built, the trick
+   named ("tell"), the real story, the question to ask next time, the fact again. Each scene gets
+   a word budget so the video comes out as long as you asked.
+2. Scenes: one call per scene, in Owlbert's voice and the style's tone, with only that scene's
+   evidence in front of it and the end of the previous scene for flow.
+3. Fix-ups: a scene that's too short or uses stock phrases gets one rewrite.
+Every scene still lists the claims, sources and quotes it relies on, and the checks are the same:
+nothing reaches the screen without a source. You can edit script.md by hand and press Save.
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ from ..scriptfmt import ROLES, parse, quotes_in, render
 from ..util import StageError, normalize_for_match, read_json, reading_grade, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 
-WORDS_PER_MINUTE = 150
+WORDS_PER_MINUTE = 150   # Owlbert's average; each style has its own pace (styles.py)
 
 SCRIPT_SCHEMA = {
     "type": "object",
@@ -46,6 +52,56 @@ SCRIPT_SCHEMA = {
     "required": ["title", "scenes"],
 }
 
+OUTLINE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "central_question": {"type": "string"},
+        "scenes": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "role": {"type": "string", "enum": list(ROLES[:-2])},
+                "purpose": {"type": "string"},
+                "link": {"type": "string", "enum": ["open", "but", "therefore"]},
+                "claim_ids": {"type": "array", "items": {"type": "string"}},
+                "source_ids": {"type": "array", "items": {"type": "string"}},
+                "excerpt_ids": {"type": "array", "items": {"type": "integer"}},
+                "owl_on_camera": {"type": "boolean"},
+                "visual_idea": {"type": "string"},
+            },
+            "required": ["role", "purpose", "link", "claim_ids", "source_ids", "excerpt_ids", "owl_on_camera",
+                         "visual_idea"],
+        }},
+    },
+    "required": ["title", "central_question", "scenes"],
+}
+SCENE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "narration": {"type": "string"},
+        "visual": {"type": "string"},
+        "on_screen_text": {"type": "string"},
+        "claim_ids": {"type": "array", "items": {"type": "string"}},
+        "source_ids": {"type": "array", "items": {"type": "string"}},
+        "excerpt_ids": {"type": "array", "items": {"type": "integer"}},
+    },
+    "required": ["narration", "visual", "on_screen_text", "claim_ids", "source_ids", "excerpt_ids"],
+}
+
+OWLBERT = """Owlbert's voice:
+- A warm, curious owl professor, the mascot of Critical Thinking. Smart, never smug. Talks to the viewer
+  like a bright twelve-year-old, never down to them.
+- Mixes short punchy lines (four or five words) with longer flowing ones. Asks the viewer questions.
+- Little habits: "Hoo." when something doesn't add up; pushes his spectacles up before a reveal.
+- Shows, doesn't tell: instead of "this was shocking", give the number, the date, the receipt that makes
+  the viewer feel it.
+- Never sneers, never mocks believers ("anyone can be fooled by this, that's why it works"), never says
+  "folks", "in today's video", "buckle up", "let's dive in", "delve", "tapestry", "it's important to note",
+  "game-changer", "little did they know", "in conclusion", "the truth is out there"."""
+STOCK_PHRASES = ["in today's video", "buckle up", "let's dive in", "delve", "tapestry", "it's important to note",
+                 "game-changer", "game changer", "little did they know", "in conclusion", "the truth is out there",
+                 "in today's world", "a testament to", "folks", "imagine a world"]
+
 VOICE_RULES = """You write narration for "Followers or Facts", a calm, kind fact-check channel.
 The narrator is Professor Owlbert McFinnegan, a warm, curious owl professor.
 
@@ -64,6 +120,8 @@ Hard rules (breaking any of them makes the script unusable):
 8. The video must answer four questions, each in at least one scene with that role:
    claim (what was claimed), record (what the record says), benefit (who benefited),
    harm (what it did to people). Start with an "intro" scene and end with a "verdict" scene.
+   A "tell" scene names the manipulation trick; a "toolkit" scene gives the question to ask next time.
+   Show the myth only once, clearly as something someone sold; open and close on the fact.
 9. VISUAL describes a picture for an illustrator: scrapbook documentary style, objects,
    places, documents, moods. No real people's faces, no readable text, no logos.
 10. ON_SCREEN_TEXT is at most 8 words (a date, a place, a short label) or empty."""
@@ -136,6 +194,47 @@ def _packet_for_prompt(packet: dict[str, Any]) -> str:
     return json.dumps(slim, ensure_ascii=False, indent=1)
 
 
+def _scene_count(minutes: float) -> int:
+    return max(6, min(16, round(minutes * 1.2) + 2))
+
+
+def _words_for(role: str, base: int) -> int:
+    return int(base * {"intro": 0.7, "verdict": 0.8, "toolkit": 0.6, "outro": 0.4}.get(role, 1.0))
+
+
+def _facts_for(scene: dict[str, Any], packet: dict[str, Any]) -> str:
+    """Only this scene's evidence, in full, for the scene writer."""
+    want_src = set(scene.get("source_ids") or [])
+    want_q = {int(x) for x in scene.get("excerpt_ids") or [] if str(x).isdigit()}
+    want_claims = set(scene.get("claim_ids") or [])
+    out = []
+    for c in packet["claims"]:
+        srcs = [s for s in c["sources"] if s["source_id"] in want_src]
+        quotes = [e for e in c["excerpts"] if int(e["excerpt_id"]) in want_q or e["source_id"] in want_src]
+        if c["claim_id"] in want_claims or srcs or quotes:
+            out.append({"claim_id": c["claim_id"], "claim": c["short_title"], "verdict": c["falsity_status"],
+                        "summary": c.get("claim_summary"), "who_benefited": c.get("who_benefited"),
+                        "harm": c.get("harm_summary"), "year": c.get("first_known_year"),
+                        "sources": [{"source_id": s["source_id"], "title": s["title"], "date": s.get("date"),
+                                     "what_it_shows": s.get("summary") or ""} for s in srcs],
+                        "verified_quotes": [{"excerpt_id": e["excerpt_id"], "source_id": e["source_id"],
+                                             "text": e["text"]} for e in quotes]})
+    return json.dumps(out, ensure_ascii=False, indent=1) if out else "(no facts: this scene must not state facts)"
+
+
+def _problems(sc: dict[str, Any], target: int) -> list[str]:
+    words = len(sc.get("narration", "").split())
+    low = sc.get("narration", "").lower()
+    out = []
+    if words < target * 0.75:
+        out.append(f"It's too short: {words} words. Write about {target} words: add the concrete details from "
+                   "the facts (dates, numbers, places, what the documents say), not padding.")
+    stock = [p for p in STOCK_PHRASES if p in low]
+    if stock:
+        out.append(f"Remove these stock phrases: {', '.join(stock)}.")
+    return out
+
+
 def run(ctx: Context) -> None:
     ep = ctx.episode
     if not ep.path("research.json").exists():
@@ -143,11 +242,24 @@ def run(ctx: Context) -> None:
     packet = selected_packet(ep)
     if not packet["claims"]:
         raise StageError("No evidence is ticked on the Research page.")
+    if ctx.options.get("expand"):
+        return _expand(ctx, packet)
+    from .. import styles, techniques
     from .stories import chosen
     story = chosen(ep)
-    minutes = float(ctx.options.get("minutes", 8))
-    words = int(minutes * WORDS_PER_MINUTE)
-    ctx.progress(f"Writing a ~{minutes:g} minute script with {settings()['ollama']['writer_model']}", 10)
+    creative = ep.creative()
+    style = styles.get(creative["style"])
+    minutes = float(ctx.options.get("minutes", creative.get("minutes", 8)))
+    ep.set_creative(minutes=minutes)
+    words = int(minutes * style.wpm * 0.92)   # a little room for music stings and quote cards
+    n_scenes = _scene_count(minutes)
+    base = int(words / max(1, n_scenes - 0.9))
+    model = settings()["ollama"]["writer_model"]
+    humor = ["No jokes.", "A light touch of warmth.", "Some gentle humor aimed at the trick or the sellers.",
+             "Plenty of satire, punching up at the sellers only, never at believers or victims."][creative["humor"]]
+    style_text = (f"Video style: {style.name}. {style.tone}\nHumor: {humor}\n"
+                  f"A sample of the voice in this style (match the register, don't copy the content):\n"
+                  f"\"{style.sample}\"")
     story_text = ""
     if story:
         excerpts = _excerpt_map(packet)
@@ -163,36 +275,120 @@ def run(ctx: Context) -> None:
                     src.append(ref)
             beats.append({"role": b["role"], "beat": b["beat"], "source_ids": list(dict.fromkeys(src)),
                           "excerpt_ids": quotes})
-        plan = {k: story[k] for k in ("title", "logline", "angle", "opening_hook")}
+        plan = {k: story.get(k) for k in ("title", "logline", "angle", "opening_hook")}
         plan["beats"] = beats
-        story_text = ("\nFollow this approved story plan, beat by beat (one or more scenes per beat). Each "
-                      "beat lists the source_ids and excerpt_ids to use for it:\n"
-                      + json.dumps(plan, ensure_ascii=False, indent=1) + "\n")
-    answer = Ollama().chat_json([
+        plan["tricks_to_teach"] = [{"name": t.name, "meaning": t.meaning, "everyday_example": t.everyday,
+                                    "ask": t.ask} for t in (techniques.get(k) for k in story.get("techniques", [])) if t]
+        story_text = ("\nThe approved story plan (follow it; each beat lists the source_ids and excerpt_ids to "
+                      "use):\n" + json.dumps(plan, ensure_ascii=False, indent=1) + "\n")
+    llm = Ollama()
+
+    # 1. outline
+    ctx.progress(f"Planning {n_scenes} scenes in the {style.name} style with {model}", 3)
+    outline = llm.chat_json([
         {"role": "system", "content": VOICE_RULES},
         {"role": "user", "content": (
-            f"Episode working title: {story['title'] if story else ep.title}\n"
-            f"Target length: about {words} words of narration in 6 to 12 scenes. Owlbert narrates "
-            "everything in the first person as the curious owl professor.\n"
-            + (f"Extra direction from the producer: {ctx.options['direction']}\n"
-               if ctx.options.get("direction") else "")
-            + story_text
-            + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
-    ], SCRIPT_SCHEMA, temperature=0.6,
-        # the answer also carries picture descriptions and source lists: roughly twice the narration
-        on_text=ctx.writing("Writing the script", 10, 95, expect_words=words * 2))
-    scenes = answer.get("scenes") or []
-    if len(scenes) < 3:
-        raise StageError("The draft came back with fewer than 3 scenes. Run the stage again.")
-    for n, sc in enumerate(scenes, 1):
+            f"Plan the scenes for: {story['title'] if story else ep.title}\n{style_text}\n"
+            f"Plan exactly {n_scenes} scenes for a {minutes:g}-minute video. For each: its role, what it must do "
+            "(purpose), how it links to the one before (open / but / therefore; avoid 'and then'), the claim_ids, "
+            "source_ids (S-...) and excerpt_ids (numbers) it uses, whether Owlbert is on camera, and a picture "
+            "idea that fits the style. Include a 'tell' scene and a 'toolkit' scene.\n"
+            + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
+            + story_text + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
+    ], OUTLINE_SCHEMA, temperature=0.6, on_text=ctx.writing("Planning the scenes", 3, 15, 60 * n_scenes))
+    planned = (outline.get("scenes") or [])[:16]
+    if len(planned) < 3:
+        raise StageError("The outline came back with fewer than 3 scenes. Press Write it again.")
+    title = outline.get("title") or (story or {}).get("title") or ep.title
+
+    # 2. one scene at a time
+    scenes: list[dict[str, Any]] = []
+    for n, plan_sc in enumerate(planned, 1):
+        ctx.check_cancel()
+        target = _words_for(plan_sc["role"], base)
+        prev = scenes[-1]["narration"] if scenes else ""
+        pct0, pct1 = 15 + 80 * (n - 1) / len(planned), 15 + 80 * n / len(planned)
+        messages = [
+            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT},
+            {"role": "user", "content": (
+                f"Video: {title}. Central question: {outline.get('central_question', '')}\n{style_text}\n\n"
+                f"Write scene {n} of {len(planned)}. Role: {plan_sc['role']}. Purpose: {plan_sc['purpose']}. "
+                f"It links to the previous scene with '{plan_sc['link']}'. "
+                f"{'Owlbert is on camera. ' if plan_sc.get('owl_on_camera') else ''}"
+                f"Picture idea: {plan_sc.get('visual_idea', '')}\n"
+                f"Write about {target} words of narration (that matters: the video must fill "
+                f"{minutes:g} minutes). Every fact must come from the facts below; list the claim_ids, "
+                "source_ids and excerpt_ids you used. The visual describes the picture for an illustrator in "
+                "this style.\n"
+                + (f"The previous scene ended: \"{' '.join(prev.split()[-40:])}\"\n" if prev else "")
+                + f"\nFacts for this scene:\n{_facts_for(plan_sc, packet)}")},
+        ]
+        sc = llm.chat_json(messages, SCENE_SCHEMA, temperature=0.75,
+                           on_text=ctx.writing(f"Writing scene {n} of {len(planned)}", pct0, pct1 - 2, target + 60))
+        # 3. one fix-up if it's short or full of stock phrases
+        issues = _problems(sc, target)
+        if issues:
+            ctx.progress(f"Polishing scene {n} of {len(planned)}: " + issues[0].split(":")[0], pct1 - 2)
+            sc = llm.chat_json(messages + [
+                {"role": "assistant", "content": json.dumps(sc, ensure_ascii=False)},
+                {"role": "user", "content": "Rewrite this scene. " + " ".join(issues) + " Keep every fact sourced."},
+            ], SCENE_SCHEMA, temperature=0.7, on_text=ctx.writing(f"Polishing scene {n}", pct1 - 2, pct1, target + 60))
+        sc["role"] = plan_sc["role"]
         sc["scene_id"] = f"SCENE_{n:03d}"
-        sc["est_seconds"] = round(len(sc.get("narration", "").split()) / WORDS_PER_MINUTE * 60)
+        if not sc.get("claim_ids") and plan_sc.get("claim_ids"):
+            sc["claim_ids"] = plan_sc["claim_ids"]
         for note in fix_refs(sc, packet):
             ctx.log(note)
+        scenes.append(sc)
+    for sc in scenes:
+        sc["est_seconds"] = round(len(sc.get("narration", "").split()) / style.wpm * 60)
     header = {"Episode": ep.project_id, "Arc": (packet.get("arc") or {}).get("arc_id", "-"),
-              "Drafted by": settings()["ollama"]["writer_model"]}
-    write_text(ep.path("script.md"), render(answer.get("title") or ep.title, scenes, header))
-    ctx.log(f"Draft written: {len(scenes)} scenes. Read and edit script.md, then Re-check.")
+              "Style": style.name, "Target": f"{minutes:g} min", "Drafted by": model}
+    write_text(ep.path("script.md"), render(title, scenes, header))
+    total = sum(len(sc.get("narration", "").split()) for sc in scenes)
+    ctx.log(f"Draft written: {len(scenes)} scenes, {total} words (aim {words}). Read and edit, then approve.")
+
+
+def _expand(ctx: Context, packet: dict[str, Any]) -> None:
+    """'Make it longer': rewrite only the scenes that are shorter than their share of the target."""
+    from .. import styles
+    ep = ctx.episode
+    creative = ep.creative()
+    style = styles.get(creative["style"])
+    minutes = float(ctx.options.get("minutes", creative.get("minutes", 8)))
+    script = load(ep)
+    scenes = script["scenes"]
+    words = int(minutes * style.wpm * 0.92)
+    base = int(words / max(1, len(scenes) - 0.9))
+    llm = Ollama()
+    short = [sc for sc in scenes if len(sc["narration"].split()) < _words_for(sc["role"], base) * 0.9]
+    if not short:
+        ctx.progress("Every scene is already long enough.", 100)
+        return
+    for n, sc in enumerate(short, 1):
+        ctx.check_cancel()
+        target = _words_for(sc["role"], base)
+        new = llm.chat_json([
+            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT},
+            {"role": "user", "content": (
+                f"Style: {style.name}. {style.tone}\nThis scene is too short ({len(sc['narration'].split())} "
+                f"words). Rewrite it at about {target} words by adding concrete detail from its facts (dates, "
+                "numbers, what the documents say, what it meant for people), not padding. Keep its sources.\n"
+                f"Scene: {json.dumps({k: sc[k] for k in ('role', 'narration', 'visual', 'on_screen_text', 'claim_ids', 'source_ids', 'excerpt_ids')}, ensure_ascii=False)}\n"
+                f"Facts:\n{_facts_for(sc, packet)}")},
+        ], SCENE_SCHEMA, temperature=0.7,
+            on_text=ctx.writing(f"Lengthening {sc['scene_id']} ({n}/{len(short)})",
+                                100 * (n - 1) / len(short), 100 * n / len(short), target + 60))
+        for k in ("narration", "visual", "on_screen_text", "claim_ids", "source_ids", "excerpt_ids"):
+            if new.get(k):
+                sc[k] = new[k]
+        fix_refs(sc, packet)
+        sc["est_seconds"] = round(len(sc["narration"].split()) / style.wpm * 60)
+    text = ep.path("script.md").read_text(encoding="utf-8")
+    header_line = next((ln for ln in text.splitlines() if ln.startswith("**Episode:**")), "")
+    header = dict(re.findall(r"\*\*(.+?):\*\* ([^·]+?)(?: · |$)", header_line)) or {"Episode": ep.project_id}
+    write_text(ep.path("script.md"), render(script["title"], scenes, {k: v.strip() for k, v in header.items()}))
+    ctx.progress(f"Lengthened {len(short)} scene(s).", 100)
 
 
 def check(ep: Episode) -> list[Check]:
@@ -262,11 +458,22 @@ def check(ep: Episode) -> list[Check]:
     narration = " ".join(sc["narration"] for sc in scenes)
     grade = reading_grade(narration)
     words = len(narration.split())
+    from .. import styles
+    creative = ep.creative()
+    style = styles.get(creative["style"])
+    target_min = float(creative.get("minutes", 8))
+    minutes = words / style.wpm
+    if minutes < target_min * 0.8:
+        out.append(Check(BLOCK, f"The script runs about {minutes:.1f} minutes but you asked for {target_min:g}. "
+                                "Press Make it longer (or lower the Length and write it again)."))
+    elif minutes < target_min * 0.95:
+        out.append(Check(WARN, f"The script runs about {minutes:.1f} of the {target_min:g} minutes you asked for. "
+                               "Make it longer if you want the full length."))
     if grade > 8:
         out.append(Check(WARN, f"Reading level is about grade {grade}; aim for 6-7. Shorter "
                                "sentences and plainer words will fix it."))
-    out.append(Check(OK, f"{len(scenes)} scenes, {words} words (~{words / WORDS_PER_MINUTE:.1f} "
-                         f"min), reading grade {grade}."))
+    out.append(Check(OK, f"{len(scenes)} scenes, {words} words (about {minutes:.1f} min in the {style.name} "
+                         f"style), reading grade {grade}."))
     return out
 
 

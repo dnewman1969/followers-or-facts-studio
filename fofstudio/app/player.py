@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget)
+
+from ..config import settings
+from . import sound
 
 
 def fmt(ms: int) -> str:
@@ -28,10 +30,9 @@ class Player(QWidget):
         self.video.setStyleSheet("background:black;")
         lay.addWidget(self.video, 1)
         self.player = QMediaPlayer(self)
-        self.audio = None
-        # no speakers/headphones (or FOF_NO_AUDIO set, as in automated tests): play the picture silently
-        if not os.environ.get("FOF_NO_AUDIO") and QMediaDevices.audioOutputs():
-            self.audio = QAudioOutput(self)
+        # always connect to the speakers chosen in Settings (kept as self.audio so it isn't thrown away)
+        self.audio = sound.make_output(self)
+        if self.audio:
             self.player.setAudioOutput(self.audio)
         self.player.setVideoOutput(self.video)
         controls = QHBoxLayout()
@@ -49,6 +50,23 @@ class Player(QWidget):
         controls.addWidget(self.stop_btn)
         controls.addWidget(self.slider, 1)
         controls.addWidget(self.time)
+        self.vol = QSlider(Qt.Horizontal)
+        self.vol.setRange(0, 100)
+        self.vol.setFixedWidth(90)
+        self.vol.setValue(int(settings()["sound"]["listen_volume"]))
+        self.vol.setToolTip("How loud the preview plays on this PC (doesn't change the video)")
+        self.vol.valueChanged.connect(self._volume)
+        self.mute_btn = QPushButton("🔊")
+        self.mute_btn.setFixedWidth(40)
+        self.mute_btn.setToolTip("Mute / unmute")
+        self.mute_btn.clicked.connect(self._mute)
+        controls.addWidget(self.mute_btn)
+        controls.addWidget(self.vol)
+        if not self.audio:
+            self.mute_btn.setText("🔇")
+            self.mute_btn.setToolTip("No sound in this run")
+            self.mute_btn.setEnabled(False)
+            self.vol.setEnabled(False)
         lay.addLayout(controls)
         self.player.positionChanged.connect(self._pos)
         self.player.durationChanged.connect(lambda d: self.slider.setRange(0, d))
@@ -63,6 +81,25 @@ class Player(QWidget):
         else:
             self.player.setSource(QUrl())
             self.time.setText("Nothing to play yet")
+
+    def _volume(self, v: int) -> None:
+        if self.audio:
+            self.audio.setVolume(sound.linear(v))
+            self.audio.setMuted(False)
+            self.mute_btn.setText("🔊")
+
+    def _mute(self) -> None:
+        if self.audio:
+            self.audio.setMuted(not self.audio.isMuted())
+            self.mute_btn.setText("🔇" if self.audio.isMuted() else "🔊")
+
+    def refresh_audio(self) -> None:
+        """Settings changed: use the new speaker and volume."""
+        if self.audio:
+            sound.apply(self.audio)
+            self.vol.blockSignals(True)
+            self.vol.setValue(int(settings()["sound"]["listen_volume"]))
+            self.vol.blockSignals(False)
 
     def toggle(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlayingState:

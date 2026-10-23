@@ -18,9 +18,8 @@ from ..scriptfmt import parse
 from ..util import StageError, read_json, utc_now, write_json, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 from .common import cited_sources, credit_line, source_line
+from .storyboard import shots as board_shots
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
-          "https://www.googleapis.com/auth/youtube.force-ssl"]
 
 
 def _stamp(seconds: float) -> str:
@@ -63,7 +62,10 @@ def package(ctx: Context) -> None:
         head += ["Chapters:"] + [f"{_stamp(c['start'])} {c['name']}" for c in chapters] + [""]
     tail = ["", credit_line(ep), "",
             "Illustrations are made with AI on our own computer and are labelled on screen. Quotes are "
-            "shown exactly as they appear in the sources. Owlbert is a cartoon with a synthetic voice.",
+            "shown exactly as they appear in the sources. Owlbert is a cartoon with a synthetic voice."
+            + (" Caricatures are satirical cartoon illustrations of the documented public conduct of public "
+               "figures, not real images; every claim about them is sourced below."
+               if any(sh.get("kind") == "caricature" for sh in board_shots(ep)) else ""),
             "Spotted a mistake? Tell us in the comments. Corrections are pinned and logged publicly."]
     description, left_out = fit_description(head, proof_links(ep), tail)
     proof = proof_links(ep)
@@ -78,7 +80,10 @@ def package(ctx: Context) -> None:
     tags = ["fact check", "Followers or Facts", "conspiracy theories", "media literacy",
             "debunk", "history"] + ([arc["title"][:60]] if arc.get("title") else [])
 
-    thumb_words = ctx.options.get("thumbnail_text") or " ".join(title.split()[:4])
+    from .stories import chosen
+    story = chosen(ep) or {}
+    thumb_words = (ctx.options.get("thumbnail_text") or story.get("thumbnail_words")
+                   or " ".join(title.split()[:4]))
     first_ai = next((s for s in ep.storyboard().get("shots", [])
                      if s["type"] == "ai_image" and s.get("image", {}).get("raw")), None)
     background = ep.abs(first_ai["image"]["raw"]) if first_ai else None
@@ -183,31 +188,14 @@ def check_package(ep: Episode) -> list[Check]:
 
 
 def _youtube():
+    """Uses the sign-in from Settings; never opens a browser in the middle of a job."""
+    from .. import youtube
     try:
-        from google.auth.transport.requests import Request
-        from google.oauth2.credentials import Credentials
-        from google_auth_oauthlib.flow import InstalledAppFlow
-        from googleapiclient.discovery import build
-    except ImportError:
-        raise StageError("YouTube upload needs extra packages. Run setup.ps1 -YouTube "
-                         "(or pip install google-api-python-client google-auth-oauthlib).")
-    secrets = settings()["youtube"]["client_secrets"]
-    if not secrets or not Path(secrets).exists():
-        raise StageError("Set [youtube] client_secrets in Settings to your OAuth client file. "
-                         "docs/YOUTUBE.md explains how to make one (free).")
-    token = Paths().root / "youtube-token.json"
-    creds = Credentials.from_authorized_user_file(str(token), SCOPES) if token.exists() else None
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception:  # noqa: BLE001 - expired testing-mode tokens: log in again
-                creds = None
-        if not creds or not creds.valid:
-            flow = InstalledAppFlow.from_client_secrets_file(secrets, SCOPES)
-            creds = flow.run_local_server(port=0, open_browser=True)
-        token.write_text(creds.to_json(), encoding="utf-8")
-    return build("youtube", "v3", credentials=creds)
+        return youtube.service(interactive=False)
+    except StageError:
+        raise StageError("Not signed in to YouTube (or the sign-in ran out). Go to Settings → YouTube → Sign in, "
+                         "then press Upload again. To stop it running out every 7 days, set your Google Cloud app "
+                         "to 'In production' (docs/YOUTUBE.md, step 6).")
 
 
 def upload(ctx: Context) -> None:
@@ -225,18 +213,32 @@ def upload(ctx: Context) -> None:
     }
     media = MediaFileUpload(str(ep.abs(meta["video"])), chunksize=8 * 1024 * 1024, resumable=True,
                             mimetype="video/mp4")
-    request = yt.videos().insert(part="snippet,status", body=body, media_body=media)
-    response = None
+    from .. import youtube
+    acct = youtube.account() or {}
+    ctx.progress(f"Uploading to {acct.get('title', 'your channel')} as {meta['privacy']}...", 1)
+    request = yt.videos().insert(part="snippet,status", body=body, media_body=media, notifySubscribers=False)
+    response, retries = None, 0
+    import time as _time
     while response is None:
         ctx.check_cancel()
-        status, response = request.next_chunk()
+        try:
+            status, response = request.next_chunk()
+        except Exception as exc:  # noqa: BLE001 - retry YouTube's brief server errors, stop on anything else
+            code = getattr(getattr(exc, "resp", None), "status", None)
+            if code in (500, 502, 503, 504) and retries < 6:
+                retries += 1
+                ctx.progress(f"YouTube had a hiccup ({code}); trying again in {2 ** retries} s...", None)
+                _time.sleep(2 ** retries)
+                continue
+            raise
         if status:
-            ctx.progress(f"Uploading {int(status.progress() * 100)}%")
+            ctx.progress(f"Uploading the video: {int(status.progress() * 100)}%", status.progress() * 95)
     video_id = response["id"]
     db.execute("UPDATE project SET youtube_id=? WHERE project_id=?", (video_id, ep.project_id))
     write_json(ep.path("publish", "upload.json"), {"youtube_id": video_id, "privacy": meta["privacy"],
                                                      "uploaded_at": utc_now()})
     ctx.log(f"Uploaded: https://youtu.be/{video_id} ({meta['privacy']})")
+    ctx.progress("Uploaded. Setting the thumbnail and captions...", 96)
     try:
         yt.thumbnails().set(videoId=video_id,
                             media_body=MediaFileUpload(str(ep.abs(meta["thumbnail"])))).execute()

@@ -6,24 +6,30 @@ import html
 
 from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QPushButton, QTextBrowser, QVBoxLayout, QWidget)
 
+from ... import techniques
 from ...stages import stories
 from ...util import read_json
 from ..common import GOLD, GREEN, MUTED
+from ..creative import CreativePanel
 from ..widgets import StagePage, click_feedback
 
 ROLE_NAMES = {"intro": "Opening", "claim": "The claim", "record": "What the record shows",
-              "benefit": "Who cashed in", "harm": "Who got hurt", "verdict": "Verdict"}
+              "benefit": "Who cashed in", "harm": "Who got hurt", "tell": "Owlbert names the trick",
+              "verdict": "Verdict"}
 
 
 class StoriesPage(StagePage):
     TITLE = "Stories"
-    HELP = ("Step 3. The local AI writes three different ways to tell this story and take the lie apart, using only "
-            "the evidence you ticked. Read each one, press Use this story on your favourite, or Rewrite with notes. "
-            "All three are kept: to make another of them later, go to Database → Researched ★.")
+    HELP = ("Step 3. First choose how the video is told: the style, length and humor. Then the local AI writes three "
+            "ways to tell how the lie was built and take it apart, using only the evidence you ticked, and names the "
+            "trick Owlbert will teach. Pick one, or Rewrite with notes. All three are kept: to make another later, go "
+            "to Database → Researched ★.")
     APPROVE_STAGE = "stories"
 
     def __init__(self, window):
         super().__init__(window)
+        self.creative = CreativePanel()
+        self.body.addWidget(self.creative)
         top = QHBoxLayout()
         self.make_btn = QPushButton("Create 3 stories")
         self.make_btn.setObjectName("primary")
@@ -49,6 +55,10 @@ class StoriesPage(StagePage):
             cols.addWidget(box)
             self.cards.append((view, use, redo))
         self.body.addLayout(cols, 1)
+
+    def set_episode(self, ep) -> None:
+        self.creative.set_episode(ep)
+        super().set_episode(ep)
 
     def refresh(self) -> None:
         super().refresh()
@@ -79,6 +89,9 @@ class StoriesPage(StagePage):
                         f"{' <span style=color:' + MUTED + '>[' + ', '.join(b['evidence_ids']) + ']</span>' if b['evidence_ids'] else ''}</li>"
                         for b in s.get("beats", []))
         owl = "".join(f"<li>{e(o)}</li>" for o in s.get("owl_moments", []))
+        tricks = [techniques.get(k) for k in s.get("techniques", []) if techniques.get(k)]
+        teach = ("<p><b>Teaches the trick:</b> " + "; ".join(f"<b>{e(t.name)}</b> ({e(t.meaning)})" for t in tricks)
+                 + "</p>") if tricks else ""
         mark = f"<p style='color:{GREEN}'><b>✔ This is the chosen story</b></p>" if picked else ""
         if used:
             mark += (f"<p style='color:{GOLD}'><b>Already made as {', '.join(used)}.</b> Pick another one for a "
@@ -86,7 +99,9 @@ class StoriesPage(StagePage):
         rev = f" <span style='color:{MUTED}'>(rewrite {s['revision'] - 1})</span>" if s.get("revision", 1) > 1 else ""
         return (f"{mark}<h2>{e(s['title'])}{rev}</h2><p><i>{e(s['logline'])}</i></p>"
                 f"<p><b>Angle:</b> {e(s['angle'])}</p><p><b>Opening:</b> {e(s['opening_hook'])}</p>"
-                f"<p><b>How it goes:</b></p><ol>{beats}</ol>"
+                + (f"<p><b>Thumbnail:</b> <span style='background:#c0392b; color:white; padding:2px 6px;'>"
+                   f"&nbsp;{e(s['thumbnail_words'])}&nbsp;</span></p>" if s.get("thumbnail_words") else "")
+                + teach + f"<p><b>How it goes:</b></p><ol>{beats}</ol>"
                 f"<p><b>Where Owlbert appears:</b></p><ul>{owl}</ul>")
 
     def _use(self, i: int) -> None:

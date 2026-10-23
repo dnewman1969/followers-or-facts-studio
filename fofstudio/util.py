@@ -137,3 +137,21 @@ def normalize_for_match(text: str) -> str:
     for a, b in table.items():
         text = text.replace(a, b)
     return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def reveal(path) -> None:
+    """Open the folder holding a file, with the file selected (Explorer on Windows)."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    path = Path(path).resolve()
+    if sys.platform == "win32":
+        # Explorer wants one argument: /select,"C:\path with spaces\file.mp4"
+        subprocess.Popen(f'explorer /select,"{path}"')
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    else:
+        folder = path.parent if path.is_file() else path
+        if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+            subprocess.Popen(["xdg-open", str(folder)])
