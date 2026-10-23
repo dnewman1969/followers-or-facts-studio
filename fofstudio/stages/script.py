@@ -92,16 +92,25 @@ def run(ctx: Context) -> None:
     packet = read_json(ep.path("research.json"))
     if not packet:
         raise StageError("Run and approve the Research stage first.")
+    from .stories import chosen
+    story = chosen(ep)
     minutes = float(ctx.options.get("minutes", 8))
     words = int(minutes * WORDS_PER_MINUTE)
-    ctx.progress(f"Writing a ~{minutes:g} minute script with {settings()['ollama']['writer_model']}")
+    ctx.progress(f"Writing a ~{minutes:g} minute script with {settings()['ollama']['writer_model']}", 10)
+    story_text = ""
+    if story:
+        story_text = ("\nFollow this approved story plan, beat by beat (one or more scenes per beat):\n"
+                      + json.dumps({k: story[k] for k in ("title", "logline", "angle", "opening_hook", "beats")},
+                                   ensure_ascii=False, indent=1) + "\n")
     answer = Ollama().chat_json([
         {"role": "system", "content": VOICE_RULES},
         {"role": "user", "content": (
-            f"Episode working title: {ep.title}\n"
-            f"Target length: about {words} words of narration in 6 to 12 scenes.\n"
+            f"Episode working title: {story['title'] if story else ep.title}\n"
+            f"Target length: about {words} words of narration in 6 to 12 scenes. Owlbert narrates "
+            "everything in the first person as the curious owl professor.\n"
             + (f"Extra direction from the producer: {ctx.options['direction']}\n"
                if ctx.options.get("direction") else "")
+            + story_text
             + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
     ], SCRIPT_SCHEMA, temperature=0.6)
     scenes = answer.get("scenes") or []

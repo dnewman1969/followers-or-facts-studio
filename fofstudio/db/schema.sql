@@ -170,6 +170,16 @@ CREATE TABLE IF NOT EXISTS queue_control (
 );
 INSERT OR IGNORE INTO queue_control(id, paused) VALUES (1, 0);
 
+-- Pages the research agents downloaded (so nothing is fetched twice) and API use per day.
+CREATE TABLE IF NOT EXISTS web_cache (
+    url TEXT PRIMARY KEY, fetched_at TEXT, status INTEGER, content_type TEXT,
+    path TEXT, text_path TEXT, final_url TEXT, via TEXT
+);
+CREATE TABLE IF NOT EXISTS api_usage (
+    day TEXT NOT NULL, provider TEXT NOT NULL, calls INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, provider)
+);
+
 CREATE TABLE IF NOT EXISTS legacy_video_tracker (row_json TEXT NOT NULL);
 
 -- ---------------------------------------------------------------- readiness, computed from data

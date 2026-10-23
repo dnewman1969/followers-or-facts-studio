@@ -180,16 +180,23 @@ def _free_gpu_for(engine: str) -> None:
 def run_job(job: dict[str, Any]) -> None:
     job_id = job["job_id"]
     stop = threading.Event()
-    progress_text = {"value": ""}
+    progress_text: dict[str, Any] = {"value": "", "pct": None, "written": 0.0}
 
     def beat() -> None:
         while not stop.wait(HEARTBEAT_SECONDS):
-            db.execute("UPDATE job SET heartbeat_at=?, progress=? WHERE job_id=?",
-                       (utc_now(), progress_text["value"][:500], job_id))
+            db.execute("UPDATE job SET heartbeat_at=?, progress=?, progress_pct=? WHERE job_id=?",
+                       (utc_now(), progress_text["value"][:500], progress_text["pct"], job_id))
 
-    def progress(text: str) -> None:
+    def progress(text: str, pct: float | None = None) -> None:
+        """Shown live in the window: a line of text and, when known, a percentage."""
         progress_text["value"] = text
+        if pct is not None:
+            progress_text["pct"] = max(0, min(100, int(pct)))
         log.info(text)
+        if time.time() - progress_text["written"] > 0.8:  # don't hammer the database
+            progress_text["written"] = time.time()
+            db.execute("UPDATE job SET heartbeat_at=?, progress=?, progress_pct=? WHERE job_id=?",
+                       (utc_now(), text[:500], progress_text["pct"], job_id))
 
     def cancelled() -> bool:
         row = db.one("SELECT cancel_requested FROM job WHERE job_id=?", (job_id,))
@@ -206,7 +213,7 @@ def run_job(job: dict[str, Any]) -> None:
             from . import rendermode
             suspended = rendermode.suspend(rendermode.suggested_names())
         pipeline.run_now(ep, stage.name, options, log=log.info, progress=progress, cancelled=cancelled)
-        db.execute("UPDATE job SET status='done', finished_at=?, progress=? WHERE job_id=?",
+        db.execute("UPDATE job SET status='done', finished_at=?, progress=?, progress_pct=100 WHERE job_id=?",
                    (utc_now(), "Finished - waiting for your approval", job_id))
         if settings()["pipeline"]["auto_continue"]:
             log.info("auto_continue is on, but every stage still waits for your approval.")

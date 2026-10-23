@@ -18,8 +18,6 @@ from . import db
 from .config import Paths
 from .util import normalize_for_match, sha256_file, utc_now, write_text
 
-USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) FollowersOrFactsStudio/0.1 "
-              "(research archive; personal use)")
 
 
 class _TextExtractor(HTMLParser):
@@ -102,9 +100,12 @@ def fetch_source(source_id: str, refresh: bool = False, timeout: float = 40) -> 
     folder = Paths().ensure().source_copies / source_id
     folder.mkdir(parents=True, exist_ok=True)
     stamp = utc_now().replace(":", "")[:15]
+    from .agents import web  # honest User-Agent, robots.txt and one request at a time per site
+    if not web.allowed(url):
+        return {"source_id": source_id, "ok": False, "error": "the site asks robots not to read this page"}
     try:
-        r = requests.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT},
-                         allow_redirects=True)
+        web._wait_turn(web.urlparse(url).netloc)
+        r = web.session().get(url, timeout=timeout, allow_redirects=True)
     except requests.RequestException as exc:
         db.execute("UPDATE source SET accessed_at=?, http_status=? WHERE source_id=?",
                    (utc_now(), None, source_id))

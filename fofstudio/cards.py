@@ -181,7 +181,7 @@ def ai_label(src: Path, out: Path, text: str = "AI illustration") -> Path:
     fnt = font("sans_bold", size)
     pad = size // 2
     tw = d.textlength(text, font=fnt)
-    x, y = img.width - tw - pad * 3, img.height - size - pad * 3
+    x, y = pad * 3, img.height - size - pad * 3  # bottom-left: the owl presenter has bottom-right
     d.rounded_rectangle((x - pad, y - pad // 2, x + tw + pad, y + size + pad), radius=pad,
                         fill=(0, 0, 0, 150))
     d.text((x, y), text, font=fnt, fill=(255, 255, 255, 230))
@@ -198,7 +198,7 @@ def label_overlay(width: int, height: int, out: Path, text: str = "AI illustrati
     fnt = font("sans_bold", size)
     pad = size // 2
     tw = d.textlength(text, font=fnt)
-    x, y = width - tw - pad * 3, height - size - pad * 3
+    x, y = pad * 3, height - size - pad * 3
     d.rounded_rectangle((x - pad, y - pad // 2, x + tw + pad, y + size + pad), radius=pad,
                         fill=(0, 0, 0, 150))
     d.text((x, y), text, font=fnt, fill=(255, 255, 255, 230))

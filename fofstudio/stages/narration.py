@@ -14,9 +14,12 @@ def run(ctx: Context) -> None:
     ep = ctx.episode
     script = load_script(ep)
     cfg = settings()["voice"]
+    owl = settings()["owl"]
     engine = get_engine(ctx.options.get("engine") or cfg["engine"])
-    voice = ctx.options.get("voice") or cfg["voice"]
-    speed = float(ctx.options.get("speed") or cfg["speed"])
+    # Owlbert's voice: a blend of two Kokoro voices, a touch slower, a semitone higher
+    voice = ctx.options.get("voice") or owl.get("voice") or cfg["voice"]
+    speed = float(ctx.options.get("speed") or owl.get("speed") or cfg["speed"])
+    pitch = float(ctx.options.get("pitch", owl.get("pitch_semitones", 0)))
     manifest = read_json(ep.path("audio", "narration.json"), {}) or {}
     redo = ctx.options.get("redo") or []
     for n, sc in enumerate(script["scenes"], 1):
@@ -25,20 +28,36 @@ def run(ctx: Context) -> None:
         if not text or text == "-":
             continue
         sid = sc["scene_id"]
-        digest = sha256_text(f"{engine.name}|{voice}|{speed}|{text}")
+        digest = sha256_text(f"{engine.name}|{voice}|{speed}|{pitch}|{text}")
         prev = manifest.get(sid)
         if prev and prev.get("digest") == digest and ep.abs(prev["path"]).exists() and \
                 not (redo == "all" or sid in redo):
             continue
-        ctx.progress(f"Narrating {sid} ({n}/{len(script['scenes'])}) with {engine.name}/{voice}")
         out = ep.path("audio", "narration", f"{sid}.wav")
+        ctx.progress(f"Owlbert is reading {sid} ({n}/{len(script['scenes'])})", 100 * (n - 1) / len(script["scenes"]))
         info = engine.synthesize(text, out, voice=voice, speed=speed,
                                  emotion=ctx.options.get("emotion", 0.5))
+        if pitch:
+            info["seconds"] = shift_pitch(out, pitch)
+            info["pitch_semitones"] = pitch
         manifest[sid] = {**info, "path": ep.rel(out), "digest": digest,
                          "text_sha": sha256_text(text), "made_at": utc_now()}
         write_json(ep.path("audio", "narration.json"), manifest)
     if not manifest:
         raise StageError("The script has no narration text.")
+
+
+def shift_pitch(wav, semitones: float) -> float:
+    """Raise or lower the voice without changing its speed (ffmpeg only, nothing to install)."""
+    from .. import media
+    from ..util import run
+    factor = 2 ** (semitones / 12)
+    tmp = wav.with_suffix(".pitch.wav")
+    run([media.ffmpeg(), "-y", "-hide_banner", "-loglevel", "error", "-i", str(wav), "-af",
+         f"asetrate=24000*{factor:.5f},aresample=24000,atempo={1 / factor:.5f},"
+         "equalizer=f=3000:t=q:w=1.2:g=2", "-ac", "1", "-ar", "24000", str(tmp)], label="tuning Owlbert's voice")
+    tmp.replace(wav)
+    return media.duration(wav)
 
 
 def check(ep: Episode) -> list[Check]:

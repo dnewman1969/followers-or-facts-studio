@@ -27,10 +27,25 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     return con
 
 
+# Columns added after v0.1. Old databases get them on start-up.
+MIGRATIONS = [
+    ("job", "progress_pct", "INTEGER"),
+    ("project", "subject_type", "TEXT"),
+    ("project", "subject_id", "TEXT"),
+    ("source", "archive_url", "TEXT"),
+    ("source", "found_by", "TEXT"),
+    ("source_excerpt", "supports", "TEXT"),
+]
+
+
 def init(path: Path | None = None) -> None:
     con = connect(path)
     try:
         con.executescript(SCHEMA.read_text(encoding="utf-8"))
+        for table, column, kind in MIGRATIONS:
+            have = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
+            if column not in have:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
     finally:
         con.close()
 

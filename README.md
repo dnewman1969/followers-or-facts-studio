@@ -6,31 +6,35 @@ No subscriptions: the AI runs on your PC (Ollama + ComfyUI + Kokoro), and the
 only online service is the free YouTube upload.
 
 ```
-Research ─► Script ─► Storyboard ─► Narration ─► Images ─► Animation ─► Captions ─► Music ─► Render ─► Package ─► Upload
-  (DB)      (Qwen)      (Qwen)       (Kokoro)   (Z-Image)   (Wan 2.2)   (Whisper)  (ACE-Step) (ffmpeg)  (sources,   (YouTube,
-                                                                                                         thumbnail)   private)
+1 Database ─► 2 Research ─► 3 Stories ─► 4 Script ─► 5 Storyboard ─► 6 Video ─► 7 Production ─► 8 Publish
+ (choose a    (agents find   (3 ways to   (Owlbert's   (3 pictures   (scene        (editor: speech,  (write-up with
+  story)       the proof)     tell it)     narration)   per scene)    instructions,  timeline, owl,    every proof link,
+                                                                      then clips)    preview, render)  upload private)
 ```
 
-**New here? Start with [docs/SETUP.md](docs/SETUP.md).** It's about 20 minutes plus downloads.
+**New here? Start with [docs/SETUP.md](docs/SETUP.md).**
 
-## What it does
+## How it feels to use
 
-| Stage | What happens | You check |
-|-------|--------------|-----------|
-| Research | Pulls the arc's claims and sources from the database, saves copies of the source web pages and PDFs, and finds quotes in them. A quote is kept only if it appears **word for word** in the saved copy. | Every claim has a primary source |
-| Script | Qwen 3 14B drafts the script from the research only, with claim and source IDs on every scene. You can edit `script.md`. | No invented sources, quotes are verified, 6th-grade reading level, the four questions are answered |
-| Storyboard | Each scene becomes shots: AI pictures, quote cards, title cards, real document screenshots. | No real person in a picture prompt |
-| Narration | Kokoro reads each scene (default voice: `bm_george`, British male). | Listen through |
-| Images | ComfyUI makes the AI pictures with Z-Image Turbo and the program stamps "AI illustration" on them. Cards are drawn locally, so quotes are always exact. | Look through, remake any |
-| Animation | Optional. Wan 2.2 animates one shot per scene (~5–6 min each on the 3060). Skip it for stills with camera moves. | Watch the clips |
-| Captions | Word-by-word timing for subtitles. | |
-| Music | Optional. ACE-Step makes a quiet instrumental bed, or you pick a track you own. | Listen |
-| Render | Everything assembled: camera moves, cross-fades, narration, music ducked under the voice, subtitles. NVENC on the RTX 3060. | Watch the whole thing |
-| Package | Title, description with every source and the Knowledge Fight credit, chapters, thumbnail with Owlbert, pinned comment. | Read it |
-| Upload | Uploads as **private**, marked as containing AI content. You make it public. | |
+- The bar along the top always shows what the computer is doing, how far along it is
+  (a percentage when known), how long it's been going, and a Cancel button.
+- Every button reacts when you click it, and a notice pops up when a job starts and when
+  it finishes (the taskbar button flashes too).
+- The steps down the left show ✔ approved, ● needs your OK, … running, ✖ failed.
+- Nothing moves on without your OK. Approve and continue takes you to the next step.
 
-Approving a stage unlocks the next. Redoing a stage sends the stages after it back
-for another look, so nothing stale gets published.
+## The steps
+
+| Step | What happens | You do |
+|------|--------------|--------|
+| 1 Database | Pick a Story, a Conspiracy, a Person or an Organization from the research database. A breakdown shows every claim it will cover, who benefited, the harm, the people involved and how much proof is on file. | Press **OK — research this** |
+| 2 Research | Research agents read the sources on file (or their Wayback Machine copies), search the web, court records (CourtListener), the Federal Register and the Library of Congress for more proof, and keep only quotes found word for word in the saved page. Every link gets a permanent Wayback copy. | Watch the progress line; untick anything you don't want in the write-up; approve |
+| 3 Stories | Three different story plans that tell the tale and take the lie apart: follow the money, then-and-now, and the people it hurt. | Pick one, or **Rewrite with notes** |
+| 4 Script | Owlbert's narration, written from the chosen story, with the proof each scene relies on. | Edit, save, approve |
+| 5 Storyboard | Three AI pictures per scene (Z-Image Turbo in ComfyUI), plus title and quote cards drawn as text. | Tick the pictures to use; remake any |
+| 6 Video | The AI writes how each picture plays out and how it will be made; then Wan 2.2 animates the chosen ones and the rest get slow camera moves. | Edit instructions; watch and approve each clip |
+| 7 Production | A video/audio editor: Owlbert reads the script into the speech track, then the timeline lines up the intro bumper, your clips, Owlbert in the corner, his voice, music and the outro. Preview player with Play/Pause/Stop. | Drag and trim, preview, **Render final video** |
+| 8 Publish | Title, description with every proof link and its archived copy, chapters, Knowledge Fight credit, thumbnail with Owlbert. | Edit, approve, **Upload** (private) |
 
 ## Where things live
 

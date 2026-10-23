@@ -1,4 +1,4 @@
-"""The window: sidebar on the left, one page at a time on the right."""
+"""The window: the steps down the left, the activity bar along the top, one page at a time."""
 
 from __future__ import annotations
 
@@ -6,22 +6,39 @@ import sys
 import traceback
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QListWidget, QMainWindow, QMessageBox,
-                               QStackedWidget, QWidget)
+from PySide6.QtGui import QColor, QIcon
+from PySide6.QtWidgets import (QApplication, QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+                               QMainWindow, QMessageBox, QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import APP_NAME, __version__, db, jobs
+from .. import APP_NAME, __version__, db, jobs, pipeline
+from ..comfy import Comfy
 from ..config import DEFAULTS, REPO, Paths, save_settings, settings_path
 from ..db import importer
+from ..episode import Episode, list_episodes
 from ..llm import Ollama
-from ..comfy import Comfy
-from .common import STYLE
-from .pages.episode import EpisodePage
-from .pages.home import HomePage
+from .common import GOLD, GREEN, MUTED, RED, STYLE
+from .pages.database import DatabasePage
+from .pages.production import ProductionPage
+from .pages.publish import PublishPage
 from .pages.queue import QueuePage
 from .pages.rendermode import RenderModePage
 from .pages.research import ResearchPage
+from .pages.script import ScriptPage
 from .pages.settings import SettingsPage
+from .pages.stories import StoriesPage
+from .pages.storyboard import StoryboardPage
+from .pages.video import VideoPage
+from .widgets import ActivityBar, Toast
+
+# (nav label, stage whose approval marks the step done)
+STEPS = [("1  Database", None), ("2  Research", "research"), ("3  Stories", "stories"), ("4  Script", "script"),
+         ("5  Storyboard", "storyboard"), ("6  Video", "video"), ("7  Production", "render"),
+         ("8  Publish", "upload")]
+GROUPS = {"research": ["research"], "stories": ["stories"], "script": ["script"], "storyboard": ["storyboard"],
+          "video": ["video_plan", "video"],
+          "render": ["narration", "captions", "music", "production", "preview", "render"],
+          "upload": ["package", "upload"]}
+TOOLS = ["Queue", "Render Mode", "Settings"]
 
 
 def first_run() -> None:
@@ -37,75 +54,164 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {__version__}")
-        self.resize(1360, 860)
-        icon = REPO / "brand" / "owlbert-profile.png"
+        self.resize(1480, 920)
+        icon = REPO / "brand" / "owlbert.ico"
         if icon.exists():
             self.setWindowIcon(QIcon(str(icon)))
         central = QWidget()
-        lay = QHBoxLayout(central)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.activity = ActivityBar()
+        self.activity.job_finished.connect(self._job_finished)
+        outer.addWidget(self.activity)
+        body = QHBoxLayout()
+        body.setSpacing(0)
+        left = QWidget()
+        left.setFixedWidth(220)
+        left.setStyleSheet("background:#1b1e2a;")
+        ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 10, 0, 10)
+        ep_label = QLabel("  Working on")
+        ep_label.setObjectName("muted")
+        ll.addWidget(ep_label)
+        self.picker = QComboBox()
+        self.picker.currentIndexChanged.connect(self._pick_episode)
+        ll.addWidget(self.picker)
         self.nav = QListWidget()
         self.nav.setObjectName("nav")
-        self.nav.setFixedWidth(190)
+        for label, _ in STEPS:
+            self.nav.addItem(label)
+        sep = QListWidgetItem("")
+        sep.setFlags(sep.flags() & ~sep.flags())
+        self.nav.addItem(sep)
+        for t in TOOLS:
+            self.nav.addItem("     " + t)
+        ll.addWidget(self.nav, 1)
+        body.addWidget(left)
         self.stack = QStackedWidget()
-        self.home = HomePage()
-        self.research = ResearchPage()
-        self.episode = EpisodePage()
-        self.queue = QueuePage()
-        self.rendermode = RenderModePage()
-        self.settings = SettingsPage()
-        for name, page in (("Home", self.home), ("Research", self.research), ("Episode", self.episode),
-                           ("Queue", self.queue), ("Render Mode", self.rendermode),
-                           ("Settings", self.settings)):
-            self.nav.addItem(name)
-            self.stack.addWidget(page)
-        self.nav.currentRowChanged.connect(self._go)
-        lay.addWidget(self.nav)
+        self.pages = [DatabasePage(self), ResearchPage(self), StoriesPage(self), ScriptPage(self),
+                      StoryboardPage(self), VideoPage(self), ProductionPage(self), PublishPage(self)]
+        self.tools = [QueuePage(), RenderModePage(), SettingsPage()]
+        for p in self.pages:
+            self.stack.addWidget(p)
+        self.stack.addWidget(QWidget())  # the separator row
+        for t in self.tools:
+            self.stack.addWidget(t)
         content = QWidget()
-        cl = QHBoxLayout(content)
-        cl.setContentsMargins(16, 12, 16, 12)
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(18, 12, 18, 12)
         cl.addWidget(self.stack)
-        lay.addWidget(content, 1)
+        body.addWidget(content, 1)
+        outer.addLayout(body, 1)
         self.setCentralWidget(central)
+        self.toast = Toast(central)
 
-        self.home.open_episode.connect(self._open_episode)
-        self.research.make_episode.connect(self._new_from_arc)
+        self.nav.currentRowChanged.connect(self._go)
+        self.pages[0].chosen.connect(self._chosen)
+        for i, p in enumerate(self.pages[1:], 1):
+            p.go_next.connect(lambda i=i: self.nav.setCurrentRow(min(i + 1, len(STEPS) - 1)))
+        self.ep: Episode | None = None
+        self._fill_picker()
         self.nav.setCurrentRow(0)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._poll)
-        self.timer.start(2500)
-        QTimer.singleShot(200, self._status)
+        self.timer.start(800)
+        QTimer.singleShot(300, self._status)
 
-    def _go(self, index: int) -> None:
-        self.stack.setCurrentIndex(index)
-        page = self.stack.currentWidget()
-        if hasattr(page, "refresh"):
-            try:
-                page.refresh()
-            except Exception as exc:  # noqa: BLE001 - show, don't crash the window
-                QMessageBox.warning(self, APP_NAME, f"{type(exc).__name__}: {exc}")
+    # ------------------------------------------------------------ episodes
+    def _fill_picker(self, select: str | None = None) -> None:
+        self.picker.blockSignals(True)
+        self.picker.clear()
+        self.picker.addItem("— choose on the Database page —", None)
+        for p in list_episodes():
+            self.picker.addItem(f"{p['project_id']}  {p['title'][:26]}", p["project_id"])
+        if select:
+            self.picker.setCurrentIndex(max(0, self.picker.findData(select)))
+        elif self.picker.count() > 1:
+            self.picker.setCurrentIndex(1)
+        self.picker.blockSignals(False)
+        self._pick_episode()
 
-    def _open_episode(self, project_id: str) -> None:
-        self.nav.setCurrentRow(2)
-        self.episode.open(project_id)
+    def _pick_episode(self) -> None:
+        pid = self.picker.currentData()
+        self.ep = Episode.load(pid) if pid else None
+        for p in self.pages:
+            p.set_episode(self.ep)
+        self._nav_marks()
 
-    def _new_from_arc(self, arc_id: str) -> None:
-        self.nav.setCurrentRow(0)
-        self.home.new_episode(arc_id)
+    def _chosen(self, project_id: str) -> None:
+        self._fill_picker(project_id)
+        self.nav.setCurrentRow(1)
+        try:
+            self.pages[1].run_stage("research", {"depth": "normal"}, "Research agents")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, APP_NAME, str(exc))
 
-    def _poll(self) -> None:
+    # ------------------------------------------------------------ navigation
+    def _go(self, row: int) -> None:
+        if row == len(STEPS):  # the separator
+            return
+        self.stack.setCurrentIndex(row)
         page = self.stack.currentWidget()
         try:
-            if page is self.episode:
-                self.episode.poll()
-            elif page in (self.queue, self.home):
+            if hasattr(page, "refresh"):
                 page.refresh()
-        except Exception:  # noqa: BLE001 - a busy database is fine; try next tick
+        except Exception as exc:  # noqa: BLE001 - show it, don't crash the window
+            QMessageBox.warning(self, APP_NAME, f"{type(exc).__name__}: {exc}")
+
+    def _nav_marks(self) -> None:
+        for i, (label, stage) in enumerate(STEPS):
+            item = self.nav.item(i)
+            if not self.ep or not stage:
+                item.setText(label)
+                item.setForeground(QColor("#ffffff"))
+                continue
+            group = GROUPS[stage]
+            states = [self.ep.stage_status(s)["status"] for s in group]
+            done = self.ep.stage_status(stage)["status"] == "approved"
+            if any(s in ("running", "queued") for s in states):
+                mark, color = "  …", "#4aa3df"
+            elif done:
+                mark, color = "  ✔", GREEN
+            elif any(s in ("failed", "interrupted") for s in states):
+                mark, color = "  ✖", RED
+            elif any(s == "awaiting_approval" for s in states):
+                mark, color = "  ●", GOLD
+            elif pipeline.missing_requirements(self.ep, group[0]):
+                mark, color = "", MUTED
+            else:
+                mark, color = "", "#ffffff"
+            item.setText(label + mark)
+            item.setForeground(QColor(color))
+
+    def _poll(self) -> None:
+        try:
+            self.activity.refresh()
+            page = self.stack.currentWidget()
+            if hasattr(page, "poll"):
+                page.poll()
+            elif page is self.tools[0]:
+                page.refresh()
+            self._nav_marks()
+            if any(j["status"] == "queued" for j in jobs.jobs(20)) and not jobs.worker_running() \
+                    and not jobs.control()["paused"]:
+                jobs.start_worker()
+        except Exception:  # noqa: BLE001 - a busy database is fine; try again next tick
             pass
-        if any(j["status"] == "queued" for j in jobs.jobs(20)) and not jobs.worker_running() \
-                and not jobs.control()["paused"]:
-            jobs.start_worker()
+
+    def _job_finished(self, job: dict) -> None:
+        label = pipeline.stage(job["stage"]).label if job["stage"] in pipeline.BY_NAME else job["stage"]
+        if job["status"] == "done":
+            self.toast.show_message(f"✔ {label} finished for {job['project_id']}. Have a look.", "ok", 6)
+        elif job["status"] == "cancelled":
+            self.toast.show_message(f"{label} was cancelled.", "warn", 5)
+        else:
+            self.toast.show_message(f"✖ {label} failed: {(job['error'] or '')[:160]}", "error", 10)
+        QApplication.alert(self, 3000)  # flash the taskbar button
+        page = self.stack.currentWidget()
+        if hasattr(page, "refresh"):
+            page.refresh()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt name
         """Close the ComfyUI we started, unless the queue still needs it."""

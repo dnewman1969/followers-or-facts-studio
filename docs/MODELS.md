@@ -15,6 +15,9 @@ Check a model's licence before adding it, and add a line here when you do.
 | Voice cloning (optional) | Chatterbox | MIT, adds an inaudible watermark | downloaded on first use | | needs ~6 GB VRAM |
 | Captions | faster-whisper `small.en` | MIT | downloaded on first use | ~0.5 GB | CPU |
 | Music (optional) | ACE-Step v1 3.5B | Apache-2.0 | `models/checkpoints` | ~7.7 GB | |
+| Owlbert's mouth timing | Rhubarb Lip Sync 1.14 | MIT | `fof-data/models/rhubarb` | small | seconds per line, CPU |
+| Web search for the research agents | ddgs (DuckDuckGo, Bing, Brave... no key) | MIT | pip package | | |
+| Reading article text from pages | trafilatura | Apache-2.0 | pip package | | |
 
 `scripts/get-comfy-models.ps1` downloads the Wan 2.2 and ACE-Step files.
 

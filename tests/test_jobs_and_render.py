@@ -36,7 +36,11 @@ def test_queue_runs_a_job_and_pauses_on_failure(data, fakes):
     from fofstudio.llm import Ollama
     ep = Episode.create("Q1", "Queue test", "A-Y2K-FEAR-INDUSTRY")
     fakes.setattr(Ollama, "chat_json", lambda *a, **k: {"excerpts": []})
-    job = jobs.enqueue("Q1", "research", {"fetch_sources": False, "find_quotes": False})
+    from fofstudio import sources
+    fakes.setattr(sources, "fetch_source", lambda sid, refresh=False: {"source_id": sid, "ok": False})
+    from fofstudio import config
+    config.settings()["research"]["use_wayback"] = False
+    job = jobs.enqueue("Q1", "research", {"database_only": True})
     jobs.worker_loop(once=True)
     assert [j for j in jobs.jobs() if j["job_id"] == job][0]["status"] == "done"
     assert ep.stage_status("research")["status"] == "awaiting_approval"
@@ -45,7 +49,7 @@ def test_queue_runs_a_job_and_pauses_on_failure(data, fakes):
     def boom(self, *a, **k):
         raise RuntimeError("model fell over")
     fakes.setattr(Ollama, "chat_json", boom)
-    failing = jobs.enqueue("Q1", "script")
+    failing = jobs.enqueue("Q1", "stories")
     jobs.worker_loop(once=True)
     row = [j for j in jobs.jobs() if j["job_id"] == failing][0]
     assert row["status"] == "failed" and "model fell over" in row["error"]

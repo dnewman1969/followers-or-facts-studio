@@ -1,34 +1,51 @@
-"""The eleven stages, in order."""
+"""The stages, in order. The window's pages group them:
+  Database (choose) -> Research -> Stories -> Script -> Storyboard -> Video (instructions, clips)
+  -> Production (speech, captions, music, timeline, render) -> Publish (package, upload)
+"""
 
 from __future__ import annotations
 
-from . import captions, images, music, narration, publish, render, research, script, storyboard, video
+from . import (captions, music, narration, production, publish, render, research, script, stories,
+               storyboard, video)
 from .base import Stage
 
 STAGES: list[Stage] = [
     Stage("research", "Research", "ollama", (), research.run, research.check,
-          description="Pull claims and sources from the database, save source copies, find verified quotes."),
-    Stage("script", "Script", "ollama", ("research",), script.run, script.check,
-          description="Local AI drafts the script from the research only; you edit script.md."),
-    Stage("storyboard", "Storyboard", "ollama", ("script",), storyboard.run, storyboard.check,
-          description="Break every scene into shots: AI pictures, quote cards, titles, receipts."),
-    Stage("narration", "Narration", "cpu", ("script",), narration.run, narration.check,
-          description="Read every scene aloud with the chosen voice."),
-    Stage("images", "Images", "comfy", ("storyboard",), images.run, images.check,
-          description="Make every picture: ComfyUI for AI shots, cards drawn locally."),
-    Stage("video", "Animation", "comfy", ("images",), video.run, video.check, optional=True,
-          description="Animate the chosen shots with Wan 2.2 (slow; skip for stills only)."),
+          description="Agents gather the proof: database sources, web and archive searches, word-for-word quotes."),
+    Stage("stories", "Stories", "ollama", ("research",), stories.run, stories.check,
+          description="Three ways to tell it; you pick one or ask for a rewrite."),
+    Stage("script", "Script", "ollama", ("stories",), script.run, script.check,
+          description="Owlbert's narration, written from the chosen story."),
+    Stage("storyboard", "Storyboard", "comfy", ("script",), storyboard.run, storyboard.check,
+          description="Three pictures per scene; you pick the ones to use."),
+    Stage("video_plan", "Scene instructions", "ollama", ("storyboard",), video.plan, video.check_plan,
+          description="How each picture plays out and how it will be made."),
+    Stage("video", "Clips", "comfy", ("video_plan",), video.run, video.check,
+          description="Every picture becomes a moving clip."),
+    Stage("narration", "Speech track", "cpu", ("script",), narration.run, narration.check,
+          description="Owlbert reads the script."),
     Stage("captions", "Captions", "cpu", ("narration",), captions.run, captions.check,
-          description="Time every word for subtitles."),
+          description="Word timings for subtitles."),
     Stage("music", "Music", "comfy", ("script",), music.run, music.check, optional=True,
-          description="Make or pick a music bed (skip for voice only)."),
-    Stage("render", "Render", "ffmpeg", ("images", "narration", "captions", "video", "music"),
-          render.run, render.check,
-          description="Assemble everything into the finished video."),
-    Stage("package", "Package", "cpu", ("render",), publish.package, publish.check_package,
-          description="Title, description with sources and credit, chapters, thumbnail."),
+          description="A quiet music bed (optional)."),
+    Stage("production", "Timeline", "cpu", ("video", "narration", "captions", "music"),
+          production.run, production.check,
+          description="Everything lined up on the editing timeline."),
+    Stage("render", "Final video", "ffmpeg", ("production",), render.run, render.check,
+          description="The finished YouTube video."),
+    Stage("package", "Write-up", "cpu", ("render",), publish.package, publish.check_package,
+          description="Title, description with every proof link, chapters, thumbnail."),
     Stage("upload", "Upload", "network", ("package",), publish.upload, publish.check_upload,
           description="Upload to YouTube as private."),
 ]
+
+
+def _preview(ctx):
+    ctx.options["draft"] = True
+    render.run(ctx)
+
+
+STAGES.append(Stage("preview", "Preview", "ffmpeg", ("video", "narration"), _preview, lambda ep: [],
+                    hidden=True, description="A quick low-resolution render to watch while editing."))
 
 BY_NAME = {s.name: s for s in STAGES}

@@ -33,6 +33,8 @@ def dependents(name: str) -> list[str]:
     while changed:
         changed = False
         for s in STAGES:
+            if s.hidden:
+                continue
             if s.name not in found and (name in s.requires or found & set(s.requires)):
                 found.add(s.name)
                 changed = True
@@ -85,6 +87,8 @@ def reject(ep: Episode, name: str, note: str = "") -> None:
 def overview(ep: Episode) -> list[dict[str, Any]]:
     out = []
     for s in STAGES:
+        if s.hidden:
+            continue
         st = ep.stage_status(s.name)
         out.append({"name": s.name, "label": s.label, "optional": s.optional,
                     "engine": s.engine, "status": st["status"], "note": st.get("note") or "",
@@ -95,19 +99,22 @@ def overview(ep: Episode) -> list[dict[str, Any]]:
 
 def next_stage(ep: Episode) -> str | None:
     for s in STAGES:
+        if s.hidden:
+            continue
         if not is_satisfied(ep, s.name) and not missing_requirements(ep, s.name):
             return s.name
     return None
 
 
 def run_now(ep: Episode, name: str, options: dict[str, Any] | None = None, log=print,
-            progress=lambda t: None, cancelled=lambda: False) -> list[Check]:
+            progress=lambda t, p=None: None, cancelled=lambda: False) -> list[Check]:
     """Run a stage in this process (the worker uses this; so do tests and the CLI)."""
     missing = missing_requirements(ep, name)
     if missing:
         raise StageError(f"Approve {', '.join(missing)} first.")
     ep.record(name, "running")
-    invalidate_after(ep, name)
+    if not stage(name).hidden:
+        invalidate_after(ep, name)
     ctx = Context(ep, options or {}, log=log, progress=progress, cancelled=cancelled)
     try:
         stage(name).run(ctx)
@@ -117,6 +124,9 @@ def run_now(ep: Episode, name: str, options: dict[str, Any] | None = None, log=p
     except Exception as exc:
         ep.record(name, "failed", f"{type(exc).__name__}: {exc}"[:2000])
         raise
+    if stage(name).hidden:
+        ep.record(name, "approved", "done")
+        return []
     results = checks(ep, name)
     ep.record(name, "awaiting_approval",
               "; ".join(c.message for c in results if c.level == BLOCK)[:1000])

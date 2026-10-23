@@ -8,6 +8,8 @@ it's fixed.
 |------|-------------|
 | Knowledge Fight is a research index, never evidence. Credit it on every video. | Research and Script **block** a claim or scene backed only by `kf_index` sources. The credits card and description always carry the credit line with the KF episode numbers. |
 | Every on-screen claim resolves to a primary source in the database. | Script **blocks** a scene that states facts without source IDs, or uses a source not linked to its claims, or a source ID that doesn't exist. |
+| The research agents never invent a link. | Links only come from search results, public archives or the database. A found page is kept only if at least one quote from it appears word for word in the saved copy; every link gets a Wayback Machine copy. Story beats that name evidence IDs not in the research are stripped. |
+| Be a polite robot. | The agents say who they are, obey robots.txt, wait between requests to the same site, cache every page, and keep under CourtListener's daily limit. |
 | The AI never originates a citation or a quote. | Quotes are only kept if they appear word for word in a saved copy of the source. Script **blocks** any quoted text in narration that doesn't match a verified quote. Quote cards are drawn as text, never generated. |
 | AI never makes evidence: no fake documents, quotes or footage of real events. | Image prompts always add "no text, no logos, no recognizable real people". Real documents only appear as "receipt" shots from screenshots you saved yourself. |
 | Label AI imagery. | Every AI picture and clip is stamped "AI illustration". Uploads are marked as containing altered/synthetic content. |

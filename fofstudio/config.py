@@ -104,6 +104,29 @@ DEFAULTS: dict[str, Any] = {
         ],
         "auto_for_gpu_stages": False,
     },
+    "research": {
+        # quick: ~3 searches per claim, normal: ~5, deep: ~8 (each adds a few minutes)
+        "depth": "normal",
+        "contact_email": "",  # optional: some sites ask bots for a contact address
+        "use_web_search": True,
+        "use_wayback": True,
+        "archive_new_links": True,
+        # free keys that unlock more sources; leave blank to skip that source
+        "courtlistener_token": "",
+        "govinfo_key": "",
+        "factcheck_key": "",
+        "archive_access_key": "",
+        "archive_secret_key": "",
+    },
+    "owl": {
+        "voice": "bm_george:0.7,bm_fable:0.3",
+        "speed": 0.93,
+        "pitch_semitones": 1.0,
+        "presenter": True,
+        "presenter_corner": "bottom_right",
+        "presenter_height": 0.34,
+        "rhubarb": "",
+    },
     "services": {
         # The desktop icon starts these if they aren't already running.
         "start_ollama": True,

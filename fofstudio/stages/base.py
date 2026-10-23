@@ -24,7 +24,8 @@ class Context:
     episode: Episode
     options: dict[str, Any] = field(default_factory=dict)
     log: Callable[[str], None] = print
-    progress: Callable[[str], None] = lambda text: None
+    # progress("Saving sources 3/12", 25): the text and, when known, a percentage
+    progress: Callable[..., None] = lambda text, pct=None: None
     cancelled: Callable[[], bool] = lambda: False
 
     def check_cancel(self) -> None:
@@ -43,6 +44,7 @@ class Stage:
     check: Callable[[Episode], list[Check]]
     optional: bool = False
     description: str = ""
+    hidden: bool = False   # a helper job (like the quick preview) outside the approval chain
 
     @property
     def gpu(self) -> bool:

@@ -92,9 +92,16 @@ def cmd_doctor(a) -> None:
 
 
 def cmd_download_models(a) -> None:
+    import os
     from .engines.tts import download_kokoro
     for p in download_kokoro():
         print("  have", p)
+    if os.name == "nt":
+        from .owl import download_rhubarb
+        try:
+            print("  have", download_rhubarb())
+        except Exception as exc:  # noqa: BLE001 - Owlbert still talks without it
+            print("  Rhubarb Lip Sync couldn't be downloaded:", exc)
 
 
 def cmd_import(a) -> None:
@@ -146,7 +153,7 @@ def cmd_run(a) -> None:
     from . import pipeline
     ep = _ep(a.id)
     opts = json.loads(a.options) if a.options else {}
-    results = pipeline.run_now(ep, a.stage, opts, progress=lambda t: print("  ..", t))
+    results = pipeline.run_now(ep, a.stage, opts, progress=lambda t, p=None: print("  ..", t, f"({p:.0f}%)" if p is not None else ""))
     for c in results:
         print(f"  [{c.level}] {c.message}")
 

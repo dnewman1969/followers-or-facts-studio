@@ -1,129 +1,159 @@
-"""Research: browse arcs and claims, see how well each is sourced, re-import from truth-vlog."""
+"""Research: the agents dig up the proof. Watch the progress line; then tick what goes in the write-up."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QFileDialog, QLineEdit, QSplitter, QTextBrowser, QVBoxLayout,
-                               QWidget)
+import html
+
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSplitter,
+                               QTableWidgetItem, QTextBrowser)
 
-from ... import db
-from ...db import importer
-from ...db.validate import validate
-from ..common import GOLD, GREEN, MUTED, RED, button, color_item, error, fill, info, label, row, table
+from ... import db, jobs
+from ...stages import research as rs
+from ...util import read_json
+from ..common import GOLD, GREEN, MUTED, RED, table
+from ..widgets import StagePage, click_feedback
+
+TYPE_COLORS = {"court": "#e67e22", "gov": "#4aa3df", "wire": GREEN, "journalism": GREEN, "academic": "#9b59b6",
+               "museum": "#9b59b6", "archive_audio": "#9b59b6", "other": MUTED}
 
 
-class ResearchPage(QWidget):
-    make_episode = Signal(str)
+class ResearchPage(StagePage):
+    TITLE = "Research"
+    HELP = ("Step 2. The research agents read the sources already on file, search the web, court records and "
+            "government archives for more proof, and keep only quotes that appear word for word in the saved "
+            "page. Every link gets a permanent Wayback Machine copy. Untick anything you don't want in the "
+            "YouTube write-up, then approve.")
+    APPROVE_STAGE = "research"
 
-    def __init__(self):
-        super().__init__()
-        lay = QVBoxLayout(self)
-        lay.addWidget(label("Research database", "h1"))
-        self.summary = label("", "muted")
-        lay.addWidget(self.summary)
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search arcs and claims...")
-        self.search.textChanged.connect(self.refresh)
-        lay.addWidget(row(self.search, button("Make episode from arc", self._make),
-                          button("Re-import from truth-vlog", self._import),
-                          button("Check database", self._validate), stretch=False))
+    def __init__(self, window):
+        super().__init__(window)
+        row = QHBoxLayout()
+        self.depth = QComboBox()
+        self.depth.addItem("Quick (about 5-10 minutes)", "quick")
+        self.depth.addItem("Normal (about 15-30 minutes)", "normal")
+        self.depth.addItem("Deep (an hour or more)", "deep")
+        self.depth.setCurrentIndex(1)
+        self.start = QPushButton("Start research")
+        self.start.setObjectName("primary")
+        self.start.setMinimumHeight(38)
+        click_feedback(self.start, lambda: self.run_stage("research", {"depth": self.depth.currentData()},
+                                                          "Research agents"))
+        self.subject = QLabel("")
+        self.subject.setObjectName("h2")
+        row.addWidget(self.subject, 1)
+        row.addWidget(QLabel("How deep"))
+        row.addWidget(self.depth)
+        row.addWidget(self.start)
+        self.body.addLayout(row)
+        # a big progress line right on the page, as well as the bar at the top
+        self.live = QLabel("")
+        self.live.setWordWrap(True)
+        self.bar = QProgressBar()
+        self.bar.setStyleSheet(f"QProgressBar {{ background:#22263a; border:none; border-radius:6px; height:18px; "
+                               f"color:white; text-align:center; }} QProgressBar::chunk {{ background:{GOLD}; "
+                               "border-radius:6px; }")
+        self.body.addWidget(self.live)
+        self.body.addWidget(self.bar)
         split = QSplitter(Qt.Vertical)
-        self.arcs = table(["Arc", "Title", "Claims", "Sourced", "3+ sources", "Careful", "Status"])
-        self.arcs.itemSelectionChanged.connect(self._load_claims)
-        self.claims = table(["Claim", "Title", "Verdict", "Primary sources", "Status"])
-        self.claims.itemSelectionChanged.connect(self._load_detail)
+        self.table = table(["Use", "ID", "Type", "Found by", "Title / quote", "Link", "Wayback copy"])
+        self.table.itemChanged.connect(self._toggled)
+        self.table.itemSelectionChanged.connect(self._detail)
         self.detail = QTextBrowser()
         self.detail.setOpenExternalLinks(True)
-        self.detail.document().setDefaultStyleSheet("a { color: #d4a017; }")
-        split.addWidget(self.arcs)
-        split.addWidget(self.claims)
+        self.detail.document().setDefaultStyleSheet(f"a {{ color: {GOLD}; }}")
+        split.addWidget(self.table)
         split.addWidget(self.detail)
-        split.setSizes([300, 250, 250])
-        lay.addWidget(split, 1)
-        self._arc_ids: list[str] = []
-        self._claim_ids: list[str] = []
+        split.setSizes([420, 160])
+        self.body.addWidget(split, 1)
+        self._rows: list[dict] = []
+        self._filling = False
+        self._sig = None
 
     def refresh(self) -> None:
-        q = f"%{self.search.text().strip()}%"
-        arcs = db.rows("""SELECT a.* FROM arc_strength a WHERE a.title LIKE ? OR a.arc_id LIKE ?
-                          OR EXISTS (SELECT 1 FROM claim c WHERE c.arc_id=a.arc_id AND
-                          (c.short_title LIKE ? OR c.claim_summary LIKE ?))
-                          ORDER BY sourced_claims DESC, claims DESC""", (q, q, q, q))
-        self._arc_ids = [a["arc_id"] for a in arcs]
-        fill(self.arcs, [[a["arc_id"], a["title"], a["claims"], a["sourced_claims"],
-                          a["well_sourced_claims"], "yes" if a["careful"] else "", a["status"]]
-                         for a in arcs])
-        for r, a in enumerate(arcs):
-            color_item(self.arcs, r, 3, GREEN if a["claims"] and a["sourced_claims"] == a["claims"]
-                       else GOLD if a["sourced_claims"] else RED)
-        self.arcs.resizeColumnsToContents()
-        meta = {r["key"]: r["value"] for r in db.rows("SELECT * FROM meta")}
-        n = db.one("SELECT COUNT(*) c, SUM(primary_sources>0) s FROM claim_readiness")
-        self.summary.setText(f"{n['c']} claims, {n['s']} with a primary source. Imported "
-                             f"{meta.get('research_imported_at', 'never')} from "
-                             f"{meta.get('research_source', '-')}")
-
-    def _load_claims(self) -> None:
-        r = self.arcs.currentRow()
-        if not 0 <= r < len(self._arc_ids):
+        super().refresh()
+        if not self.ep:
+            self.subject.setText("Choose a story on the Database page first.")
+            self.start.setEnabled(False)
             return
-        claims = db.rows("SELECT * FROM claim_readiness WHERE arc_id=? ORDER BY primary_sources DESC",
-                         (self._arc_ids[r],))
-        self._claim_ids = [c["claim_id"] for c in claims]
-        fill(self.claims, [[c["claim_id"], c["short_title"], c["falsity_status"],
-                            c["primary_sources"], c["status"]] for c in claims])
-        for i, c in enumerate(claims):
-            color_item(self.claims, i, 3, GREEN if c["primary_sources"] else RED)
-        self.claims.resizeColumnsToContents()
+        proj = db.one("SELECT subject_type FROM project WHERE project_id=?", (self.ep.project_id,)) or {}
+        self.subject.setText(f"{self.ep.project_id}: {self.ep.title}  ·  {len(self.ep.claim_ids)} claims")
+        busy = self.busy("research")
+        self.start.setEnabled(not busy)
+        self.start.setText("Research again" if self.ep.path("research.json").exists() else "Start research")
+        self._progress(busy)
+        packet = read_json(self.ep.path("research.json")) or {}
+        sig = str(packet.get("built_at")) + str(len(packet.get("evidence", [])))
+        if sig != self._sig:
+            self._sig = sig
+            self._fill(packet.get("evidence", []))
 
-    def _load_detail(self) -> None:
-        r = self.claims.currentRow()
-        if not 0 <= r < len(self._claim_ids):
+    def _progress(self, busy: bool) -> None:
+        job = next((j for j in jobs.jobs(30) if j["project_id"] == self.ep.project_id and j["stage"] == "research"
+                    and j["status"] in ("running", "queued")), None)
+        self.bar.setVisible(busy)
+        self.live.setVisible(busy)
+        if job:
+            self.live.setText(f"<b style='color:{GOLD}'>●</b> {html.escape(job['progress'] or 'Starting the research agents...')}")
+            if job["progress_pct"] is None:
+                self.bar.setRange(0, 0)
+            else:
+                self.bar.setRange(0, 100)
+                self.bar.setValue(int(job["progress_pct"]))
+
+    def _fill(self, evidence: list[dict]) -> None:
+        self._filling = True
+        self._rows = evidence
+        self.detail.setHtml("<p style='color:#8a8fa3'>Click a row to see the quote and its links.</p>"
+                            if evidence else "")
+        self.table.setRowCount(len(evidence))
+        for r, e in enumerate(evidence):
+            use = QTableWidgetItem()
+            use.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            use.setCheckState(Qt.Checked if e.get("include") else Qt.Unchecked)
+            self.table.setItem(r, 0, use)
+            text = f"“{e['quote']}”" if e["kind"] == "quote" else (e.get("title") or "")
+            vals = [e["id"], e.get("type") or "", "agent" if e.get("found_by") == "agent" else "database",
+                    text[:160], e.get("url") or "", e.get("archive_url") or ""]
+            for c, v in enumerate(vals, 1):
+                item = QTableWidgetItem(v)
+                item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                if c == 2:
+                    from PySide6.QtGui import QColor
+                    item.setForeground(QColor(TYPE_COLORS.get(v, MUTED)))
+                self.table.setItem(r, c, item)
+        self.table.resizeColumnsToContents()
+        self.table.setColumnWidth(4, 420)
+        self.table.setColumnWidth(5, 220)
+        self._filling = False
+
+    def _toggled(self, item) -> None:
+        if self._filling or item.column() != 0:
             return
-        cid = self._claim_ids[r]
-        c = db.one("SELECT * FROM claim WHERE claim_id=?", (cid,))
-        srcs = db.rows("""SELECT s.* FROM claim_source cs JOIN source s USING(source_id)
-                          WHERE cs.claim_id=? ORDER BY s.is_primary DESC""", (cid,))
-        people = db.rows("""SELECT p.name, ce.link_role FROM claim_entity ce JOIN person p
-                            ON p.person_id=ce.entity_id WHERE ce.claim_id=? AND ce.entity_type='person'""", (cid,))
-        html = [f"<h3>{c['short_title']}</h3><p>{c['claim_summary'] or ''}</p>",
-                f"<p><b>Verdict:</b> {c['falsity_status']} &nbsp; <b>Harm:</b> {c['harm_summary'] or ''}"
-                f"<br><b>Who benefited:</b> {c['who_benefited'] or ''}</p>"]
-        if people:
-            html.append("<p><b>People:</b> " + ", ".join(f"{p['name']} ({p['link_role']})" for p in people) + "</p>")
-        html.append("<p><b>Sources</b></p><ul>")
-        for s in srcs:
-            tag = "primary" if s["is_primary"] else s["source_type"]
-            link = f" <a href='{s['url']}'>link</a>" if s["url"] else ""
-            saved = " · saved copy" if s["text_path"] else ""
-            html.append(f"<li>[{tag}] {s['source_id']}: {s['title']} ({s['publisher'] or ''} "
-                        f"{s['date'] or ''}){link}{saved}</li>")
-        html.append("</ul>")
-        self.detail.setHtml("".join(html))
+        e = self._rows[item.row()]
+        rs.set_include(self.ep, e["id"], item.checkState() == Qt.Checked)
 
-    def _make(self) -> None:
-        r = self.arcs.currentRow()
-        if 0 <= r < len(self._arc_ids):
-            self.make_episode.emit(self._arc_ids[r])
-
-    def _import(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "truth-vlog research folder",
-                                                  str(importer.research_dir()))
-        if not folder:
+    def _detail(self) -> None:
+        r = self.table.currentRow()
+        if not 0 <= r < len(self._rows):
             return
-        try:
-            report = importer.import_research(folder)
-        except Exception as exc:  # noqa: BLE001
-            error(self, str(exc))
-            return
-        info(self, f"Imported {report['counts']['claims']} claims, {report['counts']['sources']} "
-                   f"sources.\n\nFixed on the way in:\n" + "\n".join(report["fixes"][:15]) +
-             (f"\n\nWarnings: {len(report['warnings'])}" if report["warnings"] else ""))
-        self.refresh()
+        e = self._rows[r]
+        esc = html.escape
+        parts = [f"<h3>{esc(e.get('title') or e['id'])}</h3>",
+                 f"<p>{esc(e.get('publisher') or '')} {esc(str(e.get('date') or ''))} · <b>{esc(e.get('type') or '')}</b>"
+                 f" · found by {'the research agent' if e.get('found_by') == 'agent' else 'the database'}"
+                 f" · claim {esc(e['claim_id'])}</p>"]
+        if e.get("quote"):
+            parts.append(f"<blockquote>“{esc(e['quote'])}”</blockquote>")
+        if e.get("supports"):
+            parts.append(f"<p><i>Shows:</i> {esc(e['supports'])}</p>")
+        if e.get("url"):
+            parts.append(f"<p><a href='{esc(e['url'])}'>{esc(e['url'])}</a></p>")
+        if e.get("archive_url"):
+            parts.append(f"<p>Permanent copy: <a href='{esc(e['archive_url'])}'>{esc(e['archive_url'])}</a></p>")
+        self.detail.setHtml("".join(parts))
 
-    def _validate(self) -> None:
-        result = validate()
-        text = (f"{len(result['errors'])} errors, {len(result['warnings'])} warnings.\n\n" +
-                "\n".join(result["errors"][:20] + result["warnings"][:20]))
-        info(self, text)
+    def poll(self) -> None:
+        super().poll()
+        if self.ep and self.busy("research"):
+            self._progress(True)

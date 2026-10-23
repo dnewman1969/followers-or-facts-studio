@@ -92,12 +92,26 @@ class KokoroEngine(TTSEngine):
         except StageError:
             return []
 
+    def style(self, voice: str):
+        """A voice name, or a blend like "bm_george:0.7,bm_fable:0.3" (Owlbert's own voice)."""
+        if "," not in voice and ":" not in voice:
+            return voice
+        model = self._load()
+        mix, total = None, 0.0
+        for part in voice.split(","):
+            name, _, weight = part.strip().partition(":")
+            w = float(weight or 1)
+            vec = model.get_voice_style(name.strip()) * w
+            mix = vec if mix is None else mix + vec
+            total += w
+        return mix / (total or 1)
+
     def synthesize(self, text: str, out: Path, voice: str, speed: float = 1.0,
                    lang: str | None = None, **kw: Any) -> dict[str, Any]:
         model = self._load()
         lang = lang or settings()["voice"]["lang"]
         try:
-            samples, rate = model.create(respell(text), voice=voice, speed=float(speed), lang=lang)
+            samples, rate = model.create(respell(text), voice=self.style(voice), speed=float(speed), lang=lang)
         except Exception as exc:  # noqa: BLE001
             raise StageError(f"Kokoro couldn't read this line: {exc}")
         seconds = write_wav(Path(out), samples, rate)

@@ -29,6 +29,8 @@ def data(tmp_path, monkeypatch):
     s = config.settings()
     s["video"].update({"width": 640, "height": 360, "fps": 15, "encoder": "libx264"})
     s["voice"]["tail_seconds"] = 0.2
+    s["owl"]["pitch_semitones"] = 0
+    s["captions"]["engine"] = "proportional"
     yield tmp_path / "data"
     config.settings(reload=True)
 
@@ -77,11 +79,10 @@ def fake_run_template(setting_key, values, dest_stem, on_progress=None, cancelle
 @pytest.fixture()
 def fakes(monkeypatch):
     from fofstudio.engines import tts
-    from fofstudio.stages import images, music, video
+    from fofstudio.stages import music, narration, storyboard, video
     monkeypatch.setattr(tts, "get_engine", lambda name=None: FakeVoice())
-    from fofstudio.stages import narration
     monkeypatch.setattr(narration, "get_engine", lambda name=None: FakeVoice())
-    for mod in (images, music, video):
+    for mod in (storyboard, music, video):
         monkeypatch.setattr(mod, "run_template", fake_run_template)
 
     class FakeComfy:

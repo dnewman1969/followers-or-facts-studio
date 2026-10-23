@@ -1,95 +1,71 @@
-"""Stage 9 - Render: assemble shots, narration, music and captions into the final MP4.
+"""Render: turn the Production timeline into the finished YouTube video (or a fast preview).
 
-Pass {"draft": true} for a quick 720p preview.
+Options: {"draft": true} makes a quick 640x360 preview (render/preview.mp4) for the
+Production page's player; otherwise it renders the full 1080p file.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from .. import cards, media
+from .. import cards, media, owl
 from ..config import settings
 from ..engines.render import AudioCue, Segment, Timeline, render
 from ..episode import Episode
 from ..util import StageError, read_json, utc_now, write_json, write_text
+from . import production
 from .base import BLOCK, OK, WARN, Check, Context
 from .captions import build_srt
-from .script import load as load_script
-
-LEAD = 0.35            # narration starts this long after its scene appears
-WITHIN_SCENE_FADE = 0.4
-MIN_SHOT = 1.8
 
 
-def _skipped(ep: Episode, stage: str) -> bool:
-    st = ep.stage_status(stage)
-    return st["status"] != "approved" or (st.get("note") or "").startswith("SKIPPED")
+def _black(ep: Episode, w: int, h: int) -> Path:
+    p = ep.path("render", f"black-{w}x{h}.png")
+    if not p.exists():
+        from PIL import Image
+        p.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (w, h), (0, 0, 0)).save(p)
+    return p
 
 
-def build_timeline(ep: Episode, width: int, height: int, fps: int,
-                   log=lambda m: None) -> tuple[Timeline, dict[str, float], list[dict[str, Any]]]:
-    cfg = settings()["video"]
-    script = load_script(ep)
-    narration = read_json(ep.path("audio", "narration.json"), {}) or {}
-    board = ep.storyboard()
-    use_clips = not _skipped(ep, "video")
-    tail = float(settings()["voice"]["tail_seconds"])
-    scene_fade = float(cfg["transition_seconds"])
-    label_png = None
-
+def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
+          ) -> tuple[Timeline, dict[str, float], list[dict[str, Any]]]:
+    tl_json = production.load(ep)
+    if not tl_json:
+        raise StageError("Assemble the timeline on the Production page first.")
+    label_png = cards.label_overlay(w, h, ep.path("render", f"ai-label-{w}.png"))
+    video = sorted(tl_json["video"], key=lambda c: c["start"])
     segments: list[Segment] = []
-    cues: list[AudioCue] = []
-    starts: dict[str, float] = {}
-    chapters: list[dict[str, Any]] = []
     t = 0.0
-    scene_ids = [s["scene_id"] for s in script["scenes"]] + ["CREDITS"]
-    by_scene: dict[str, list[dict[str, Any]]] = {}
-    for shot in board.get("shots", []):
-        by_scene.setdefault(shot["scene_id"], []).append(shot)
-
-    for sc_id in scene_ids:
-        shots = [s for s in by_scene.get(sc_id, []) if s.get("image")]
-        if not shots:
-            continue
-        m = narration.get(sc_id)
-        if m:
-            scene_len = LEAD + m["seconds"] + tail
-            cues.append(AudioCue(ep.abs(m["path"]), t + LEAD))
-        else:
-            scene_len = float(shots[0].get("seconds") or 6)
-        keep = max(1, int(scene_len // MIN_SHOT))
-        if len(shots) > keep:
-            log(f"{sc_id}: only {scene_len:.1f}s long, so showing {keep} of {len(shots)} shots.")
-            shots = sorted(shots, key=lambda s: -s["weight"])[:keep]
-            shots.sort(key=lambda s: s["shot_id"])
-        weights = sum(s["weight"] for s in shots)
-        starts[sc_id] = t
-        chapters.append({"scene_id": sc_id, "start": round(t, 2)})
-        for i, shot in enumerate(shots):
-            last_in_scene = i == len(shots) - 1
-            overlap = scene_fade if last_in_scene else WITHIN_SCENE_FADE
-            seconds = scene_len * shot["weight"] / weights + overlap
-            clip = shot.get("clip") if use_clips else None
-            if clip and ep.abs(clip["path"]).exists():
-                if label_png is None:
-                    label_png = cards.label_overlay(width, height, ep.path("render", "ai-label.png"))
-                seg = Segment(ep.abs(clip["path"]), seconds, kind="clip", overlay=label_png,
-                              label=shot["shot_id"])
-            else:
-                seg = Segment(ep.abs(shot["image"]["path"]), seconds, kind="image",
-                              camera=shot.get("camera", "zoom_in"), label=shot["shot_id"])
-            seg.transition = cfg["transition"] if last_in_scene else "fade"
-            seg.transition_seconds = overlap
-            segments.append(seg)
-        t += scene_len
-
-    music = None
-    if not _skipped(ep, "music"):
-        meta = read_json(ep.path("audio", "music", "music.json"))
-        if meta and ep.abs(meta["path"]).exists():
-            music = ep.abs(meta["path"])
-    tl = Timeline(segments, cues, music=music, music_volume=float(cfg["music_volume"]),
-                  duck=bool(cfg["duck_music"]), width=width, height=height, fps=fps)
+    for i, c in enumerate(video):
+        if c["start"] > t + 0.05:   # a gap on the video track becomes black
+            segments.append(Segment(_black(ep, w, h), c["start"] - t, kind="image", camera="static",
+                                    transition="cut", transition_seconds=0, label="black"))
+            t = c["start"]
+        nxt = video[i + 1] if i + 1 < len(video) else None
+        overlap = max(0.0, (c["start"] + c["duration"]) - nxt["start"]) if nxt else 0.0
+        segments.append(Segment(ep.abs(c["src"]), c["duration"], kind="clip", inpoint=c.get("inpoint", 0.0),
+                                overlay=label_png if c.get("ai") else None,
+                                transition="fade" if overlap > 0.05 else "cut",
+                                transition_seconds=min(overlap, c["duration"] * 0.45), label=c["label"]))
+        t = c["start"] + c["duration"] - overlap
+    cues = [AudioCue(ep.abs(s["src"]), s["start"]) for s in tl_json.get("speech", [])]
+    music = tl_json.get("music") or []
+    tl = Timeline(segments, cues, music=ep.abs(music[0]["src"]) if music else None,
+                  music_volume=float(music[0].get("volume", 0.18)) if music else 0.18,
+                  duck=bool(settings()["video"]["duck_music"]), width=w, height=h, fps=fps)
+    ocfg = settings()["owl"]
+    if tl_json.get("owl") and ocfg["presenter"]:
+        tl.layout()
+        speech = [(s["start"], ep.abs(s["src"]), s.get("text")) for s in tl_json["speech"]]
+        tl.presenter = owl.presenter_track(speech, tl.total, ep.path("render", f"owl-{h}"),
+                                           height=int(h * float(ocfg["presenter_height"])), fps=fps,
+                                           progress=progress)
+        tl.presenter_ranges = [(o["start"], o["start"] + o["duration"]) for o in tl_json["owl"]]
+        tl.presenter_corner = ocfg["presenter_corner"]
+    starts = {s["scene_id"]: s["start"] for s in tl_json.get("speech", [])}
+    chapters = [{"scene_id": c["scene_id"], "start": round(c["start"], 2)} for c in video
+                if c["scene_id"] not in {x["scene_id"] for x in video[:video.index(c)]}]
     return tl, starts, chapters
 
 
@@ -97,41 +73,50 @@ def run(ctx: Context) -> None:
     ep = ctx.episode
     cfg = settings()["video"]
     draft = bool(ctx.options.get("draft"))
-    w, h, fps = (1280, 720, 30) if draft else (int(cfg["width"]), int(cfg["height"]), int(cfg["fps"]))
-    tl, starts, chapters = build_timeline(ep, w, h, fps, log=ctx.log)
+    w, h, fps = (640, 360, 15) if draft else (int(cfg["width"]), int(cfg["height"]), int(cfg["fps"]))
+    ctx.progress("Getting the timeline ready", 2)
+    tl, starts, chapters = build(ep, w, h, fps, ctx.progress)
+    name = "preview" if draft else ep.project_id
     timings = read_json(ep.path("captions", "words.json"), {}) or {}
-    srt_path = ep.path("render", f"{ep.project_id}{'-draft' if draft else ''}.srt")
-    write_text(srt_path, build_srt(starts, timings, lead=LEAD))
-    out = ep.path("render", f"{ep.project_id}{'-draft' if draft else ''}.mp4")
-    result = render(tl, out, srt=srt_path, burn_subs=bool(settings()["captions"]["burn_in"]),
-                    encoder="libx264" if draft else cfg["encoder"], on_progress=ctx.progress,
-                    cancelled=ctx.cancelled)
-    write_json(ep.path("render", "timeline.json"), {
-        "draft": draft, "output": ep.rel(out), "srt": ep.rel(srt_path), "seconds": result["seconds"],
-        "encoder": result["encoder"], "chapters": chapters, "made_at": utc_now(),
-        "shots": [{"label": s.label, "start": round(s.start, 2), "seconds": round(s.seconds, 2),
-                   "kind": s.kind} for s in tl.segments],
-    })
-    ctx.log(f"Rendered {result['seconds'] / 60:.1f} min with {result['encoder']}: {out.name}")
+    srt_path = ep.path("render", f"{name}.srt")
+    write_text(srt_path, build_srt(starts, timings, lead=0.0))
+    out = ep.path("render", f"{name}.mp4")
+    n = len(tl.segments)
+
+    def prog(text: str, pct: float | None = None) -> None:
+        if pct is None and text.startswith("Rendering shot "):
+            try:
+                k = int(text.split()[2].split("/")[0])
+                pct = 5 + 80 * k / max(1, n)
+            except (ValueError, IndexError):
+                pct = None
+        elif pct is None and text.startswith("Joining"):
+            pct = 88
+        ctx.progress(text, pct)
+
+    result = render(tl, out, srt=srt_path, burn_subs=bool(settings()["captions"]["burn_in"]) and not draft,
+                    encoder="libx264" if draft else cfg["encoder"], on_progress=prog, cancelled=ctx.cancelled)
+    info = {"draft": draft, "output": ep.rel(out), "srt": ep.rel(srt_path), "seconds": result["seconds"],
+            "encoder": result["encoder"], "chapters": chapters, "made_at": utc_now(),
+            "timeline_saved_at": production.load(ep).get("saved_at")}
+    write_json(ep.path("render", "preview.json" if draft else "timeline.json"), info)
+    ctx.progress(f"{'Preview' if draft else 'Video'} ready: {result['seconds'] / 60:.1f} min", 100)
 
 
 def check(ep: Episode) -> list[Check]:
     info = read_json(ep.path("render", "timeline.json"))
     if not info:
-        return [Check(BLOCK, "Not rendered yet.")]
+        return [Check(BLOCK, "The full video hasn't been rendered yet. Press Render final video.")]
     out = ep.abs(info["output"])
     if not out.exists():
         return [Check(BLOCK, "The rendered file is missing. Render again.")]
     checks = []
-    if info.get("draft"):
-        checks.append(Check(BLOCK, "This is the 720p draft. Render the full version before approving."))
     try:
         if not media.has_audio(out):
             checks.append(Check(BLOCK, "The video has no sound."))
     except StageError as exc:
         checks.append(Check(BLOCK, str(exc)))
-    newest_input = max((p.stat().st_mtime for p in ep.folder.glob("audio/narration/*.wav")), default=0)
-    if newest_input > out.stat().st_mtime:
-        checks.append(Check(WARN, "Narration changed after this render. Render again."))
+    if info.get("timeline_saved_at") != production.load(ep).get("saved_at"):
+        checks.append(Check(BLOCK, "You changed the timeline after this render. Render again."))
     checks.append(Check(OK, f"{info['seconds'] / 60:.1f} min video. Watch all of it before approving."))
     return checks

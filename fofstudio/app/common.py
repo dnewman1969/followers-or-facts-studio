@@ -32,7 +32,14 @@ QListWidget#nav::item:selected {{ background: {NAVY}; border-left: 3px solid {GO
 QPushButton {{ background: {NAVY}; border: 1px solid #3c4f85; border-radius: 4px; padding: 6px 12px; }}
 QPushButton:hover {{ background: #364c84; }}
 QPushButton:disabled {{ background: #22263a; color: #5c6075; border-color: #2a2e44; }}
+QPushButton:pressed {{ background: #0f1a33; border-color: {GOLD}; padding-top: 8px; padding-bottom: 4px; }}
 QPushButton#primary {{ background: {GOLD}; color: #111; font-weight: 600; border-color: {GOLD}; }}
+QPushButton#primary:hover {{ background: #e6b325; }}
+QPushButton#primary:pressed {{ background: #a87d0f; color: white; }}
+QPushButton#primary:disabled {{ background: #3a3420; color: #7d7458; border-color: #3a3420; }}
+QPushButton#tab {{ background: {PANEL}; border: 1px solid #2c3046; font-size: 11pt; padding: 6px 18px; }}
+QPushButton#tab:checked {{ background: {NAVY}; border-bottom: 3px solid {GOLD}; color: white; font-weight: 600; }}
+QPushButton:focus {{ outline: none; border-color: {GOLD}; }}
 QPushButton#danger {{ background: #5a1f1a; border-color: {RED}; }}
 QTableWidget, QListWidget, QPlainTextEdit, QTextBrowser, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     background: {PANEL}; border: 1px solid #2c3046; border-radius: 4px; selection-background-color: {NAVY}; }}

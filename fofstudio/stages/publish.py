@@ -52,26 +52,27 @@ def package(ctx: Context) -> None:
 
     chapters = []
     for ch in timeline["chapters"]:
-        name = "Sources and credits" if ch["scene_id"] == "CREDITS" else \
-            _chapter_name(scenes[ch["scene_id"]]) if ch["scene_id"] in scenes else ch["scene_id"]
+        name = {"CREDITS": "Sources and credits", "OUTRO": "Sources and credits", "INTRO": "Intro"}.get(
+            ch["scene_id"]) or (_chapter_name(scenes[ch["scene_id"]]) if ch["scene_id"] in scenes else ch["scene_id"])
         if chapters and ch["start"] - chapters[-1]["start"] < 10:
             continue
         chapters.append({"start": 0.0 if not chapters else ch["start"], "name": name})
 
-    srcs = cited_sources(ep)
-    lines = [hook, ""]
+    head = [hook, ""]
     if len(chapters) >= 3:
-        lines += ["Chapters:"] + [f"{_stamp(c['start'])} {c['name']}" for c in chapters] + [""]
-    lines += ["Sources (primary records, in the order they appear):"]
-    for n, s in enumerate(srcs, 1):
-        lines.append(f"{n}. {source_line(s)}" + (f"\n   {s['url']}" if s.get("url") else ""))
-    lines += ["", credit_line(ep), "",
-              "Illustrations are made with AI on our own computer and are labelled on screen. "
-              "Quotes are shown exactly as they appear in the sources. The narrator is a "
-              "synthetic voice.",
-              "Spotted a mistake? Tell us in the comments. Corrections are pinned and logged "
-              "publicly."]
-    description = "\n".join(lines).strip()[:4900]
+        head += ["Chapters:"] + [f"{_stamp(c['start'])} {c['name']}" for c in chapters] + [""]
+    tail = ["", credit_line(ep), "",
+            "Illustrations are made with AI on our own computer and are labelled on screen. Quotes are "
+            "shown exactly as they appear in the sources. Owlbert is a cartoon with a synthetic voice.",
+            "Spotted a mistake? Tell us in the comments. Corrections are pinned and logged publicly."]
+    description, left_out = fit_description(head, proof_links(ep), tail)
+    proof = proof_links(ep)
+    write_text(ep.path("publish", "proof-links.txt"), "\n".join(
+        f"{n}. {x['line']}\n   {x.get('url') or ''}" + (f"\n   Archived: {x['archive_url']}" if x.get("archive_url") else "")
+        for n, x in enumerate(proof, 1)))
+    if left_out:
+        ctx.log(f"The description was full, so {left_out} proof link(s) went into proof-links.txt "
+                "(paste them into the pinned comment).")
 
     arc = db.one("SELECT title FROM arc WHERE arc_id=?", (ep.info.get("arc_id"),)) or {}
     tags = ["fact check", "Followers or Facts", "conspiracy theories", "media literacy",
@@ -100,6 +101,65 @@ def package(ctx: Context) -> None:
     ctx.log("Package ready: title, description, chapters, sources, thumbnail, pinned comment.")
 
 
+LIMIT = 4900  # YouTube allows 5,000 characters
+
+
+def fit_description(head: list[str], proof: list[dict[str, Any]], tail: list[str]) -> tuple[str, int]:
+    """Fit the proof list between the opening and the credits. If it's too long, first drop the
+    archive copies of the later links, then the later links themselves - never the credit lines."""
+    fixed = len("\n".join(head + tail)) + 120
+
+    def block(items, archived):
+        out = ["THE PROOF (click to check it yourself; archived copies never disappear):"]
+        for n, s in enumerate(items, 1):
+            out.append(f"{n}. {s['line']}")
+            if s.get("url"):
+                out.append(f"   {s['url']}")
+            if s.get("archive_url") and (n <= archived or not s.get("url")):
+                out.append(f"   Archived: {s['archive_url']}")
+        return out
+
+    for keep in range(len(proof), -1, -1):
+        for archived in range(keep, -1, -1):
+            body = block(proof[:keep], archived)
+            if keep < len(proof):
+                body.append(f"...and {len(proof) - keep} more sources in the pinned comment.")
+            if fixed + len("\n".join(body)) <= LIMIT:
+                return "\n".join(head + body + tail).strip(), len(proof) - keep
+    return "\n".join(head + tail).strip()[:LIMIT], len(proof)
+
+
+def proof_links(ep: Episode) -> list[dict[str, Any]]:
+    """The evidence you kept on the Research page, one line per source, cited ones first."""
+    packet = read_json(ep.path("research.json")) or {}
+    cited = [x["source_id"] for x in cited_sources(ep)]
+    seen: dict[str, dict[str, Any]] = {}
+    for e in packet.get("evidence", []):
+        if not e.get("include") or e.get("type") == "kf_index" or not (e.get("url") or e.get("archive_url")):
+            continue
+        sid = e["source_id"]
+        if sid in seen:
+            continue
+        bits = [e.get("title") or sid]
+        if e.get("publisher"):
+            bits.append(e["publisher"])
+        if e.get("date"):
+            bits.append(str(e["date"]))
+        seen[sid] = {"source_id": sid, "line": " - ".join(bits), "url": e.get("url"),
+                     "archive_url": e.get("archive_url")}
+    for sid in cited:  # anything the script cites that isn't in the evidence list
+        if sid not in seen:
+            row = next((x for x in cited_sources(ep) if x["source_id"] == sid), None)
+            if row:
+                seen[sid] = {"source_id": sid, "line": source_line(row), "url": row.get("url"),
+                             "archive_url": row.get("archive_url")}
+    order = {sid: i for i, sid in enumerate(cited)}
+    rank = {"court": 0, "gov": 1, "wire": 2, "academic": 3, "museum": 3, "archive_audio": 3, "journalism": 4}
+    types = {e["source_id"]: e.get("type") for e in packet.get("evidence", [])}
+    return sorted(seen.values(), key=lambda x: (order.get(x["source_id"], 10_000),
+                                                rank.get(types.get(x["source_id"]), 6)))
+
+
 def check_package(ep: Episode) -> list[Check]:
     meta = read_json(ep.path("publish", "metadata.json"))
     if not meta:
@@ -109,7 +169,7 @@ def check_package(ep: Episode) -> list[Check]:
         out.append(Check(BLOCK, "Title is over 100 characters."))
     if not ep.path("publish", "thumbnail.png").exists():
         out.append(Check(BLOCK, "Thumbnail missing."))
-    if "Sources" not in meta["description"]:
+    if "THE PROOF" not in meta["description"] and "Sources" not in meta["description"]:
         out.append(Check(BLOCK, "Description has no sources list."))
     if "Knowledge Fight" not in meta["description"]:
         out.append(Check(BLOCK, "Description is missing the Knowledge Fight credit."))

@@ -1,19 +1,18 @@
-"""Stage 3 - Storyboard: turn each scene into shots.
+"""Storyboard: three candidate pictures for every scene; you pick which to use.
 
-Shot types:
-  ai_image    an illustration made by ComfyUI (always labelled "AI illustration")
-  quote_card  a verified quote drawn as text on a card (never an AI image)
-  title_card  a date, place or short label
-  receipt     a real document screenshot/scan you supply in the receipts/ folder
-  credits     the closing sources-and-credit card
+For each scene the local AI writes three different picture ideas (a wide establishing
+view, a close detail, and a symbolic image), ComfyUI paints each one, and the program
+stamps "AI illustration" on them. You tick the ones you want (one or more per scene)
+and can remake any candidate. Title cards and verified quote cards are added
+automatically, drawn as text so quotes are always exact.
 """
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
-from .. import db
+from .. import cards, db
+from ..comfy import new_seed, run_template
 from ..config import settings
 from ..episode import Episode
 from ..llm import Ollama
@@ -31,31 +30,13 @@ STYLES = {
 }
 GUARD = ("no text, no letters, no words, no watermark, no logos, "
          "no recognizable real people, faces turned away or in silhouette")
-
 CAMERA_MOVES = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down", "dolly_in", "static"]
-SHOT_TYPES = ["ai_image", "quote_card", "title_card", "receipt"]
+VARIANTS = ["wide establishing view", "close-up detail", "symbolic or metaphorical image"]
 
-SHOT_SCHEMA = {
+IDEAS_SCHEMA = {
     "type": "object",
-    "properties": {
-        "shots": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "enum": SHOT_TYPES},
-                    "prompt": {"type": "string"},
-                    "text": {"type": "string"},
-                    "excerpt_id": {"type": "integer"},
-                    "source_id": {"type": "string"},
-                    "weight": {"type": "number"},
-                    "camera": {"type": "string", "enum": CAMERA_MOVES},
-                },
-                "required": ["type", "prompt", "text", "weight", "camera"],
-            },
-        }
-    },
-    "required": ["shots"],
+    "properties": {"ideas": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 3}},
+    "required": ["ideas"],
 }
 
 
@@ -73,151 +54,171 @@ def names_in(text: str, names: list[str]) -> list[str]:
     return sorted({n for n in names if normalize_for_match(n) in low})
 
 
-def _excerpts(packet: dict[str, Any]) -> dict[int, dict[str, Any]]:
-    return {e["excerpt_id"]: e for c in packet.get("claims", []) for e in c["excerpts"]}
+def _excerpts(ep: Episode) -> dict[int, dict[str, Any]]:
+    packet = read_json(ep.path("research.json")) or {}
+    out = {}
+    for c in packet.get("claims", []):
+        for e in c.get("excerpts", []):
+            out[e["excerpt_id"]] = e
+    return out
 
 
-def _simple_shots(scene: dict[str, Any], excerpts: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
-    shots = [{"type": "ai_image", "prompt": scene["visual"], "text": "", "weight": 2,
-              "camera": "zoom_in"}]
-    if scene["on_screen_text"] and scene["on_screen_text"] != "-":
-        shots.append({"type": "title_card", "prompt": "", "text": scene["on_screen_text"],
-                      "weight": 1, "camera": "static"})
-    for quote in quotes_in(scene["narration"]):
-        match = next((e for e in excerpts.values()
-                      if normalize_for_match(quote) in normalize_for_match(e["text"])), None)
-        if match:
-            shots.append({"type": "quote_card", "prompt": "", "text": quote,
-                          "excerpt_id": match["excerpt_id"], "source_id": match["source_id"],
-                          "weight": 1.5, "camera": "zoom_in"})
-    return shots
-
-
-def _llm_shots(ctx: Context, scene: dict[str, Any], excerpts: dict[int, dict[str, Any]],
-               restrictions: list[str]) -> list[dict[str, Any]]:
-    max_shots = settings()["storyboard"]["max_shots_per_scene"]
-    allowed = [{"excerpt_id": int(e), "source_id": excerpts[int(e)]["source_id"],
-                "text": excerpts[int(e)]["text"]}
-               for e in scene["excerpt_ids"] if e.isdigit() and int(e) in excerpts]
+def _ideas(scene: dict[str, Any], restrictions: list[str]) -> list[str]:
     answer = Ollama().chat_json([
         {"role": "system", "content": (
-            "You are a documentary storyboard artist. Break one narrated scene into 2 to "
-            f"{max_shots} shots that follow the narration in order.\n"
-            "ai_image: prompt describes one picture (objects, places, documents, crowds from "
-            "behind, moods). Never name a real person, never ask for readable text or logos.\n"
-            "quote_card: ONLY for a quote listed under 'quotes you may show'; copy its text "
-            "exactly and give its excerpt_id and source_id.\n"
-            "title_card: a date, place or short label (max 8 words) in text.\n"
-            "receipt: a real document from the listed sources that the producer will screenshot; "
-            "put what to capture in prompt and the source_id.\n"
-            "weight = how long the shot stays on screen relative to the others (1 to 3).")},
-        {"role": "user", "content": (
-            f"Scene visual idea: {scene['visual']}\n"
-            f"Narration: {scene['narration']}\n"
-            f"On-screen text: {scene['on_screen_text']}\n"
-            f"Sources in this scene: {', '.join(scene['source_ids']) or 'none'}\n"
-            f"Quotes you may show: {allowed or 'none'}\n"
-            f"Careful-topic rules: {restrictions or 'none'}")},
-    ], SHOT_SCHEMA, temperature=0.5)
-    shots = answer.get("shots") or []
-    if not shots:
-        raise StageError(f"{scene['scene_id']}: the storyboard came back empty. Run again.")
-    return shots[:max_shots]
+            "You are a documentary art director. Write three different picture ideas for one "
+            "narrated scene: 1) a wide establishing view, 2) a close-up detail, 3) a symbolic or "
+            "metaphorical image. Each is one or two sentences describing objects, places, documents, "
+            "crowds seen from behind, light and mood. Never name a real person. Never ask for "
+            "readable text, signs or logos.")},
+        {"role": "user", "content": f"Scene visual note: {scene['visual']}\nNarration: {scene['narration']}\n"
+                                    f"Careful-topic rules: {restrictions or 'none'}"},
+    ], IDEAS_SCHEMA, temperature=0.7)
+    ideas = [i.strip() for i in answer.get("ideas", []) if i.strip()][:3]
+    while len(ideas) < 3:
+        ideas.append(f"{scene['visual']} ({VARIANTS[len(ideas)]})")
+    return ideas
+
+
+def _paint(ep: Episode, scene_id: str, n: int, prompt: str, style: str) -> dict[str, Any]:
+    cfg = settings()["comfyui"]
+    seed = new_seed()
+    full = f"{prompt}. {style}. {GUARD}"
+    saved, meta = run_template("image_workflow", {
+        "PROMPT": full, "SEED": seed, "WIDTH": cfg["image_width"], "HEIGHT": cfg["image_height"],
+        "FILENAME_PREFIX": f"fof/{ep.project_id}/{scene_id}-{n}",
+    }, ep.path("images", "raw", f"{scene_id}-c{n}-{seed}"))
+    labeled = cards.ai_label(saved[0], ep.path("images", f"{scene_id}-c{n}.png"))
+    return {"path": ep.rel(labeled), "raw": ep.rel(saved[0]), "prompt": prompt, "full_prompt": full,
+            "seed": seed, "model": cfg["image_model_name"], "workflow": meta["workflow"], "made_at": utc_now()}
+
+
+def _cards(ep: Episode, scene: dict[str, Any], excerpts: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
+    size = (settings()["video"]["width"], settings()["video"]["height"])
+    out = []
+    text = scene["on_screen_text"]
+    if text and text != "-":
+        p = cards.title_card(text, ep.path("images", f"{scene['scene_id']}-title.png"), size)
+        out.append({"type": "title_card", "text": text, "path": ep.rel(p)})
+    for k, quote in enumerate(quotes_in(scene["narration"])):
+        match = next((e for e in excerpts.values()
+                      if normalize_for_match(quote) in normalize_for_match(e["text"])), None)
+        if not match:
+            continue
+        src = db.one("SELECT title, publisher, date FROM source WHERE source_id=?", (match["source_id"],)) or {}
+        attribution = ", ".join(x for x in (src.get("publisher") or src.get("title"), src.get("date")) if x)
+        p = cards.quote_card(quote, attribution or "Source on file",
+                             ep.path("images", f"{scene['scene_id']}-quote{k}.png"), size)
+        out.append({"type": "quote_card", "text": quote, "excerpt_id": match["excerpt_id"],
+                    "source_id": match["source_id"], "path": ep.rel(p)})
+    return out
 
 
 def run(ctx: Context) -> None:
     ep = ctx.episode
     if not ep.path("script.md").exists():
-        raise StageError("Approve the Script stage first.")
+        raise StageError("Approve the Script first.")
     script = parse(ep.path("script.md").read_text(encoding="utf-8"))
-    packet = read_json(ep.path("research.json")) or {"claims": [], "restrictions": []}
-    excerpts = _excerpts(packet)
+    packet = read_json(ep.path("research.json")) or {}
     restrictions = [f"{r['rule']} ({r['subject_id']})" for r in packet.get("restrictions", [])]
-    style_name = ctx.options.get("style", "documentary")
+    excerpts = _excerpts(ep)
+    board = ep.storyboard() or {}
+    style_name = ctx.options.get("style") or board.get("style") or "documentary"
     style = STYLES.get(style_name, STYLES["documentary"])
-    mode = ctx.options.get("mode", settings()["storyboard"]["mode"])
-    animate_per_scene = int(settings()["storyboard"]["animate_shots_per_scene"])
-
-    old = {s["shot_id"]: s for s in (ep.storyboard().get("shots") or [])}
-    shots: list[dict[str, Any]] = []
-    for n, scene in enumerate(script["scenes"], 1):
+    remake = ctx.options.get("remake") or []  # ["SCENE_002:1", ...]
+    old = {s["scene_id"]: s for s in board.get("scenes", [])}
+    scenes = []
+    total = len(script["scenes"])
+    for n, sc in enumerate(script["scenes"]):
         ctx.check_cancel()
-        ctx.progress(f"Storyboarding {scene['scene_id']} ({n}/{len(script['scenes'])})")
-        raw = _llm_shots(ctx, scene, excerpts, restrictions) if mode == "llm" else \
-            _simple_shots(scene, excerpts)
-        animated = 0
-        for i, s in enumerate(raw, 1):
-            shot_id = f"{scene['scene_id']}-{i:02d}"
-            shot = {
-                "shot_id": shot_id, "scene_id": scene["scene_id"], "type": s["type"],
-                "prompt": (s.get("prompt") or "").strip(), "text": (s.get("text") or "").strip(),
-                "excerpt_id": s.get("excerpt_id") or None, "source_id": s.get("source_id") or None,
-                "weight": max(0.5, min(3.0, float(s.get("weight") or 1))),
-                "camera": s.get("camera") if s.get("camera") in CAMERA_MOVES else "zoom_in",
-                "animate": False, "label_ai": s["type"] == "ai_image",
-            }
-            if shot["type"] == "ai_image":
-                shot["full_prompt"] = f"{shot['prompt']}. {style}. {GUARD}"
-                if animated < animate_per_scene:
-                    shot["animate"] = True
-                    animated += 1
-            # keep an image you already approved if the shot didn't change
-            prev = old.get(shot_id)
-            if prev and prev.get("image") and prev.get("prompt") == shot["prompt"] and \
-                    prev.get("text") == shot["text"] and prev.get("type") == shot["type"]:
-                shot["image"] = prev["image"]
-                shot["clip"] = prev.get("clip")
-            shots.append(shot)
-    shots.append({"shot_id": "CREDITS-01", "scene_id": "CREDITS", "type": "credits", "prompt": "",
-                  "text": "", "weight": 1, "camera": "static", "animate": False, "label_ai": False,
-                  "seconds": 10})
-    ep.save_storyboard({"style": style_name, "mode": mode, "built_at": utc_now(), "shots": shots})
-    ctx.log(f"Storyboard: {len(shots)} shots across {len(script['scenes'])} scenes.")
+        sid = sc["scene_id"]
+        prev = old.get(sid)
+        same = prev and prev.get("visual") == sc["visual"] and prev.get("narration") == sc["narration"]
+        entry = {"scene_id": sid, "visual": sc["visual"], "narration": sc["narration"],
+                 "ideas": prev["ideas"] if same else None,
+                 "candidates": prev["candidates"] if same else [None, None, None],
+                 "picked": prev.get("picked", []) if same else [],
+                 "cards": _cards(ep, sc, excerpts)}
+        if not entry["ideas"]:
+            ctx.progress(f"Planning pictures for {sid} ({n + 1}/{total})", 100 * n / total)
+            entry["ideas"] = _ideas(sc, restrictions)
+        for k in range(3):
+            ctx.check_cancel()
+            have = entry["candidates"][k] and ep.abs(entry["candidates"][k]["path"]).exists()
+            if have and f"{sid}:{k}" not in remake:
+                continue
+            ctx.progress(f"Painting {sid} picture {k + 1} of 3 ({n + 1}/{total} scenes)",
+                         100 * (n + (k + 1) / 3) / total)
+            entry["candidates"][k] = _paint(ep, sid, k, entry["ideas"][k], style)
+            if k in entry["picked"] and f"{sid}:{k}" in remake:
+                entry["picked"].remove(k)
+        scenes.append(entry)
+        # save after every scene so a crash or Cancel keeps the pictures already made
+        rest = [old[x["scene_id"]] for x in script["scenes"][n + 1:] if x["scene_id"] in old]
+        ep.save_storyboard({"style": style_name, "scenes": scenes + rest, "built_at": utc_now(), "partial": True})
+    ep.save_storyboard({"style": style_name, "scenes": scenes, "built_at": utc_now()})
+    ctx.progress("Pictures ready. Pick the ones to use for each scene.", 100)
+
+
+def set_picks(ep: Episode, scene_id: str, picked: list[int]) -> None:
+    board = ep.storyboard()
+    for s in board.get("scenes", []):
+        if s["scene_id"] == scene_id:
+            s["picked"] = sorted(set(picked))
+    ep.save_storyboard(board)
+
+
+def set_idea(ep: Episode, scene_id: str, index: int, idea: str) -> None:
+    board = ep.storyboard()
+    for s in board.get("scenes", []):
+        if s["scene_id"] == scene_id:
+            s["ideas"][index] = idea
+    ep.save_storyboard(board)
+
+
+def shots(ep: Episode) -> list[dict[str, Any]]:
+    """The pictures that go on to the Video stage: your picks, then that scene's cards."""
+    out = []
+    for s in ep.storyboard().get("scenes", []):
+        for k in s.get("picked", []):
+            c = s["candidates"][k]
+            if c:
+                out.append({"shot_id": f"{s['scene_id']}-p{k}", "scene_id": s["scene_id"], "type": "ai_image",
+                            "image": c, "prompt": c["prompt"]})
+        for j, card in enumerate(s.get("cards", [])):
+            out.append({"shot_id": f"{s['scene_id']}-k{j}", "scene_id": s["scene_id"], "type": card["type"],
+                        "image": {"path": card["path"]}, "text": card["text"]})
+    return out
 
 
 def check(ep: Episode) -> list[Check]:
     board = ep.storyboard()
-    if not board.get("shots"):
-        return [Check(BLOCK, "No storyboard yet. Run this stage.")]
-    packet = read_json(ep.path("research.json")) or {"claims": [], "restrictions": []}
-    excerpts = _excerpts(packet)
-    names = person_names()
-    rules = {r["rule"] for r in packet.get("restrictions", [])}
+    if not board.get("scenes"):
+        return [Check(BLOCK, "No pictures yet. Press Make pictures.")]
     out: list[Check] = []
-    script_ids = set()
     if ep.path("script.md").exists():
-        script_ids = {s["scene_id"] for s in parse(ep.path("script.md").read_text(encoding="utf-8"))["scenes"]}
-    board_ids = {s["scene_id"] for s in board["shots"]} - {"CREDITS"}
-    if script_ids and script_ids != board_ids:
-        out.append(Check(BLOCK, "The script changed since this storyboard was made. Run it again."))
-    for s in board["shots"]:
-        sid = s["shot_id"]
-        if s["type"] == "ai_image":
-            found = names_in(s["prompt"], names)
-            if found:
-                out.append(Check(BLOCK, f"{sid}: the image prompt names a real person "
-                                        f"({', '.join(found)}). AI never draws real people."))
-            if not s["prompt"]:
-                out.append(Check(BLOCK, f"{sid}: picture shot with no prompt."))
-            if "no_footage" in rules or "no_person_imagery" in rules:
-                out.append(Check(WARN, f"{sid}: careful topic - make sure this picture shows no "
-                                       "victims and no scene of the event."))
-        if s["type"] == "quote_card":
-            e = excerpts.get(s.get("excerpt_id") or -1)
-            if not e:
-                out.append(Check(BLOCK, f"{sid}: quote card without a verified quote (E-number)."))
-            elif normalize_for_match(s["text"]) not in normalize_for_match(e["text"]):
-                out.append(Check(BLOCK, f"{sid}: quote card text doesn't match verified quote "
-                                        f"E{e['excerpt_id']} word for word."))
-        if s["type"] == "receipt" and not s.get("source_id"):
-            out.append(Check(BLOCK, f"{sid}: a receipt shot must name the source it shows."))
-        if s["type"] == "title_card" and len(s["text"].split()) > 10:
-            out.append(Check(WARN, f"{sid}: title card text is long."))
-    receipts = sum(1 for s in board["shots"] if s["type"] == "receipt")
-    if receipts:
-        out.append(Check(WARN, f"{receipts} receipt shot(s) need a real screenshot or scan saved "
-                               "in the episode's receipts/ folder as <shot id>.png before Images "
-                               "can be approved."))
-    animated = sum(1 for s in board["shots"] if s.get("animate"))
-    out.append(Check(OK, f"{len(board['shots'])} shots, {animated} marked to animate."))
+        script_ids = [s["scene_id"] for s in parse(ep.path("script.md").read_text(encoding="utf-8"))["scenes"]]
+        if script_ids != [s["scene_id"] for s in board["scenes"]]:
+            out.append(Check(BLOCK, "The script changed since these pictures were made. Make pictures again "
+                                    "(pictures for unchanged scenes are kept)."))
+    names = person_names()
+    excerpts = _excerpts(ep)
+    for s in board["scenes"]:
+        if not s.get("picked"):
+            out.append(Check(BLOCK, f"{s['scene_id']}: pick at least one picture."))
+        for k in s.get("picked", []):
+            c = s["candidates"][k]
+            if not c or not ep.abs(c["path"]).exists():
+                out.append(Check(BLOCK, f"{s['scene_id']}: picked picture {k + 1} is missing; remake it."))
+            elif names_in(c["prompt"], names):
+                out.append(Check(BLOCK, f"{s['scene_id']} picture {k + 1}: the idea names a real person "
+                                        f"({', '.join(names_in(c['prompt'], names))}). AI never draws real people."))
+        for card in s.get("cards", []):
+            if card["type"] == "quote_card":
+                e = excerpts.get(card.get("excerpt_id"))
+                if not e or normalize_for_match(card["text"]) not in normalize_for_match(e["text"]):
+                    out.append(Check(BLOCK, f"{s['scene_id']}: a quote card doesn't match its verified quote."))
+    if not any(c.level == BLOCK for c in out):
+        n = sum(len(s["picked"]) for s in board["scenes"])
+        out.append(Check(OK, f"{n} pictures picked across {len(board['scenes'])} scenes."))
     return out

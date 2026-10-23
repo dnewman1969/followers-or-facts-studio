@@ -56,18 +56,31 @@ shows what went wrong.
 
 ## 5. Your first episode
 
-1. **Research** page → pick `A-Y2K-FEAR-INDUSTRY` (6 of 6 claims sourced) → **Make episode from arc**.
-2. On the **Episode** page, select **Research** → **Run**. It saves the sources and finds quotes.
-   Read what it found, then **Approve**.
-3. **Script** → Run. Read `script.md` in the editor, change anything, **Save**, then **Approve**.
-   If something's blocked (an invented source, an unverified quote), the reason is listed in red.
-4. Keep going down the list. Each stage tells you what to check.
-5. For a first episode, **Skip** Animation and Music to get a finished video fastest.
-6. **Render** with "Quick 720p draft" ticked first, then the full version.
-7. **Package**, read the description, then **Upload** (private).
+1. **1 Database**: the Stories tab is open. Click **Y2K: a real bug sold as the end of the world**
+   (6 of 6 claims have proof on file), read the breakdown, press **OK — research this**.
+2. **2 Research** starts by itself. Watch the progress line (Normal depth takes about 15–30 minutes).
+   When it finishes, look over the evidence, untick anything you don't want in the description,
+   then **Approve and continue**.
+3. **3 Stories**: press **Create 3 stories**, read them, press **Use this story** on one (or
+   **Rewrite with notes**), then approve.
+4. **4 Script**: press **Write the script**, read and edit, **Save my changes**, approve.
+5. **5 Storyboard**: press **Make pictures** (ComfyUI paints 3 per scene), tick the ones you like, approve.
+6. **6 Video**: **1. Write scene instructions**, read them, change any to **Camera move** if you
+   want it quicker, **2. Make the clips** (animations take ~6 minutes each; good overnight),
+   watch them, **Approve all clips**, approve.
+7. **7 Production**: **1. Make speech track**, **No music** (or **2. Make music**),
+   **3. Assemble timeline**, **Make preview** and watch it, adjust, **4. Render final video**, approve.
+8. **8 Publish**: **Write it up**, read the description, **Upload to YouTube (private)**.
 
-Long jobs (Images, Animation) run in the background. You can close the window;
-the **Queue** page shows progress when you come back.
+## Optional free keys that unlock more sources
+
+Put these in **Settings → research**. Everything works without them.
+
+| Setting | What it adds | Where to get it (free) |
+|---------|--------------|------------------------|
+| `courtlistener_token` | Court opinions and filings (about 125 searches a day) | Make an account at courtlistener.com, then your profile → API token |
+| `factcheck_key` | Existing fact-checks from Snopes, PolitiFact, AP and others | Google Cloud console → enable "Fact Check Tools API" → create an API key |
+| `archive_access_key`, `archive_secret_key` | Faster, more reliable Wayback Machine saves (30,000 a day instead of 200) | archive.org account → https://archive.org/account/s3.php |
 
 ## If something goes wrong
 

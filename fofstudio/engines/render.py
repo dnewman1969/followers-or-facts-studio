@@ -46,6 +46,7 @@ class Segment:
     transition_seconds: float = 0.5
     overlay: Path | None = None    # transparent PNG laid over the segment (AI label on clips)
     label: str = ""
+    inpoint: float = 0.0           # start this many seconds into a clip
     start: float = 0.0             # filled in by layout()
 
 
@@ -66,6 +67,10 @@ class Timeline:
     height: int = 1080
     fps: int = 30
     total: float = 0.0
+    # Owlbert in the corner: an ffconcat list of transparent drawings, and when he's visible
+    presenter: Path | None = None
+    presenter_ranges: list[tuple[float, float]] = field(default_factory=list)
+    presenter_corner: str = "bottom_right"
 
     def layout(self) -> "Timeline":
         """Work out when each segment starts. Segment n+1 starts as segment n begins to fade."""
@@ -133,6 +138,8 @@ def _render_segment(tl: Timeline, seg: Segment, out: Path, enc: dict) -> None:
     if seg.kind == "clip":
         clip_len = media.duration(seg.path)
         stretch = min(max(seg.seconds / max(clip_len, 0.1), 1.0), 1.6)
+        if seg.inpoint:
+            args += ["-ss", f"{seg.inpoint:.3f}"]
         args += ["-stream_loop", "-1", "-i", str(seg.path)]
         chain = f"[0:v]setpts={stretch:.4f}*PTS,fps={fps},{_cover(w, h)},format=yuv420p"
     else:
@@ -175,6 +182,10 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
             args += ["-i", str(cue.path)]
         if tl.music:
             args += ["-stream_loop", "-1", "-i", str(tl.music)]
+        owl_in = None
+        if tl.presenter and tl.presenter_ranges:
+            owl_in = n + len(tl.narration) + (1 if tl.music else 0)
+            args += ["-f", "concat", "-safe", "0", "-i", str(tl.presenter)]
 
         steps: list[str] = []
         v = "0:v"
@@ -184,6 +195,15 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
             steps.append(f"[{v}][{i}:v]xfade=transition={TRANSITIONS[prev.transition]}:"
                          f"duration={prev.transition_seconds:.3f}:offset={offset:.3f}[vx{i}]")
             v = f"vx{i}"
+        if owl_in is not None:
+            margin_x, margin_y = int(tl.width * 0.025), int(tl.height * 0.04)
+            x = f"W-w-{margin_x}" if "right" in tl.presenter_corner else str(margin_x)
+            y = f"H-h-{margin_y}" if "bottom" in tl.presenter_corner else str(margin_y)
+            when = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in tl.presenter_ranges)
+            steps.append(f"[{owl_in}:v]fps={tl.fps},format=rgba[owl]")
+            steps.append(f"[{v}][owl]overlay=x={x}:y={y}:enable='{when}':eof_action=pass:format=auto,"
+                         f"format=yuv420p[vowl]")
+            v = "vowl"
         if burn_subs and srt:
             steps.append(f"[{v}]subtitles='{escape_filter_path(srt)}':force_style='FontName=Arial,"
                          "FontSize=22,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
