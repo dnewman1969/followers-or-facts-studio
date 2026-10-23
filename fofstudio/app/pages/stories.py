@@ -17,8 +17,9 @@ ROLE_NAMES = {"intro": "Opening", "claim": "The claim", "record": "What the reco
 
 class StoriesPage(StagePage):
     TITLE = "Stories"
-    HELP = ("Step 3. The local AI writes three different ways to tell this story and take the lie apart. "
-            "Read each one, press Use this story on your favourite, or Rewrite with notes to change one.")
+    HELP = ("Step 3. The local AI writes three different ways to tell this story and take the lie apart, using only "
+            "the evidence you ticked. Read each one, press Use this story on your favourite, or Rewrite with notes. "
+            "All three are kept: to make another of them later, go to Database → Researched ★.")
     APPROVE_STAGE = "stories"
 
     def __init__(self, window):
@@ -56,6 +57,7 @@ class StoriesPage(StagePage):
                                  self.stage_status("research")["status"] == "approved")
         data = read_json(self.ep.path("stories.json")) if self.ep else None
         self.make_btn.setText("Create 3 new stories" if data else "Create 3 stories")
+        used = stories.used_by(self.ep) if data else {}
         for i, (view, use, redo) in enumerate(self.cards):
             opt = (data or {}).get("options", [None] * 3)[i] if data and i < len(data.get("options", [])) else None
             picked = data and data.get("chosen") == i
@@ -64,20 +66,23 @@ class StoriesPage(StagePage):
             elif not opt:
                 view.setHtml(f"<p style='color:{MUTED}'>Story {i + 1} will appear here.</p>")
             else:
-                view.setHtml(self._html(opt, picked))
+                view.setHtml(self._html(opt, picked, used.get(i, [])))
             use.setEnabled(bool(opt) and not busy)
             redo.setEnabled(bool(opt) and not busy)
             use.setText("✔ Chosen" if picked else "Use this story")
             use.setObjectName("primary" if picked else "")
             use.setStyleSheet("")  # re-apply the object-name style
 
-    def _html(self, s: dict, picked: bool) -> str:
+    def _html(self, s: dict, picked: bool, used: list[str] | None = None) -> str:
         e = html.escape
         beats = "".join(f"<li><b>{ROLE_NAMES.get(b['role'], b['role'])}:</b> {e(b['beat'])}"
                         f"{' <span style=color:' + MUTED + '>[' + ', '.join(b['evidence_ids']) + ']</span>' if b['evidence_ids'] else ''}</li>"
                         for b in s.get("beats", []))
         owl = "".join(f"<li>{e(o)}</li>" for o in s.get("owl_moments", []))
         mark = f"<p style='color:{GREEN}'><b>✔ This is the chosen story</b></p>" if picked else ""
+        if used:
+            mark += (f"<p style='color:{GOLD}'><b>Already made as {', '.join(used)}.</b> Pick another one for a "
+                     "different video, or use it again if you like.</p>")
         rev = f" <span style='color:{MUTED}'>(rewrite {s['revision'] - 1})</span>" if s.get("revision", 1) > 1 else ""
         return (f"{mark}<h2>{e(s['title'])}{rev}</h2><p><i>{e(s['logline'])}</i></p>"
                 f"<p><b>Angle:</b> {e(s['angle'])}</p><p><b>Opening:</b> {e(s['opening_hook'])}</p>"

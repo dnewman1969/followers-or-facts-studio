@@ -79,9 +79,37 @@ follow his own order. Rebuilt the window and the pipeline:
 Not yet run on Dave's PC: real research agent searches, ComfyUI workflows, Rhubarb download,
 preview playback with sound, YouTube upload.
 
+## 2026-10-22 — v0.3: research you choose, keep and reuse
+
+Dave's first real run (S01E02) stopped at Script: "SCENE_003: source E14 doesn't exist in the
+database" for most scenes. Cause: Research labels quotes E1, E2...; the stories cite those labels;
+the script writer copied them into the sources list, and the check only knew database source IDs.
+Fixed in `stages/script.py`: the writer gets each story beat's real source IDs and quote numbers,
+`fix_refs` turns E-numbers into the quote plus its source (and fills claims from sources, or the
+ticked sources for a claim with none, with a note), and the check reads E-numbers the same way.
+
+Dave also asked for:
+
+- **Research doesn't start by itself.** The page lists what's on file straight away (no internet,
+  `research.prepare`), you choose the research time (new: "only the sources already on file"), then press Start.
+- **Nothing starts ticked**; a search box and a Show filter (ticked / new / quotes / court and
+  government); Tick/Untick all shown; NEW marks on the last run's finds.
+- **A summary of each source** (`source.summary`, written by the AI from the saved page) shown in the
+  list and the detail pane.
+- **Dig deeper on ticked**: the agents search around the ticked items (`options.focus`, optional notes).
+- **Only ticked evidence** reaches Stories, Script and the description (`research.selected`).
+  Research blocks if nothing is ticked or a claim's ticked evidence has no primary source.
+- **Researched ★ tab** on the Database page (`researched.py`): subjects researched, the videos made
+  from each, Open, New video with different evidence, New video with another of its stories
+  (`stories.set_id`, `stories.used_by` marks stories already made).
+- Research was already saved in the database (sources, quotes, links to claims); now summaries too,
+  and any new video on the same subject starts with everything found so far.
+
+42 tests pass.
+
 ## Next
 
-1. Dave: run Update Studio.cmd, then make S01E01 (Y2K fear industry) end to end; report anything odd.
+1. Dave: run Update Studio.cmd, then carry on with S01E02 (press Write it again on Script) or start fresh; report anything odd.
 2. Fix whatever the first real run turns up in the ComfyUI templates and prompts.
 3. Owlbert on model: turnaround sheet, LoRA, intro/outro shots.
 4. Shorts: vertical clips from the render.

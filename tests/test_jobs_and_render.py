@@ -44,7 +44,9 @@ def test_queue_runs_a_job_and_pauses_on_failure(data, fakes):
     jobs.worker_loop(once=True)
     assert [j for j in jobs.jobs() if j["job_id"] == job][0]["status"] == "done"
     assert ep.stage_status("research")["status"] == "awaiting_approval"
-
+    from fofstudio.stages import research as rs
+    from fofstudio.util import read_json
+    rs.set_include(ep, [e["id"] for e in read_json(ep.path("research.json"))["evidence"]], True)
     pipeline.approve(ep, "research")
     def boom(self, *a, **k):
         raise RuntimeError("model fell over")

@@ -8,6 +8,7 @@ from verified excerpts. You can edit script.md by hand and press Re-check.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .. import db
@@ -50,8 +51,9 @@ The narrator is Professor Owlbert McFinnegan, a warm, curious owl professor.
 
 Hard rules (breaking any of them makes the script unusable):
 1. Use ONLY facts from the research packet. Never invent a date, number, name, quote or source.
-2. Every scene that states a fact lists the claim_ids and source_ids it relies on. Use only
-   source IDs listed for that claim. Never use a Knowledge Fight (kf_index) source as evidence.
+2. Every scene that states a fact lists the claim_ids and source_ids it relies on. source_ids
+   are the "source_id" values in the packet (they start with "S-"), only ones listed under that
+   claim. Quote numbers like E14 are NOT source IDs: put the number (14) in excerpt_ids instead.
 3. Direct quotes: only copy text from a verified quote (by its excerpt_id) word for word,
    inside double quotes, and list that excerpt_id. Otherwise paraphrase with no quote marks.
 4. Plain 6th-grade English: short sentences, everyday words, explain any jargon.
@@ -67,6 +69,52 @@ Hard rules (breaking any of them makes the script unusable):
 10. ON_SCREEN_TEXT is at most 8 words (a date, a place, a short label) or empty."""
 
 
+def selected_packet(ep: Episode) -> dict[str, Any]:
+    from .research import selected
+    return selected(read_json(ep.path("research.json")) or {"claims": [], "evidence": []})
+
+
+def _excerpt_map(packet: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(e["excerpt_id"]): e for c in packet.get("claims", []) for e in c.get("excerpts", [])}
+
+
+def fix_refs(sc: dict[str, Any], packet: dict[str, Any], fill: bool = True) -> list[str]:
+    """Tidy one scene's SOURCES line: quote numbers written as sources (E14) become the quote's
+    source plus the quote number, and a scene with sources but no claims gets the claims those
+    sources belong to. Returns notes about anything it had to fill in."""
+    notes = []
+    excerpts = _excerpt_map(packet)
+    claim_of = {s["source_id"]: c["claim_id"] for c in packet.get("claims", []) for s in c["sources"]}
+    srcs, quotes = [], [str(q).lstrip("Ee") for q in sc.get("excerpt_ids", [])]
+    for ref in sc.get("source_ids", []):
+        ref = str(ref).strip()
+        m = re.fullmatch(r"[Ee](\d+)", ref)
+        if m:
+            quotes.append(m.group(1))
+            if m.group(1) in excerpts:
+                ref = excerpts[m.group(1)]["source_id"]
+            else:
+                srcs.append(ref)  # leave it for the check to flag
+                continue
+        srcs.append(ref)
+    for q in quotes:  # a quote implies its source
+        if q in excerpts and excerpts[q]["source_id"] not in srcs:
+            srcs.append(excerpts[q]["source_id"])
+    sc["source_ids"] = list(dict.fromkeys(srcs))
+    sc["excerpt_ids"] = list(dict.fromkeys(quotes))
+    if sc["source_ids"] and not sc.get("claim_ids"):
+        sc["claim_ids"] = list(dict.fromkeys(claim_of[s] for s in sc["source_ids"] if s in claim_of))
+    if fill and sc.get("claim_ids") and not sc["source_ids"]:
+        for cid in sc["claim_ids"]:
+            c = next((c for c in packet.get("claims", []) if c["claim_id"] == cid), None)
+            if c and c["sources"]:
+                best = sorted(c["sources"], key=lambda s: (not s.get("is_primary"), s["source_id"]))[:2]
+                sc["source_ids"] += [s["source_id"] for s in best]
+                notes.append(f"{sc.get('scene_id', '?')}: no sources given for {cid}; used "
+                             f"{', '.join(s['source_id'] for s in best)} (your ticked evidence for it). Check they fit.")
+    return notes
+
+
 def _packet_for_prompt(packet: dict[str, Any]) -> str:
     slim = {"arc": (packet.get("arc") or {}).get("title"), "restrictions": [
         f"{r['rule']} ({r['subject_id']}): {r.get('note') or ''}" for r in packet["restrictions"]],
@@ -79,8 +127,9 @@ def _packet_for_prompt(packet: dict[str, Any]) -> str:
             "society_effect": c.get("society_effect"),
             "people": [f"{p['name']} ({p['link_role']})" for p in c["people"]],
             "sources": [{"source_id": s["source_id"], "type": s["source_type"], "title": s["title"],
-                         "publisher": s.get("publisher"), "date": s.get("date")}
-                        for s in c["sources"] if s["is_primary"]],
+                         "publisher": s.get("publisher"), "date": s.get("date"),
+                         "what_it_shows": s.get("summary") or s.get("supports_field") or ""}
+                        for s in c["sources"]],
             "verified_quotes": [{"excerpt_id": e["excerpt_id"], "source_id": e["source_id"],
                                  "text": e["text"]} for e in c["excerpts"]],
         })
@@ -89,9 +138,11 @@ def _packet_for_prompt(packet: dict[str, Any]) -> str:
 
 def run(ctx: Context) -> None:
     ep = ctx.episode
-    packet = read_json(ep.path("research.json"))
-    if not packet:
+    if not ep.path("research.json").exists():
         raise StageError("Run and approve the Research stage first.")
+    packet = selected_packet(ep)
+    if not packet["claims"]:
+        raise StageError("No evidence is ticked on the Research page.")
     from .stories import chosen
     story = chosen(ep)
     minutes = float(ctx.options.get("minutes", 8))
@@ -99,9 +150,24 @@ def run(ctx: Context) -> None:
     ctx.progress(f"Writing a ~{minutes:g} minute script with {settings()['ollama']['writer_model']}", 10)
     story_text = ""
     if story:
-        story_text = ("\nFollow this approved story plan, beat by beat (one or more scenes per beat):\n"
-                      + json.dumps({k: story[k] for k in ("title", "logline", "angle", "opening_hook", "beats")},
-                                   ensure_ascii=False, indent=1) + "\n")
+        excerpts = _excerpt_map(packet)
+        beats = []
+        for b in story.get("beats", []):
+            src, quotes = [], []
+            for ref in b.get("evidence_ids", []):
+                m = re.fullmatch(r"E(\d+)", ref)
+                if m and m.group(1) in excerpts:
+                    quotes.append(int(m.group(1)))
+                    src.append(excerpts[m.group(1)]["source_id"])
+                elif not m:
+                    src.append(ref)
+            beats.append({"role": b["role"], "beat": b["beat"], "source_ids": list(dict.fromkeys(src)),
+                          "excerpt_ids": quotes})
+        plan = {k: story[k] for k in ("title", "logline", "angle", "opening_hook")}
+        plan["beats"] = beats
+        story_text = ("\nFollow this approved story plan, beat by beat (one or more scenes per beat). Each "
+                      "beat lists the source_ids and excerpt_ids to use for it:\n"
+                      + json.dumps(plan, ensure_ascii=False, indent=1) + "\n")
     answer = Ollama().chat_json([
         {"role": "system", "content": VOICE_RULES},
         {"role": "user", "content": (
@@ -119,6 +185,8 @@ def run(ctx: Context) -> None:
     for n, sc in enumerate(scenes, 1):
         sc["scene_id"] = f"SCENE_{n:03d}"
         sc["est_seconds"] = round(len(sc.get("narration", "").split()) / WORDS_PER_MINUTE * 60)
+        for note in fix_refs(sc, packet):
+            ctx.log(note)
     header = {"Episode": ep.project_id, "Arc": (packet.get("arc") or {}).get("arc_id", "-"),
               "Drafted by": settings()["ollama"]["writer_model"]}
     write_text(ep.path("script.md"), render(answer.get("title") or ep.title, scenes, header))
@@ -129,31 +197,40 @@ def check(ep: Episode) -> list[Check]:
     path = ep.path("script.md")
     if not path.exists():
         return [Check(BLOCK, "No script yet. Run this stage (or write script.md yourself).")]
-    packet = read_json(ep.path("research.json")) or {"claims": []}
+    packet = selected_packet(ep)
     script = parse(path.read_text(encoding="utf-8"))
     scenes = script["scenes"]
     out: list[Check] = []
     if not scenes:
         return [Check(BLOCK, "script.md has no '## SCENE_###' headings.")]
 
-    claim_sources = {c["claim_id"]: {s["source_id"] for s in c["sources"] if s["is_primary"]}
-                     for c in packet["claims"]}
-    all_primary = set().union(*claim_sources.values()) if claim_sources else set()
-    excerpts = {str(e["excerpt_id"]): e for c in packet["claims"] for e in c["excerpts"]}
+    claim_sources = {c["claim_id"]: {s["source_id"] for s in c["sources"]} for c in packet["claims"]}
+    all_ticked = set().union(*claim_sources.values()) if claim_sources else set()
+    excerpts = _excerpt_map(packet)
     known_sources = {r["source_id"] for r in db.rows("SELECT source_id FROM source")}
+    kf = {r["source_id"] for r in db.rows("SELECT source_id FROM source WHERE source_type='kf_index'")}
+    all_claims = {r["claim_id"] for r in db.rows("SELECT claim_id FROM claim")}
 
     for sc in scenes:
         sid = sc["scene_id"]
+        fix_refs(sc, packet, fill=False)  # read E-numbers in the sources list as quotes (for hand edits)
         for cid in sc["claim_ids"]:
             if cid not in claim_sources:
-                out.append(Check(BLOCK, f"{sid}: claim {cid} is not in this episode's research packet."))
+                why = ("has nothing ticked on the Research page" if cid in all_claims
+                       else "isn't in the database (the AI may have invented it)")
+                out.append(Check(BLOCK, f"{sid}: claim {cid} {why}."))
         for src in sc["source_ids"]:
-            if src not in known_sources:
+            if re.fullmatch(r"[Ee]\d+", src):
+                out.append(Check(BLOCK, f"{sid}: quote {src} isn't one of the quotes you ticked on the Research page."))
+            elif src not in known_sources:
                 out.append(Check(BLOCK, f"{sid}: source {src} doesn't exist in the database "
                                         "(the AI may have invented it)."))
-            elif src not in all_primary:
-                out.append(Check(BLOCK, f"{sid}: source {src} is not a primary source for this "
-                                        "episode's claims. Knowledge Fight is an index, not evidence."))
+            elif src in kf:
+                out.append(Check(BLOCK, f"{sid}: source {src} is a Knowledge Fight episode. It's a research "
+                                        "index, not evidence."))
+            elif src not in all_ticked:
+                out.append(Check(BLOCK, f"{sid}: source {src} isn't ticked on the Research page. Tick it "
+                                        "there, or take it out of this scene."))
         if sc["claim_ids"] and not sc["source_ids"]:
             out.append(Check(BLOCK, f"{sid}: states facts about {', '.join(sc['claim_ids'])} "
                                     "but lists no source IDs."))

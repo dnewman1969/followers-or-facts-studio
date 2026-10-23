@@ -140,13 +140,13 @@ class MainWindow(QMainWindow):
             p.set_episode(self.ep)
         self._nav_marks()
 
-    def _chosen(self, project_id: str) -> None:
+    def _chosen(self, project_id: str, step: int = 1) -> None:
+        """Open an episode. Research never starts by itself: you choose how deep first."""
         self._fill_picker(project_id)
-        self.nav.setCurrentRow(1)
-        try:
-            self.pages[1].run_stage("research", {"depth": "normal"}, "Research agents")
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, APP_NAME, str(exc))
+        if step < 0:  # the first step that still needs you
+            step = next((i for i, (_, stage) in enumerate(STEPS) if stage and self.ep
+                         and self.ep.stage_status(stage)["status"] != "approved"), len(STEPS) - 1)
+        self.nav.setCurrentRow(step)
 
     # ------------------------------------------------------------ navigation
     def _go(self, row: int) -> None:

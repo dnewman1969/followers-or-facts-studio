@@ -58,9 +58,12 @@ shows what went wrong.
 
 1. **1 Database**: the Stories tab is open. Click **Y2K: a real bug sold as the end of the world**
    (6 of 6 claims have proof on file), read the breakdown, press **OK — research this**.
-2. **2 Research** starts by itself. Watch the progress line (Normal depth takes about 15–30 minutes).
-   When it finishes, look over the evidence, untick anything you don't want in the description,
-   then **Approve and continue**.
+2. **2 Research** opens and lists the evidence already on file (nothing starts by itself).
+   Choose the **Research time** (Normal takes about 15–30 minutes), press **Start research**, and
+   watch the progress line. When it finishes, click each row to read what it is and what it shows,
+   type a word in the search box to narrow the list, and **tick** the evidence this video will use
+   (nothing starts ticked). Want more on something? Tick it and press **Dig deeper on ticked**.
+   Then **Approve and continue**.
 3. **3 Stories**: press **Create 3 stories**, read them, press **Use this story** on one (or
    **Rewrite with notes**), then approve.
 4. **4 Script**: press **Write the script**, read and edit, **Save my changes**, approve.
@@ -71,6 +74,17 @@ shows what went wrong.
 7. **7 Production**: **1. Make speech track**, **No music** (or **2. Make music**),
    **3. Assemble timeline**, **Make preview** and watch it, adjust, **4. Render final video**, approve.
 8. **8 Publish**: **Write it up**, read the description, **Upload to YouTube (private)**.
+
+## Making more videos from the same research
+
+Everything the research agents find is saved in the database. **1 Database → Researched ★**
+lists every subject you've researched and the videos made from it:
+
+- **Open this video** picks up where you left off.
+- **New video: pick different evidence** starts a new episode with the same research and nothing
+  ticked, so you can tick other evidence (and dig deeper on it) for a different story.
+- **New video: use another of its stories** starts a new episode with the same ticks and the same
+  three stories, so you can make the ones you didn't pick. Stories already made say so.
 
 ## Optional free keys that unlock more sources
 

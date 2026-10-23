@@ -56,15 +56,21 @@ owl_moments: 2-4 places where Owlbert appears on camera (e.g. "opens at his desk
 """
 
 
+def _packet(ep: Episode) -> dict[str, Any]:
+    from .research import selected
+    return selected(read_json(ep.path("research.json")) or {})
+
+
 def evidence_for_prompt(ep: Episode) -> str:
-    packet = read_json(ep.path("research.json")) or {}
+    packet = _packet(ep)
     items = []
     for c in packet.get("claims", []):
         items.append({"claim_id": c["claim_id"], "claim": c["short_title"], "verdict": c["falsity_status"],
                       "summary": c.get("claim_summary"), "harm": c.get("harm_summary"),
                       "who_benefited": c.get("who_benefited")})
-    evidence = [{"id": e["id"], "type": e.get("kind"), "title": e.get("title"),
-                 "date": e.get("date"), "quote": e.get("quote"), "supports": e.get("supports")}
+    evidence = [{"id": e["id"], "claim_id": e["claim_id"], "kind": e.get("kind"), "source_type": e.get("type"),
+                 "title": e.get("title"), "date": e.get("date"), "quote": e.get("quote") or None,
+                 "what_it_shows": e.get("summary") or e.get("supports")}
                 for e in packet.get("evidence", [])]
     return json.dumps({"subject": packet.get("subject"), "claims": items, "evidence": evidence,
                        "careful_rules": [f"{r['rule']}: {r.get('note') or ''}"
@@ -73,7 +79,7 @@ def evidence_for_prompt(ep: Episode) -> str:
 
 
 def _valid_ids(ep: Episode) -> set[str]:
-    packet = read_json(ep.path("research.json")) or {}
+    packet = _packet(ep)
     ids = {e["id"] for e in packet.get("evidence", [])}
     for c in packet.get("claims", []):
         ids |= {s["source_id"] for s in c.get("sources", []) if s.get("is_primary")}
@@ -90,6 +96,8 @@ def run(ctx: Context) -> None:
     ep = ctx.episode
     if not ep.path("research.json").exists():
         raise StageError("Approve Research first.")
+    if not _packet(ep).get("evidence"):
+        raise StageError("No evidence is ticked on the Research page. Tick what this video should use.")
     data = read_json(ep.path("stories.json"), {}) or {}
     valid = _valid_ids(ep)
     llm = Ollama()
@@ -123,7 +131,7 @@ def run(ctx: Context) -> None:
             story["angle_hint"] = angle
             story["revision"] = 1
             options.append(story)
-        data = {"options": options, "made_at": utc_now()}
+        data = {"options": options, "made_at": utc_now(), "set_id": f"{ep.project_id}-{utc_now()}"}
     write_json(ep.path("stories.json"), data)
     ctx.progress("Stories ready. Pick one.", 100)
 
@@ -141,6 +149,22 @@ def chosen(ep: Episode) -> dict[str, Any] | None:
     if data.get("chosen") is None:
         return None
     return data["options"][data["chosen"]]
+
+
+def used_by(ep: Episode) -> dict[int, list[str]]:
+    """Which of these three stories other videos already use (videos started from the same set)."""
+    from ..episode import list_episodes, Episode as E
+    data = read_json(ep.path("stories.json")) or {}
+    if not data.get("set_id"):
+        return {}
+    out: dict[int, list[str]] = {}
+    for row in list_episodes():
+        if row["project_id"] == ep.project_id:
+            continue
+        other = read_json(E.load(row["project_id"]).path("stories.json")) or {}
+        if other.get("set_id") == data["set_id"] and other.get("chosen") is not None:
+            out.setdefault(int(other["chosen"]), []).append(row["project_id"])
+    return out
 
 
 def check(ep: Episode) -> list[Check]:

@@ -27,8 +27,8 @@ only online service is the free YouTube upload.
 
 | Step | What happens | You do |
 |------|--------------|--------|
-| 1 Database | Pick a Story, a Conspiracy, a Person or an Organization from the research database. A breakdown shows every claim it will cover, who benefited, the harm, the people involved and how much proof is on file. | Press **OK — research this** |
-| 2 Research | Research agents read the sources on file (or their Wayback Machine copies), search the web, court records (CourtListener), the Federal Register and the Library of Congress for more proof, and keep only quotes found word for word in the saved page. Every link gets a permanent Wayback copy. | Watch the progress line; untick anything you don't want in the write-up; approve |
+| 1 Database | Pick a Story, a Conspiracy, a Person or an Organization from the research database. A breakdown shows every claim it will cover, who benefited, the harm, the people involved and how much proof is on file. **Researched ★** lists what you've already researched and the videos made from it. | Press **OK — research this**, or start another video from saved research |
+| 2 Research | Research agents read the sources on file (or their Wayback Machine copies), search the web, court records (CourtListener), the Federal Register and the Library of Congress for more proof, keep only quotes found word for word in the saved page, and write a short summary of each source. Every link gets a permanent Wayback copy. Everything found is saved in the database. | Choose the research time, press Start; search the list, tick the evidence to use (nothing starts ticked), dig deeper on anything ticked; approve |
 | 3 Stories | Three different story plans that tell the tale and take the lie apart: follow the money, then-and-now, and the people it hurt. | Pick one, or **Rewrite with notes** |
 | 4 Script | Owlbert's narration, written from the chosen story, with the proof each scene relies on. | Edit, save, approve |
 | 5 Storyboard | Three AI pictures per scene (Z-Image Turbo in ComfyUI), plus title and quote cards drawn as text. | Tick the pictures to use; remake any |

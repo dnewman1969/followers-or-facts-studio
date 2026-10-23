@@ -2,11 +2,11 @@
 
 import pytest
 
-from fofstudio import db, media, pipeline, scriptfmt, subjects
+from fofstudio import db, media, pipeline, researched, scriptfmt, subjects
 from fofstudio.agents import search, web
 from fofstudio.episode import Episode
 from fofstudio.llm import Ollama
-from fofstudio.stages import production, stories, storyboard, video
+from fofstudio.stages import production, research as rs, script as script_stage, stories, storyboard, video
 from fofstudio.util import StageError, read_json
 
 FOUND_URL = "https://www.courtlistener.com/opinion/123/test-v-jones/"
@@ -17,6 +17,8 @@ FOUND_TEXT = ("Background. The court finds that the defendant sold survival supp
 def fake_llm(get_packet):
     def chat_json(self, messages, schema, model=None, **kw):
         props = schema["properties"]
+        if "summary" in props and len(props) == 1:
+            return {"summary": "A court ruling. It says the defendant sold survival supplies."}
         if "queries" in props:
             return {"queries": ["survival supplies court ruling", "y2k radio fear"]}
         if "excerpts" in props:
@@ -74,8 +76,15 @@ def episode(data, fakes):
     return ep
 
 
+def tick_all(ep):
+    rs.set_include(ep, [e["id"] for e in read_json(ep.path("research.json"))["evidence"]], True)
+
+
 def research_and_story(ep):
     pipeline.run_now(ep, "research", {"depth": "quick"})
+    with pytest.raises(StageError, match="Nothing is ticked"):
+        pipeline.approve(ep, "research")
+    tick_all(ep)
     pipeline.approve(ep, "research")
     pipeline.run_now(ep, "stories")
     with pytest.raises(StageError, match="Pick one"):
@@ -240,3 +249,125 @@ def test_script_roundtrip():
     sc = parsed["scenes"][0]
     assert parsed["title"] == "T" and sc["role"] == "claim" and sc["source_ids"] == ["S-B", "S-C"]
     assert sc["excerpt_ids"] == ["12"] and sc["narration"] == "Hello there."
+
+
+def test_research_lists_what_is_on_file_without_starting(episode):
+    ep = episode
+    packet = rs.prepare(ep)  # what the Research page does when it opens: no agents, no internet
+    assert packet["evidence"] and not any(e["include"] for e in packet["evidence"])
+    assert not packet.get("researched_at")
+    rs.set_include(ep, [packet["evidence"][0]["id"]], True)
+    again = rs.prepare(ep)  # opening the page again keeps your ticks
+    assert [e["id"] for e in again["evidence"] if e["include"]] == [packet["evidence"][0]["id"]]
+
+
+def test_research_saves_summaries_and_flags_new_finds(episode):
+    ep = episode
+    before = {e["id"] for e in rs.prepare(ep)["evidence"]}
+    pipeline.run_now(ep, "research", {"depth": "quick"})
+    packet = read_json(ep.path("research.json"))
+    new = [e for e in packet["evidence"] if e["new"]]
+    assert new and {e["id"] for e in new}.isdisjoint(before)
+    found = next(e for e in packet["evidence"] if e.get("found_by") == "agent")
+    assert "survival supplies" in found["summary"]
+    # the database keeps it: a brand-new video on the same subject sees it straight away
+    other = Episode.create("S01E09", "Same subject", "A-Y2K-FEAR-INDUSTRY", ep.claim_ids)
+    assert any(e["source_id"] == found["source_id"] for e in rs.prepare(other)["evidence"])
+
+
+def test_dig_deeper_on_ticked_evidence(episode, monkeypatch):
+    ep = episode
+    packet = rs.prepare(ep)
+    target = next(e for e in packet["evidence"] if e["kind"] == "link")
+    asked = []
+    real = Ollama.chat_json
+
+    def spy(self, messages, schema, **kw):
+        if "queries" in schema["properties"]:
+            asked.append(messages[-1]["content"])
+        return real(self, messages, schema, **kw)
+    monkeypatch.setattr(Ollama, "chat_json", spy)
+    pipeline.run_now(ep, "research", {"depth": "quick", "focus": [target["id"]], "notes": "look for the court case"})
+    assert asked and target["title"] in asked[0] and "court case" in asked[0]
+    packet = read_json(ep.path("research.json"))
+    assert next(e for e in packet["evidence"] if e["id"] == target["id"])["include"]
+    assert any(e["new"] and e["found_by"] == "agent" for e in packet["evidence"])
+    assert packet["runs"][-1]["focus"] == [target["id"]]
+
+
+def test_only_ticked_evidence_reaches_the_script(episode):
+    ep = episode
+    pipeline.run_now(ep, "research", {"depth": "files"})
+    packet = read_json(ep.path("research.json"))
+    keep = packet["claims"][0]["claim_id"]
+    rs.set_include(ep, [e["id"] for e in packet["evidence"] if e["claim_id"] == keep], True)
+    sel = rs.selected(read_json(ep.path("research.json")))
+    assert [c["claim_id"] for c in sel["claims"]] == [keep]
+    checks = pipeline.checks(ep, "research")
+    assert any("leaves it out" in c.message for c in checks)
+
+
+def test_quote_numbers_in_the_sources_line_are_understood(episode):
+    """Dave's S01E02: the writer put E-numbers (quote IDs) where source IDs go."""
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    sel = script_stage.selected_packet(ep)
+    quote = next(x for c in sel["claims"] for x in c["excerpts"])
+    sc = {"scene_id": "SCENE_002", "claim_ids": [], "source_ids": [f"E{quote['excerpt_id']}"], "excerpt_ids": []}
+    script_stage.fix_refs(sc, sel)
+    assert sc["source_ids"] == [quote["source_id"]] and sc["excerpt_ids"] == [str(quote["excerpt_id"])]
+    assert sc["claim_ids"]  # filled in from the source
+    # and in a hand-edited script, the check reads E-numbers the same way
+    text = ep.path("script.md").read_text(encoding="utf-8")
+    first = text.index("sources: S-")
+    end = text.index(" |", first)
+    text = text[:first] + f"sources: E{quote['excerpt_id']}" + text[end:]
+    ep.path("script.md").write_text(text, encoding="utf-8")
+    msgs = [c.message for c in pipeline.checks(ep, "script")]
+    assert not any("doesn't exist" in m for m in msgs), msgs
+
+
+def test_scene_without_sources_gets_the_ticked_ones(episode):
+    ep = episode
+    research_and_story(ep)
+    sel = script_stage.selected_packet(ep)
+    cid = sel["claims"][0]["claim_id"]
+    sc = {"scene_id": "SCENE_002", "claim_ids": [cid], "source_ids": [], "excerpt_ids": []}
+    notes = script_stage.fix_refs(sc, sel)
+    assert sc["source_ids"] and notes
+
+
+def test_researched_projects_and_another_video(episode):
+    ep = episode
+    research_and_story(ep)
+    rows = researched.listing()
+    assert [(r["kind"], r["id"]) for r in rows] == [("story", "A-Y2K-FEAR-INDUSTRY")]
+    assert "S01E01" in researched.detail_html("story", "A-Y2K-FEAR-INDUSTRY")
+
+    fresh = researched.new_video_from("S01E01", "evidence")
+    p = read_json(fresh.path("research.json"))
+    assert p["evidence"] and not any(e["include"] for e in p["evidence"])
+    assert fresh.info["based_on"] == "S01E01"
+
+    other = researched.new_video_from("S01E01", "story")
+    assert other.stage_status("research")["status"] == "approved"
+    assert read_json(other.path("stories.json")).get("chosen") is None
+    assert stories.used_by(other) == {1: ["S01E01"]}
+    stories.choose(other, 0)
+    pipeline.approve(other, "stories")
+    assert stories.used_by(ep) == {0: [other.project_id]}
+    assert len(researched.videos_for("story", "A-Y2K-FEAR-INDUSTRY")) == 3
+
+
+def test_research_file_from_v02_still_works(episode):
+    ep = episode
+    research_and_story(ep)
+    p = read_json(ep.path("research.json"))
+    for e in p["evidence"]:  # what v0.2 saved: no excerpt_id, summary, claim or new
+        for k in ("excerpt_id", "summary", "claim", "new"):
+            e.pop(k, None)
+    from fofstudio.util import write_json
+    write_json(ep.path("research.json"), p)
+    sel = rs.selected(p)
+    assert any(c["excerpts"] for c in sel["claims"])

@@ -119,3 +119,12 @@ class Episode:
 
 def list_episodes() -> list[dict[str, Any]]:
     return db.rows("SELECT * FROM project ORDER BY created_at DESC")
+
+
+def next_id(season: int = 1) -> str:
+    """The next free episode number, e.g. S01E03."""
+    existing = {r["project_id"] for r in list_episodes()}
+    n = 1
+    while f"S{season:02d}E{n:02d}" in existing:
+        n += 1
+    return f"S{season:02d}E{n:02d}"

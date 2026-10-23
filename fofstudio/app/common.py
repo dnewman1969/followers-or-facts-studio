@@ -21,6 +21,8 @@ RED = "#c0392b"
 GREEN = "#27ae60"
 MUTED = "#8a8fa3"
 
+CHECK_ICON = (Path(__file__).parent / "check.svg").as_posix()
+
 STYLE = f"""
 QWidget {{ background: {STUDIO}; color: {CREAM}; font-size: 10pt; }}
 QLabel#h1 {{ font-size: 18pt; font-weight: 600; color: {CREAM}; }}
@@ -43,6 +45,10 @@ QPushButton:focus {{ outline: none; border-color: {GOLD}; }}
 QPushButton#danger {{ background: #5a1f1a; border-color: {RED}; }}
 QTableWidget, QListWidget, QPlainTextEdit, QTextBrowser, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     background: {PANEL}; border: 1px solid #2c3046; border-radius: 4px; selection-background-color: {NAVY}; }}
+QTableView::indicator, QListView::indicator, QCheckBox::indicator {{ width: 17px; height: 17px;
+    border: 2px solid #9aa0b8; border-radius: 4px; background: #1b1e2b; }}
+QTableView::indicator:checked, QListView::indicator:checked, QCheckBox::indicator:checked {{
+    background: {GOLD}; border-color: {GOLD}; image: url({CHECK_ICON}); }}
 QHeaderView::section {{ background: #222639; color: {MUTED}; border: none; padding: 5px; }}
 QTabWidget::pane {{ border: 1px solid #2c3046; }}
 QTabBar::tab {{ background: {PANEL}; padding: 6px 14px; color: {MUTED}; }}

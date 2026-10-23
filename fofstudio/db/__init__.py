@@ -35,6 +35,7 @@ MIGRATIONS = [
     ("source", "archive_url", "TEXT"),
     ("source", "found_by", "TEXT"),
     ("source_excerpt", "supports", "TEXT"),
+    ("source", "summary", "TEXT"),
 ]
 
 
