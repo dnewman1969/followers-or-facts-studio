@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QCheckBox, QTableWidgetItem, QVBoxLayout, QWidget
 
 from ... import rendermode
 from ...config import save_settings, settings
-from ..common import GOLD, button, error, info, label, row, table
+from ..common import button, error, info, label, row, table
 
 
 class RenderModePage(QWidget):

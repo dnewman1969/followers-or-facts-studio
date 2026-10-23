@@ -2,7 +2,7 @@
 
 import pytest
 
-from fofstudio import db, media, pipeline, researched, scriptfmt, subjects
+from fofstudio import media, pipeline, researched, scriptfmt, subjects
 from fofstudio.agents import search, web
 from fofstudio.episode import Episode
 from fofstudio.llm import Ollama

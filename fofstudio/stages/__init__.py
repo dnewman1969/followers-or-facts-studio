@@ -48,4 +48,15 @@ def _preview(ctx):
 STAGES.append(Stage("preview", "Preview", "ffmpeg", ("video", "narration"), _preview, lambda ep: [],
                     hidden=True, description="A quick low-resolution render to watch while editing."))
 
+def _selftest(ctx):
+    """A tiny job that proves the worker picks jobs up (Queue page → Test the worker)."""
+    from ..util import utc_now, write_json
+    ctx.progress("The worker picked up the test job.", 50)
+    write_json(ctx.episode.path("worker-test.json"), {"ok": True, "at": utc_now()})
+    ctx.progress("Worker test finished.", 100)
+
+
+STAGES.append(Stage("selftest", "Worker test", "cpu", (), _selftest, lambda ep: [], hidden=True,
+                    description="Checks that the background worker runs jobs."))
+
 BY_NAME = {s.name: s for s in STAGES}

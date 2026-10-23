@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import copy
 import json
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QPushButton,
-                               QSlider, QSplitter, QVBoxLayout, QWidget)
+                               QSlider, QSplitter, QVBoxLayout)
 
 from ... import pipeline
 from ...stages import production as prod
 from ...util import read_json
-from ..common import GOLD, GREEN, MUTED, PANEL, RED
+from ..common import PANEL
 from ..player import Player
 from ..timeline import TimelineEditor
 from ..widgets import Chip, StagePage, click_feedback
@@ -25,6 +24,7 @@ class ProductionPage(StagePage):
             "intro bumper, your clips, Owlbert in the corner, his voice, music, outro bumper. Drag and trim to "
             "adjust, press Make preview to watch it, then Render the final video.")
     APPROVE_STAGE = "render"
+    CLEAR_STAGE = "narration"
 
     def __init__(self, window):
         super().__init__(window)
@@ -203,6 +203,7 @@ class ProductionPage(StagePage):
 
     def _mixer(self) -> QFrame:
         """One row under the player: Speech, Music and Master levels, baked into the video."""
+        self._mix_loading = True   # ignore slider signals until the page is built
         box = QFrame()
         box.setStyleSheet("QFrame { background:#1d2133; border-radius:6px; }")
         row = QHBoxLayout(box)
@@ -241,7 +242,7 @@ class ProductionPage(StagePage):
         self._mix_loading = False
 
     def _mix_changed(self) -> None:
-        if self._mix_loading or not self._tl:
+        if self._mix_loading or not getattr(self, "_tl", None):
             return
         new = {k: sl.value() / 2 for k, (sl, _) in self.mix_sliders.items()}
         if new == prod.mix(self._tl):

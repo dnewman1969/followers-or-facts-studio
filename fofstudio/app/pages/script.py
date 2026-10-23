@@ -18,14 +18,17 @@ class ScriptPage(StagePage):
     HELP = ("Step 4. Owlbert's narration, written scene by scene from the story you chose, in the video's style. Every "
             "scene lists the proof it relies on. Change any words you like, press Save, and the checks run again.")
     APPROVE_STAGE = "script"
+    CLEAR_STAGE = "script"
 
     def __init__(self, window):
         super().__init__(window)
         row = QHBoxLayout()
         self.minutes = QDoubleSpinBox()
-        self.minutes.setRange(2, 20)
+        self.minutes.setRange(1, 30)
         self.minutes.setValue(8)
         self.minutes.setSuffix(" minutes")
+        self.minutes.setToolTip("How long the video should be. Changing it updates the length check straight away.")
+        self.minutes.valueChanged.connect(self._minutes_changed)
         self.direction = QLineEdit()
         self.direction.setPlaceholderText("Optional notes for the writer, e.g. 'shorter opening, more on the money'")
         self.write_btn = QPushButton("Write the script")
@@ -67,6 +70,11 @@ class ScriptPage(StagePage):
         save_row.addWidget(self.save_btn)
         save_row.addStretch(1)
         self.body.addLayout(save_row)
+
+    def _minutes_changed(self, value: float) -> None:
+        if self.ep:
+            self.ep.set_creative(minutes=float(value))
+            super().refresh()   # re-run the checks (the length check uses this)
 
     def set_episode(self, ep) -> None:
         if ep:
@@ -117,6 +125,10 @@ class ScriptPage(StagePage):
 
     def refresh(self) -> None:
         super().refresh()
+        if self.ep and not self.minutes.hasFocus():
+            self.minutes.blockSignals(True)
+            self.minutes.setValue(float(self.ep.creative().get("minutes", 8)))
+            self.minutes.blockSignals(False)
         busy = self.busy("script")
         ok_to_write = bool(self.ep) and self.stage_status("stories")["status"] == "approved"
         self.write_btn.setEnabled(ok_to_write and not busy)

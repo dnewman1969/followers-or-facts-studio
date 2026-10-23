@@ -8,11 +8,10 @@ Quota: one upload costs about 1,600 of the default 10,000 daily units.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from .. import cards, db
-from ..config import Paths, settings
+from ..config import settings
 from ..episode import Episode
 from ..scriptfmt import parse
 from ..util import StageError, read_json, utc_now, write_json, write_text

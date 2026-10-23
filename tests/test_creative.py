@@ -1,15 +1,14 @@
 """v0.4: creative styles, smooth camera moves, Owlbert's colours, caricature guardrails, sound mix, YouTube setup."""
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-from fofstudio import cast, db, media, pipeline, styles, subjects, youtube
+from fofstudio import cast, media, pipeline, styles, subjects, youtube
 from fofstudio.episode import Episode
-from fofstudio.stages import production, script as script_stage, stories, storyboard
-from fofstudio.util import StageError, read_json, write_json
+from fofstudio.stages import production, script as script_stage, stories
+from fofstudio.util import StageError
 from tests.test_pipeline import episode  # noqa: F401 - the shared fixture
 
 

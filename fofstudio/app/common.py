@@ -152,3 +152,23 @@ def info(parent: QWidget, text: str) -> None:
 
 
 ALIGN_TOP = Qt.AlignTop
+
+
+_PIX: dict = {}
+
+
+def cached_pixmap(path, w: int, h: int):
+    """A scaled picture, read from disk once (pages that show 100+ pictures redraw often)."""
+    from PySide6.QtGui import QPixmap
+    p = Path(path)
+    try:
+        key = (str(p), w, h, p.stat().st_mtime_ns)
+    except OSError:
+        return QPixmap()
+    pm = _PIX.get(key)
+    if pm is None:
+        if len(_PIX) > 1500:
+            _PIX.clear()
+        pm = QPixmap(str(p)).scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        _PIX[key] = pm
+    return pm

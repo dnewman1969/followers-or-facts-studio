@@ -175,6 +175,36 @@ studio polish" (in the Truth Web page project).
 56+ tests pass. Not yet run on Dave's PC: the new writer prompts with qwen3:14b, the TI2V-5B workflow,
 minterpolate speed on his CPU, real speaker selection, YouTube sign-in.
 
+## 2026-10-23 — v0.4.1: jobs that never started, Clear buttons, code check
+
+Dave: jobs stayed "queued" and never moved; old work on earlier pages blocked later ones.
+
+- **Queue** (`jobs.py`): (1) a killed worker's lock file survived, and after a restart Windows reused its
+  process number for another program, so the app thought the worker was running and never started one
+  (same for "running" jobs never marked interrupted). Now the process must really be
+  `python -m fofstudio worker` (psutil cmdline), the worker refreshes its lock every 10 s, and a lock
+  that isn't ours is removed. (2) A worker that crashed on start-up vanished silently: its output now
+  goes to `logs/worker-console.log`, the top bar and Queue page show its last message, and after two
+  failed starts jobs run on a thread inside the Studio (`start_thread_worker`; closing warns). (3) A
+  paused queue (after any failure or an interrupted job) held everything: pressing a Run button now
+  resumes it, and the top bar has a Resume button. Start attempts are throttled. Queue page: "Test the
+  worker" queues the hidden `selftest` stage; "Run jobs inside the Studio".
+- **Clear and start over** on Stories, Script, Storyboard, Video and Production (`pipeline.clear`):
+  deletes that step's files and every later step's, resets them to not started (recorded as `reset`
+  with a "cleared" note, shown as not started), cancels their queued jobs; refuses while one of them
+  runs; keeps research, ticks, style, earlier steps and `publish/upload.json`.
+- **Code check**: ruff (no undefined names; unused imports removed); a whole-window test that visits
+  every page and presses the main controls and fails on any error dialog or handler exception;
+  worker tests with a real background process, a leftover lock, a dead "running" job and a worker that
+  dies on start. Fixes found: an edited timeline is rebuilt automatically when its clips or speech
+  changed (it used to keep pointing at deleted files); Length on the Script page saves at once (so you
+  can accept a shorter script instead of being stuck); Length stays in sync between Stories and Script;
+  pictures are cached and the Storyboard/Video pages redraw at most every 3 s while working; ComfyUI
+  slow answers are retried; progress keeps the shot name during long animations; mixer start-up guard;
+  storyboard pick index guard.
+
+64 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

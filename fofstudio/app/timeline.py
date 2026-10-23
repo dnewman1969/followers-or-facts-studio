@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 import numpy as np
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (QGraphicsItem, QGraphicsLineItem, QGraphicsRectItem, QGraphicsScene,
                                QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget)
 

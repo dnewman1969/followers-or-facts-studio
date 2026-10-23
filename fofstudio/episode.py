@@ -139,6 +139,8 @@ class Episode:
     def stage_status(self, stage: str) -> dict[str, Any]:
         row = db.one("SELECT status, note, at FROM stage_event WHERE project_id=? AND stage=? "
                      "ORDER BY event_id DESC LIMIT 1", (self.project_id, stage))
+        if row and row["status"] == "reset" and (row["note"] or "").startswith("cleared"):
+            return {**row, "status": "not_started"}   # you cleared it with "Clear and start over"
         return row or {"status": "not_started", "note": "", "at": None}
 
     def history(self) -> list[dict[str, Any]]:

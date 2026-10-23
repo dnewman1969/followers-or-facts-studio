@@ -125,7 +125,14 @@ class Comfy:
                 if time.time() - start > timeout:
                     s.post(self.url + "/interrupt", timeout=10)
                     raise StageError(f"ComfyUI took longer than {timeout:.0f} s.")
-                hist = s.get(f"{self.url}/history/{prompt_id}", timeout=30).json()
+                try:
+                    hist = s.get(f"{self.url}/history/{prompt_id}", timeout=30).json()
+                except (requests.RequestException, ValueError):
+                    # ComfyUI can be slow to answer while it loads a big model: keep waiting, but not forever
+                    if time.time() - start > timeout:
+                        raise StageError("ComfyUI stopped answering. Check the ComfyUI window, then run again.")
+                    time.sleep(5)
+                    continue
                 if prompt_id in hist:
                     entry = hist[prompt_id]
                     status = entry.get("status", {})

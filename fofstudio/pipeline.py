@@ -52,6 +52,68 @@ def invalidate_after(ep: Episode, name: str) -> list[str]:
     return reset
 
 
+# What each stage leaves in the episode folder (files or whole folders), for Clear.
+OUTPUTS = {
+    "research": ["research.json", "research.md"],
+    "stories": ["stories.json"],
+    "script": ["script.md"],
+    "storyboard": ["storyboard.json", "images"],
+    "video_plan": ["video/plan.json"],
+    "video": ["video"],
+    "narration": ["audio/narration.json", "audio/narration"],
+    "captions": ["captions"],
+    "music": ["audio/music"],
+    "production": ["production.json"],
+    "preview": ["render/preview.mp4", "render/preview.json"],
+    "render": ["render"],
+    "package": ["publish"],
+    "upload": [],   # what's on YouTube stays there
+}
+KEEP = {"publish/upload.json"}
+CLEARED = "cleared"   # a step you cleared reads as not started (the history keeps the event)   # the record of an upload is never deleted
+
+
+def clear_plan(name: str) -> list[str]:
+    """The stage and everything built from it, in order (what Clear would remove)."""
+    out = [name] + dependents(name)
+    if "video" in out or "narration" in out:
+        out.append("preview")
+    return [s.name for s in STAGES if s.name in out and s.name != "upload"]
+
+
+def clear(ep: Episode, name: str) -> list[str]:
+    """Start over from this step: delete its files and everything made after it, reset their status and
+    drop their waiting jobs. Research, ticks and earlier steps are kept. Returns the labels cleared."""
+    import shutil
+
+    from . import db
+    names = clear_plan(name)
+    marks = ",".join("?" * len(names))
+    running = db.rows(f"SELECT stage FROM job WHERE project_id=? AND status='running' AND stage IN ({marks})",
+                      (ep.project_id, *names))
+    if running:
+        raise StageError(f"{stage(running[0]['stage']).label} is running right now. Cancel it (top bar) or wait "
+                         "for it to finish, then Clear.")
+    from .util import utc_now
+    db.execute(f"UPDATE job SET status='cancelled', finished_at=? WHERE project_id=? AND "
+               f"status='queued' AND stage IN ({marks})", (utc_now(), ep.project_id, *names))
+    root = ep.folder.resolve()
+    for n in names:
+        for rel in OUTPUTS.get(n, []):
+            p = (ep.folder / rel).resolve()
+            if root not in p.parents:      # never outside the episode folder
+                continue
+            if p.is_dir():
+                for child in list(p.iterdir()):
+                    if ep.rel(child) in KEEP:
+                        continue
+                    shutil.rmtree(child, ignore_errors=True) if child.is_dir() else child.unlink(missing_ok=True)
+            elif p.exists() and ep.rel(p) not in KEEP:
+                p.unlink()
+        ep.record(n, "reset", f"{CLEARED} (started over from {stage(name).label})")
+    return [stage(n).label for n in names if not stage(n).hidden]
+
+
 def checks(ep: Episode, name: str) -> list[Check]:
     try:
         return stage(name).check(ep)

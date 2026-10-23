@@ -21,7 +21,7 @@ from ..engines.render import CAMERA_MOVES, Segment, Timeline, _render_segment
 from ..episode import Episode
 from ..llm import Ollama
 from ..util import StageError, read_json, sha256_text, utc_now, write_json
-from .base import BLOCK, OK, WARN, Check, Context
+from .base import BLOCK, OK, Check, Context
 from .storyboard import shots as board_shots
 
 MOTION_SUFFIX = "slow, subtle cinematic motion, steady camera, natural movement, no sudden changes"
@@ -162,7 +162,9 @@ def run(ctx: Context) -> None:
                 "WIDTH": t2v.get("t2v_width", 1280), "HEIGHT": t2v.get("t2v_height", 704),
                 "FRAMES": t2v.get("t2v_frames", 121), "FPS": t2v.get("t2v_fps", 24),
                 "FILENAME_PREFIX": f"fof/{ep.project_id}/{s['shot_id']}-t2v",
-            }, ep.path("video", f"{s['shot_id']}-t2v-{seed}"), on_progress=ctx.progress, cancelled=ctx.cancelled)
+            }, ep.path("video", f"{s['shot_id']}-t2v-{seed}"), cancelled=ctx.cancelled,
+                on_progress=lambda t, p=None, sid=s["shot_id"], k=n: ctx.progress(
+                    f"Making {sid} from words ({k + 1}/{total}): {t}"))
             clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
             s["clip"] = {"path": ep.rel(clip), "kind": "text_to_video", "seed": seed,
                          "model": t2v.get("t2v_model_name", "Wan 2.2 TI2V-5B"), "workflow": meta["workflow"],
@@ -179,7 +181,9 @@ def run(ctx: Context) -> None:
                 "IMAGE": uploaded, "PROMPT": f"{s['motion_prompt']}. {MOTION_SUFFIX}", "SEED": seed,
                 "WIDTH": cfg["video_width"], "HEIGHT": cfg["video_height"], "FRAMES": cfg["video_frames"],
                 "FPS": cfg["video_fps"], "FILENAME_PREFIX": f"fof/{ep.project_id}/{s['shot_id']}",
-            }, ep.path("video", f"{s['shot_id']}-wan-{seed}"), on_progress=ctx.progress, cancelled=ctx.cancelled)
+            }, ep.path("video", f"{s['shot_id']}-wan-{seed}"), cancelled=ctx.cancelled,
+                on_progress=lambda t, p=None, sid=s["shot_id"], k=n: ctx.progress(
+                    f"Animating {sid} with Wan 2.2 ({k + 1}/{total}): {t}"))
             clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
             s["clip"] = {"path": ep.rel(clip), "kind": "animated", "seed": seed, "model": cfg["video_model_name"],
                          "workflow": meta["workflow"], "digest": digest, "made_at": utc_now(), "ai": True}

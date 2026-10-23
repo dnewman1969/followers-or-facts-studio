@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from ... import pipeline
 from ...stages import video as vs
-from ...util import StageError
-from ..common import GOLD, GREEN, MUTED, PANEL, RED, error
+from ..common import GOLD, GREEN, MUTED, PANEL, cached_pixmap
 from ..player import PlayerDialog
 from ..widgets import StagePage, click_feedback
 
@@ -29,8 +26,7 @@ class ShotRow(QFrame):
         pic = QLabel()
         pic.setFixedSize(240, 135)
         if ep.abs(shot["image"]).exists():
-            pic.setPixmap(QPixmap(str(ep.abs(shot["image"]))).scaled(240, 135, Qt.KeepAspectRatio,
-                                                                    Qt.SmoothTransformation))
+            pic.setPixmap(cached_pixmap(ep.abs(shot["image"]), 240, 135))
         g.addWidget(pic, 0, 0, 4, 1)
         g.addWidget(QLabel(f"<b style='color:{GOLD}'>{shot['shot_id']}</b>  {shot['type'].replace('_', ' ')}"), 0, 1, 1, 3)
         self.plays = QPlainTextEdit(shot["how_it_plays"])
@@ -97,6 +93,7 @@ class VideoPage(StagePage):
             "with Wan 2.2, or a slow camera move). Change anything, then press Make the clips. Watch each "
             "clip and approve it or make it again.")
     APPROVE_STAGE = "video"
+    CLEAR_STAGE = "video_plan"
 
     def __init__(self, window):
         super().__init__(window)
@@ -169,7 +166,10 @@ class VideoPage(StagePage):
     def poll(self) -> None:
         super().poll()
         if self.ep and (self.busy("video") or self.busy("video_plan")):
-            self.refresh()
+            import time
+            if time.time() - getattr(self, "_last_live", 0) > 3:   # show clips as they come in
+                self._last_live = time.time()
+                self.refresh()
 
     def watched(self) -> list[str]:
         return ["video", "video_plan", "storyboard"]

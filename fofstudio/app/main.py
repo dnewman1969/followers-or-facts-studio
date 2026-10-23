@@ -196,9 +196,7 @@ class MainWindow(QMainWindow):
             elif page is self.tools[0]:
                 page.refresh()
             self._nav_marks()
-            if any(j["status"] == "queued" for j in jobs.jobs(20)) and not jobs.worker_running() \
-                    and not jobs.control()["paused"]:
-                jobs.start_worker()
+            # (the activity bar starts the worker when jobs are waiting)
         except Exception:  # noqa: BLE001 - a busy database is fine; try again next tick
             pass
 
@@ -233,6 +231,13 @@ class MainWindow(QMainWindow):
         from .. import services
         from ..config import settings
         busy = any(j["status"] in ("queued", "running") for j in jobs.jobs(50))
+        if busy and jobs.worker_mode() == "inside the Studio":
+            answer = QMessageBox.question(
+                self, APP_NAME, "Jobs are running inside the Studio (the background worker wouldn't start), so "
+                "closing now stops them. Close anyway?")
+            if answer != QMessageBox.Yes:
+                event.ignore()
+                return
         if settings()["services"]["stop_comfyui_on_exit"] and not busy:
             services.stop_started_comfyui()
         super().closeEvent(event)

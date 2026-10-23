@@ -8,7 +8,7 @@ import threading
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox,
-                               QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QSlider, QSpinBox,
+                               QLabel, QLineEdit, QScrollArea, QSlider, QSpinBox,
                                QVBoxLayout, QWidget)
 
 from ... import youtube

@@ -19,7 +19,6 @@ import subprocess
 import wave
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter

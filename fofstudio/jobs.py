@@ -93,9 +93,47 @@ def set_paused(paused: bool, reason: str | None = None) -> None:
 
 
 # ---------------------------------------------------------------- worker process
-def _alive(pid: int | None) -> bool:
+# Why jobs could sit at "queued" forever before: the lock file of a worker that was killed (PC shut
+# down, crash) stayed behind, and after a restart Windows gives its process number to some other
+# program, so the app thought the worker was still running and never started a new one. A worker that
+# crashed on start-up also vanished without a word. Now the app checks that the process really is our
+# worker, the worker keeps its lock fresh, start-up errors go to logs/worker-console.log, and if the
+# separate worker won't start the job runs inside the Studio instead.
+LOCK_FRESH_SECONDS = 60
+_thread: threading.Thread | None = None
+_spawned: subprocess.Popen | None = None
+_counted: subprocess.Popen | None = None
+_spawn_failures = 0
+_last_spawn = 0.0
+
+
+def _is_our_worker(pid: int | None) -> bool | None:
+    """True/False if we can tell whether pid is a Followers or Facts worker, None if we can't tell."""
     if not pid:
         return False
+    if pid == os.getpid():
+        return bool(_thread and _thread.is_alive())
+    try:
+        import psutil
+    except ImportError:
+        return None
+    try:
+        proc = psutil.Process(pid)
+        if proc.status() == psutil.STATUS_ZOMBIE:
+            return False
+        args = [a.lower() for a in proc.cmdline()]
+    except psutil.NoSuchProcess:
+        return False
+    except (psutil.AccessDenied, OSError):
+        return None
+    # "python -m fofstudio worker ..." (the background worker), never the window itself
+    return "worker" in args and any(a == "fofstudio" or a.endswith("fofstudio") for a in args)
+
+
+def _alive(pid: int | None) -> bool:
+    ours = _is_our_worker(pid)
+    if ours is not None:
+        return ours
     try:
         import psutil
         return psutil.pid_exists(pid)
@@ -104,34 +142,101 @@ def _alive(pid: int | None) -> bool:
 
 
 def worker_running() -> int | None:
+    """The worker's process number if one is really running (in the background or inside the Studio)."""
+    if _thread and _thread.is_alive():
+        return os.getpid()
     lock = Paths().worker_lock
     if not lock.exists():
         return None
     try:
         pid = int(lock.read_text().strip())
-    except ValueError:
+        age = time.time() - lock.stat().st_mtime
+    except (ValueError, OSError):
         return None
-    return pid if _alive(pid) and pid != os.getpid() else None
+    ours = _is_our_worker(pid) if pid != os.getpid() else False
+    if ours is None:  # can't look at the process: trust the lock only while the worker keeps it fresh
+        ours = age < LOCK_FRESH_SECONDS
+    if not ours:
+        try:
+            lock.unlink()   # a leftover from a worker that's gone
+        except OSError:
+            pass
+        return None
+    return pid
 
 
-def start_worker() -> int:
-    """Start the background worker if it isn't already running. Returns its PID."""
+def worker_problem() -> str:
+    """The last lines a background worker printed if it died while starting (else empty)."""
+    if _spawned is None or _spawned.poll() is None:
+        return ""
+    path = Paths().logs / "worker-console.log"
+    try:
+        lines = [ln for ln in path.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
+    except OSError:
+        return "The worker stopped straight after starting."
+    return "\n".join(lines[-6:]) or "The worker stopped straight after starting."
+
+
+def start_worker(force: bool = False) -> int:
+    """Start the background worker if it isn't already running. Returns its PID.
+    If the separate worker process won't start (twice), run the queue inside the Studio instead."""
+    global _spawned, _spawn_failures, _last_spawn, _counted
     pid = worker_running()
     if pid:
         return pid
+    if _spawned is not None and _spawned.poll() is not None and _spawned is not _counted:
+        _counted = _spawned
+        if time.time() - _last_spawn < 30:
+            _spawn_failures += 1   # the last one died straight after starting
+    if _spawned is not None and _spawned.poll() is None and time.time() - _last_spawn < 20:
+        return _spawned.pid    # still starting up; give it a moment to write its lock
+    if _spawn_failures >= 2 or os.environ.get("FOF_WORKER_IN_APP"):
+        return start_thread_worker()
+    if not force and time.time() - _last_spawn < 5:
+        return _spawned.pid if _spawned else 0
     exe = sys.executable
     if os.name == "nt" and exe.lower().endswith("python.exe"):
         pythonw = exe[:-10] + "pythonw.exe"
         if Path(pythonw).exists():
             exe = pythonw
-    kwargs: dict[str, Any] = {"cwd": str(REPO), "stdin": subprocess.DEVNULL,
-                              "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    logs = Paths().ensure().logs
+    console = open(logs / "worker-console.log", "a", encoding="utf-8")   # start-up errors land here
+    console.write(f"\n--- starting worker {utc_now()} ({exe})\n")
+    console.flush()
+    kwargs: dict[str, Any] = {"cwd": str(REPO), "stdin": subprocess.DEVNULL, "stdout": console, "stderr": console}
     if os.name == "nt":
         kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    proc = subprocess.Popen([exe, "-m", "fofstudio", "worker"], **kwargs)
-    return proc.pid
+    env = dict(os.environ)
+    env["FOF_DATA"] = str(Paths().root)   # the worker uses exactly the same data folder as the window
+    kwargs["env"] = env
+    try:
+        _spawned = subprocess.Popen([exe, "-m", "fofstudio", "worker"], **kwargs)
+    except OSError as exc:
+        console.write(f"Couldn't start the worker: {exc}\n")
+        _spawn_failures += 1
+        return start_thread_worker() if _spawn_failures >= 2 else 0
+    finally:
+        console.close()
+    _last_spawn = time.time()
+    return _spawned.pid
+
+
+def start_thread_worker() -> int:
+    """Run the queue on a thread inside the Studio (jobs stop if you close the window)."""
+    global _thread
+    if _thread and _thread.is_alive():
+        return os.getpid()
+    _thread = threading.Thread(target=worker_loop, kwargs={"in_app": True}, daemon=True, name="fof-worker")
+    _thread.start()
+    return os.getpid()
+
+
+def worker_mode() -> str:
+    if _thread and _thread.is_alive():
+        return "inside the Studio"
+    return "background" if worker_running() else "stopped"
 
 
 def recover_stale() -> list[int]:
@@ -233,15 +338,30 @@ def run_job(job: dict[str, Any]) -> None:
             rendermode.resume_all()
 
 
-def worker_loop(once: bool = False) -> None:
+def worker_loop(once: bool = False, in_app: bool = False) -> None:
     paths = Paths().ensure()
-    if worker_running():
+    if not in_app and worker_running():
         print("A worker is already running.")
         return
-    paths.worker_lock.write_text(str(os.getpid()))
-    logging.basicConfig(filename=paths.logs / "worker.log", level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(message)s")
-    log.info("worker started (pid %s)", os.getpid())
+    if not in_app:
+        paths.worker_lock.write_text(str(os.getpid()))
+    if not logging.getLogger().handlers or in_app:
+        handler = logging.FileHandler(paths.logs / "worker.log", encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False
+    log.info("worker started (pid %s%s)", os.getpid(), ", inside the Studio" if in_app else "")
+    stop = threading.Event()
+
+    def keep_lock_fresh() -> None:
+        while not stop.wait(10):
+            try:
+                paths.worker_lock.write_text(str(os.getpid()))
+            except OSError:
+                pass
+    if not in_app:
+        threading.Thread(target=keep_lock_fresh, daemon=True).start()
     try:
         recover_stale()
         idle_since = time.time()
@@ -260,10 +380,15 @@ def worker_loop(once: bool = False) -> None:
             if time.time() - idle_since > 600:
                 log.info("idle; exiting")
                 return
-            time.sleep(3)
+            time.sleep(2)
+    except Exception:  # noqa: BLE001 - never die silently
+        log.error("worker crashed:\n%s", traceback.format_exc())
+        raise
     finally:
-        try:
-            if paths.worker_lock.read_text().strip() == str(os.getpid()):
-                paths.worker_lock.unlink()
-        except OSError:
-            pass
+        stop.set()
+        if not in_app:
+            try:
+                if paths.worker_lock.read_text().strip() == str(os.getpid()):
+                    paths.worker_lock.unlink()
+            except OSError:
+                pass

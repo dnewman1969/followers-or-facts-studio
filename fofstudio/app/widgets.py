@@ -3,11 +3,10 @@ buttons that react, and the base class every pipeline page uses."""
 
 from __future__ import annotations
 
-import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
+from PySide6.QtCore import QPropertyAnimation, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
                                QListWidget, QListWidgetItem, QProgressBar, QPushButton, QVBoxLayout,
@@ -100,6 +99,10 @@ class ActivityBar(QFrame):
         self.cancel = QPushButton("Cancel")
         self.cancel.setObjectName("danger")
         self.cancel.clicked.connect(self._cancel)
+        self.resume = QPushButton("Resume the queue")
+        self.resume.setObjectName("primary")
+        self.resume.clicked.connect(self._resume)
+        self.resume.hide()
         self.queue_text = QLabel("")
         self.queue_text.setStyleSheet(f"color:{MUTED};")
         lay.addWidget(self.dot)
@@ -108,6 +111,7 @@ class ActivityBar(QFrame):
         lay.addWidget(self.bar)
         lay.addWidget(self.elapsed)
         lay.addWidget(self.cancel)
+        lay.addWidget(self.resume)
         self._running: dict[str, Any] | None = None
         self._seen_done: set[int] = set()
         self._pulse = 0
@@ -126,6 +130,7 @@ class ActivityBar(QFrame):
                 self.job_finished.emit(done)
         self._running = running
         if running:
+            self.resume.setVisible(False)
             self._pulse = (self._pulse + 1) % 2
             self.dot.setStyleSheet(f"color:{'#4aa3df' if self._pulse else '#2a6f9e'}; font-size:14pt;")
             label = pipeline.stage(running["stage"]).label if running["stage"] in pipeline.BY_NAME else running["stage"]
@@ -146,16 +151,30 @@ class ActivityBar(QFrame):
             self.bar.hide()
             self.cancel.hide()
             self.elapsed.setText("")
+            self.resume.setVisible(bool(ctl["paused"]))
+            problem = jobs.worker_problem() if queued else ""
             if ctl["paused"]:
                 self.dot.setStyleSheet(f"color:{RED}; font-size:14pt;")
-                self.text.setText(f"<b>Paused</b> — {ctl['reason'] or ''} (Queue page → Resume)")
+                self.text.setText(f"<b>Queue paused</b> — {ctl['reason'] or ''}"
+                                  + (f" {len(queued)} job(s) waiting." if queued else ""))
+            elif queued and problem:
+                self.dot.setStyleSheet(f"color:{RED}; font-size:14pt;")
+                self.text.setText("<b>The background worker didn't start</b>, so jobs will run inside the Studio. "
+                                  f"Its last message: {problem.splitlines()[-1][:160]}")
+                jobs.start_worker()
             elif queued and not jobs.worker_running():
                 self.dot.setStyleSheet(f"color:{GOLD}; font-size:14pt;")
                 self.text.setText("Starting the worker...")
+                jobs.start_worker()
             else:
                 self.dot.setStyleSheet(f"color:{GREEN}; font-size:14pt;")
                 self.text.setText("Ready — nothing running")
         self.queue_text.setText(f"{len(queued)} waiting" if queued else "")
+
+    def _resume(self) -> None:
+        jobs.set_paused(False)
+        jobs.start_worker(force=True)
+        self.refresh()
 
     def _cancel(self) -> None:
         if self._running:
@@ -247,6 +266,7 @@ class StagePage(QWidget):
     HELP = ""
     APPROVE_STAGE = ""      # the stage the big "Approve and continue" button approves
     SHOW_PROGRESS = True    # the progress line on the page (Research has its own)
+    CLEAR_STAGE = ""        # the step the "Clear..." button starts over from
     go_next = Signal()
 
     def __init__(self, window):
@@ -262,6 +282,12 @@ class StagePage(QWidget):
         head.addWidget(self.title)
         head.addWidget(self.chip)
         head.addStretch(1)
+        self.clear_btn = QPushButton("Clear and start over...")
+        self.clear_btn.setObjectName("danger")
+        self.clear_btn.setToolTip("Delete this step's work and everything made after it, so you can do it again")
+        self.clear_btn.clicked.connect(self._clear_clicked)
+        self.clear_btn.setVisible(bool(self.CLEAR_STAGE))
+        head.addWidget(self.clear_btn)
         self.approve_btn = QPushButton("Approve and continue  →")
         self.approve_btn.setObjectName("primary")
         self.approve_btn.clicked.connect(self._approve_clicked)
@@ -288,8 +314,12 @@ class StagePage(QWidget):
         if not self.ep:
             raise StageError("Pick a story on the Database page first.")
         jobs.enqueue(self.ep.project_id, stage, options or {})
-        jobs.start_worker()
-        self.toast(f"Started: {label or pipeline.stage(stage).label}. Watch the bar at the top.", "info")
+        ctl = jobs.control()
+        if ctl["paused"]:   # you pressed a Run button: that's your OK to carry on after an earlier failure
+            jobs.set_paused(False)
+        jobs.start_worker(force=True)
+        self.toast(f"Started: {label or pipeline.stage(stage).label}. Watch the bar at the top."
+                   + (" (The queue had been paused; it's running again.)" if ctl["paused"] else ""), "info")
         self.win.activity.refresh()
         self.refresh()
         self._show_progress()
@@ -299,6 +329,33 @@ class StagePage(QWidget):
 
     def busy(self, stage: str) -> bool:
         return self.stage_status(stage)["status"] in ("queued", "running")
+
+    def _clear_clicked(self) -> None:
+        if not self.ep or not self.CLEAR_STAGE:
+            return
+        from PySide6.QtWidgets import QMessageBox
+        names = [pipeline.stage(n).label for n in pipeline.clear_plan(self.CLEAR_STAGE) if not pipeline.stage(n).hidden]
+        answer = QMessageBox.question(
+            self, "Clear and start over",
+            f"Clear {names[0]} for {self.ep.project_id} and start it again?\n\n"
+            f"This deletes the work from these steps: {', '.join(names)}.\n\n"
+            "Your research, ticked evidence, video style and everything before this step are kept. "
+            "Anything already uploaded to YouTube stays there.")
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            cleared = pipeline.clear(self.ep, self.CLEAR_STAGE)
+        except StageError as exc:
+            error(self, str(exc))
+            return
+        self.toast(f"Cleared: {', '.join(cleared)}. Start this step again when you're ready.")
+        self.win.activity.refresh()
+        for page in getattr(self.win, "pages", []):
+            if hasattr(page, "_sig"):
+                page._sig = None   # pages that cache what they showed redraw from scratch
+        self.refresh()
+        if hasattr(self.win, "_nav_marks"):
+            self.win._nav_marks()
 
     def _approve_clicked(self) -> None:
         if not self.ep or not self.APPROVE_STAGE:
@@ -324,6 +381,8 @@ class StagePage(QWidget):
             return
         st = self.stage_status(self.APPROVE_STAGE)
         self.chip.set_status(st["status"])
+        if self.CLEAR_STAGE:
+            self.clear_btn.setEnabled(not any(self.busy(n) for n in pipeline.clear_plan(self.CLEAR_STAGE)))
         missing = pipeline.missing_requirements(self.ep, self.APPROVE_STAGE)
         if missing:
             self.chip.set_status("not_started", "Waiting for " + ", ".join(pipeline.stage(m).label for m in missing))

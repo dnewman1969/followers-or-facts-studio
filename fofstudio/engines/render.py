@@ -146,7 +146,7 @@ def kenburns_boxes(move: str, bw: float, bh: float, frames: int) -> list[tuple[f
 def kenburns_frames(path: Path, move: str, w: int, h: int, frames: int):
     """Frames of a smooth camera move over a still, drawn with sub-pixel accuracy (the ffmpeg zoompan filter
     rounds to whole pixels, which is what made slow moves shake)."""
-    from PIL import Image, ImageOps
+    from PIL import Image
     img = Image.open(path).convert("RGB")
     # crop to the video's shape; keep the picture's own detail (scaling happens per frame)
     target = w / h

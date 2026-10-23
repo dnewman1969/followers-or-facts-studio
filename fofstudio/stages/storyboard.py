@@ -328,7 +328,8 @@ def shots(ep: Episode) -> list[dict[str, Any]]:
             for shot in s["shots"]:
                 if shot.get("skip"):
                     continue
-                c = shot["candidates"][shot.get("pick", 0)] if shot["candidates"] else None
+                pick = shot.get("pick", 0)
+                c = shot["candidates"][pick] if 0 <= pick < len(shot["candidates"]) else None
                 c = c or next((x for x in shot["candidates"] if x), None)
                 if c:
                     out.append({"shot_id": shot["shot_id"], "scene_id": s["scene_id"], "type": "ai_image",
@@ -374,7 +375,8 @@ def check(ep: Episode) -> list[Check]:
         if not used and not s.get("cards"):
             out.append(Check(BLOCK, f"{s['scene_id']}: every shot is switched off; use at least one."))
         for sh in used:
-            c = sh["candidates"][sh.get("pick", 0)] if sh["candidates"] else None
+            pick = sh.get("pick", 0)
+            c = sh["candidates"][pick] if 0 <= pick < len(sh["candidates"]) else None
             if not c or not ep.abs(c["path"]).exists():
                 out.append(Check(BLOCK, f"{sh['shot_id']}: the chosen picture is missing; remake it."))
                 continue

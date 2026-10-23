@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxL
 
 from ... import styles
 from ...stages import storyboard as sb
-from ..common import GOLD, MUTED, PANEL, RED
+from ..common import GOLD, MUTED, PANEL, RED, cached_pixmap
 from ..widgets import StagePage, click_feedback
 
 THUMB_W, THUMB_H = 240, 135
@@ -20,7 +20,7 @@ KIND_NAMES = {"broll": "Scene", "owl": "Owlbert", "caricature": "Caricature"}
 
 
 def _pix(path, w, h) -> QPixmap:
-    return QPixmap(str(path)).scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    return cached_pixmap(path, w, h)
 
 
 class ShotTile(QFrame):
@@ -29,7 +29,7 @@ class ShotTile(QFrame):
         self.page, self.shot = page, shot
         ep = page.ep
         use = not shot.get("skip")
-        self.setStyleSheet(f"QFrame {{ background:#1b1e2b; border-radius:6px; }}")
+        self.setStyleSheet("QFrame { background:#1b1e2b; border-radius:6px; }")
         v = QVBoxLayout(self)
         v.setContentsMargins(6, 6, 6, 6)
         kind = KIND_NAMES.get(shot["kind"], shot["kind"])
@@ -151,6 +151,7 @@ class StoryboardPage(StagePage):
             "(so nothing repeats), the AI plans them in order, and ComfyUI paints a couple of versions of each. The "
             "gold one is used: click a small version to switch, untick a shot to leave it out, or remake it.")
     APPROVE_STAGE = "storyboard"
+    CLEAR_STAGE = "storyboard"
 
     def __init__(self, window):
         super().__init__(window)
@@ -214,7 +215,10 @@ class StoryboardPage(StagePage):
     def poll(self) -> None:
         super().poll()
         if self.ep and self.busy("storyboard"):
-            self.refresh()  # show pictures as they come in
+            import time
+            if time.time() - getattr(self, "_last_live", 0) > 3:   # show pictures as they come in
+                self._last_live = time.time()
+                self.refresh()
 
     def watched(self) -> list[str]:
         return ["storyboard", "script"]

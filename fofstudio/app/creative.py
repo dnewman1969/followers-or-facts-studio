@@ -3,13 +3,12 @@ plus the Cast window where you approve how each caricatured public figure is dra
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFrame, QHBoxLayout,
                                QLabel, QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from .. import cast, styles
-from ..util import StageError
-from .common import GOLD, MUTED, PANEL, RED, error
+from .common import GOLD, MUTED, PANEL, error
 
 HUMOR = ["No jokes", "A light touch", "Some gentle humor", "Full satire (punching up only)"]
 

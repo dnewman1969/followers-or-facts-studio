@@ -1,8 +1,7 @@
-from pathlib import Path
 
 from PIL import Image
 
-from fofstudio import jobs, media, pipeline, rendermode
+from fofstudio import jobs, pipeline, rendermode
 from fofstudio.engines.render import AudioCue, Segment, Timeline, render
 from fofstudio.episode import Episode
 

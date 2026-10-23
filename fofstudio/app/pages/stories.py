@@ -25,6 +25,7 @@ class StoriesPage(StagePage):
             "trick Owlbert will teach. Pick one, or Rewrite with notes. All three are kept: to make another later, go "
             "to Database → Researched ★.")
     APPROVE_STAGE = "stories"
+    CLEAR_STAGE = "stories"
 
     def __init__(self, window):
         super().__init__(window)
@@ -62,6 +63,8 @@ class StoriesPage(StagePage):
 
     def refresh(self) -> None:
         super().refresh()
+        if self.ep and not self.creative.isAncestorOf(self.focusWidget() or self):
+            self.creative.set_episode(self.ep)   # pick up changes made on other pages (e.g. Length on Script)
         busy = self.busy("stories")
         self.make_btn.setEnabled(bool(self.ep) and not busy and
                                  self.stage_status("research")["status"] == "approved")

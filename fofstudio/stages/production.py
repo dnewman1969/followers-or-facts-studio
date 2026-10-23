@@ -162,12 +162,31 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
     return tl
 
 
+def _stale_reason(ep: Episode, tl: dict[str, Any]) -> str:
+    """Why an edited timeline no longer matches the clips and speech (empty if it still does)."""
+    missing = [c for track in ("video", "speech", "music") for c in tl.get(track, []) if not ep.abs(c["src"]).exists()]
+    if missing:
+        return f"{len(missing)} of its files are gone (remade or cleared)"
+    plan = {s["shot_id"]: s["clip"]["path"] for s in load_plan(ep)["shots"] if s.get("clip")}
+    on = {c["id"]: c["src"] for c in tl.get("video", []) if c.get("kind") == "clip"}
+    if plan and (set(plan) != set(on) or any(plan[k] != on[k] for k in plan if k in on)):
+        return "the video clips changed"
+    narration = read_json(ep.path("audio", "narration.json"), {}) or {}
+    said = {c["scene_id"]: c["src"] for c in tl.get("speech", [])}
+    if narration and {k: v["path"] for k, v in narration.items()} != said:
+        return "Owlbert's speech track changed"
+    return ""
+
+
 def run(ctx: Context) -> None:
     ep = ctx.episode
     existing = load(ep)
     if existing.get("edited") and not ctx.options.get("rebuild"):
-        ctx.progress("Keeping your edited timeline (choose Rebuild to start over).", 100)
-        return
+        stale = _stale_reason(ep, existing)
+        if not stale:
+            ctx.progress("Keeping your edited timeline (choose Rebuild to start over).", 100)
+            return
+        ctx.log(f"Rebuilt the timeline: {stale}, so your earlier edits no longer fit.")
     tl = assemble(ep, ctx.progress)
     save(ep, tl, edited=False)
     ctx.progress(f"Timeline ready: {timeline_end(tl) / 60:.1f} minutes. Preview it, adjust, then render.", 100)
