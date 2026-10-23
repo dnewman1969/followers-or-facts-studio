@@ -205,6 +205,15 @@ Dave: jobs stayed "queued" and never moved; old work on earlier pages blocked la
 
 64 tests pass.
 
+## 2026-10-23 — v0.4.2: the writer can't invent IDs any more
+
+Dave's S01E02 (cartoon style): SCENE_006 cited claim C-10 and sources S-5, S-7, none of which exist.
+The scene writer was free to type any ID. Now the outline and scene answers are JSON-schema constrained
+to the real ticked IDs (`script.with_known_ids`, enum lists), unknown IDs are dropped in code
+(`drop_unknown`), a fact scene left without evidence gets its claim's ticked sources, and the Script
+page shows **Remove made-up IDs** (`script.repair`) to fix an existing script without rewriting it.
+66 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

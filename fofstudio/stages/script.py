@@ -88,6 +88,49 @@ SCENE_SCHEMA = {
     "required": ["narration", "visual", "on_screen_text", "claim_ids", "source_ids", "excerpt_ids"],
 }
 
+FACT_ROLES = ("claim", "record", "benefit", "harm")
+
+
+def known_ids(packet: dict[str, Any]) -> dict[str, list]:
+    """Every claim, source and quote ID the writer may use (only the ticked evidence)."""
+    claims = [c["claim_id"] for c in packet.get("claims", [])]
+    sources = list(dict.fromkeys(s["source_id"] for c in packet.get("claims", []) for s in c["sources"]))
+    quotes = list(dict.fromkeys(int(e["excerpt_id"]) for c in packet.get("claims", []) for e in c["excerpts"]))
+    return {"claim_ids": claims, "source_ids": sources, "excerpt_ids": quotes}
+
+
+def _id_field(values: list, kind: str) -> dict[str, Any]:
+    item: dict[str, Any] = {"type": kind}
+    if values:
+        item["enum"] = values   # the model can only pick real IDs, never invent one
+    return {"type": "array", "items": item, **({} if values else {"maxItems": 0})}
+
+
+def with_known_ids(schema: dict[str, Any], ids: dict[str, list], inside_scenes: bool = False) -> dict[str, Any]:
+    import copy
+    out = copy.deepcopy(schema)
+    props = out["properties"]["scenes"]["items"]["properties"] if inside_scenes else out["properties"]
+    props["claim_ids"] = _id_field(ids["claim_ids"], "string")
+    props["source_ids"] = _id_field(ids["source_ids"], "string")
+    props["excerpt_ids"] = _id_field(ids["excerpt_ids"], "integer")
+    return out
+
+
+def drop_unknown(sc: dict[str, Any], ids: dict[str, list]) -> list[str]:
+    """Remove any ID that isn't in the ticked evidence (E-numbers are kept for fix_refs to read)."""
+    dropped = []
+    for key in ("claim_ids", "source_ids", "excerpt_ids"):
+        keep = []
+        for v in sc.get(key) or []:
+            sv = str(v).strip()
+            ok = (sv.isdigit() and int(sv) in ids["excerpt_ids"]) if key == "excerpt_ids" else \
+                (sv in ids[key] or (key == "source_ids" and re.fullmatch(r"[Ee]\d+", sv)
+                                    and int(sv[1:]) in ids["excerpt_ids"]))
+            (keep if ok else dropped).append(v)
+        sc[key] = keep
+    return [str(d) for d in dropped]
+
+
 OWLBERT = """Owlbert's voice:
 - A warm, curious owl professor, the mascot of Critical Thinking. Smart, never smug. Talks to the viewer
   like a bright twelve-year-old, never down to them.
@@ -282,6 +325,8 @@ def run(ctx: Context) -> None:
         story_text = ("\nThe approved story plan (follow it; each beat lists the source_ids and excerpt_ids to "
                       "use):\n" + json.dumps(plan, ensure_ascii=False, indent=1) + "\n")
     llm = Ollama()
+    ids = known_ids(packet)
+    scene_schema = with_known_ids(SCENE_SCHEMA, ids)
 
     # 1. outline
     ctx.progress(f"Planning {n_scenes} scenes in the {style.name} style with {model}", 3)
@@ -295,8 +340,17 @@ def run(ctx: Context) -> None:
             "idea that fits the style. Include a 'tell' scene and a 'toolkit' scene.\n"
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
             + story_text + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
-    ], OUTLINE_SCHEMA, temperature=0.6, on_text=ctx.writing("Planning the scenes", 3, 15, 60 * n_scenes))
+    ], with_known_ids(OUTLINE_SCHEMA, ids, inside_scenes=True), temperature=0.6,
+        on_text=ctx.writing("Planning the scenes", 3, 15, 60 * n_scenes))
     planned = (outline.get("scenes") or [])[:16]
+    for i, plan_sc in enumerate(planned):
+        drop_unknown(plan_sc, ids)
+        if plan_sc.get("role") in FACT_ROLES and not plan_sc.get("source_ids") and ids["claim_ids"]:
+            # a fact scene with no usable evidence: give it a ticked claim, in turn
+            cid = plan_sc["claim_ids"][0] if plan_sc.get("claim_ids") else ids["claim_ids"][i % len(ids["claim_ids"])]
+            c = next(c for c in packet["claims"] if c["claim_id"] == cid)
+            plan_sc["claim_ids"] = [cid]
+            plan_sc["source_ids"] = [x["source_id"] for x in c["sources"]][:2]
     if len(planned) < 3:
         raise StageError("The outline came back with fewer than 3 scenes. Press Write it again.")
     title = outline.get("title") or (story or {}).get("title") or ep.title
@@ -323,7 +377,7 @@ def run(ctx: Context) -> None:
                 + (f"The previous scene ended: \"{' '.join(prev.split()[-40:])}\"\n" if prev else "")
                 + f"\nFacts for this scene:\n{_facts_for(plan_sc, packet)}")},
         ]
-        sc = llm.chat_json(messages, SCENE_SCHEMA, temperature=0.75,
+        sc = llm.chat_json(messages, scene_schema, temperature=0.75,
                            on_text=ctx.writing(f"Writing scene {n} of {len(planned)}", pct0, pct1 - 2, target + 60))
         # 3. one fix-up if it's short or full of stock phrases
         issues = _problems(sc, target)
@@ -332,11 +386,16 @@ def run(ctx: Context) -> None:
             sc = llm.chat_json(messages + [
                 {"role": "assistant", "content": json.dumps(sc, ensure_ascii=False)},
                 {"role": "user", "content": "Rewrite this scene. " + " ".join(issues) + " Keep every fact sourced."},
-            ], SCENE_SCHEMA, temperature=0.7, on_text=ctx.writing(f"Polishing scene {n}", pct1 - 2, pct1, target + 60))
+            ], scene_schema, temperature=0.7, on_text=ctx.writing(f"Polishing scene {n}", pct1 - 2, pct1, target + 60))
         sc["role"] = plan_sc["role"]
         sc["scene_id"] = f"SCENE_{n:03d}"
+        dropped = drop_unknown(sc, ids)
+        if dropped:
+            ctx.log(f"{sc['scene_id']}: removed IDs that aren't in the ticked evidence: {', '.join(dropped)}")
         if not sc.get("claim_ids") and plan_sc.get("claim_ids"):
             sc["claim_ids"] = plan_sc["claim_ids"]
+        if not sc.get("source_ids") and plan_sc.get("source_ids"):
+            sc["source_ids"] = list(plan_sc["source_ids"])
         for note in fix_refs(sc, packet):
             ctx.log(note)
         scenes.append(sc)
@@ -361,6 +420,8 @@ def _expand(ctx: Context, packet: dict[str, Any]) -> None:
     words = int(minutes * style.wpm * 0.92)
     base = int(words / max(1, len(scenes) - 0.9))
     llm = Ollama()
+    ids = known_ids(packet)
+    scene_schema = with_known_ids(SCENE_SCHEMA, ids)
     short = [sc for sc in scenes if len(sc["narration"].split()) < _words_for(sc["role"], base) * 0.9]
     if not short:
         ctx.progress("Every scene is already long enough.", 100)
@@ -376,12 +437,14 @@ def _expand(ctx: Context, packet: dict[str, Any]) -> None:
                 "numbers, what the documents say, what it meant for people), not padding. Keep its sources.\n"
                 f"Scene: {json.dumps({k: sc[k] for k in ('role', 'narration', 'visual', 'on_screen_text', 'claim_ids', 'source_ids', 'excerpt_ids')}, ensure_ascii=False)}\n"
                 f"Facts:\n{_facts_for(sc, packet)}")},
-        ], SCENE_SCHEMA, temperature=0.7,
+        ], scene_schema, temperature=0.7,
             on_text=ctx.writing(f"Lengthening {sc['scene_id']} ({n}/{len(short)})",
                                 100 * (n - 1) / len(short), 100 * n / len(short), target + 60))
+        drop_unknown(new, ids)
         for k in ("narration", "visual", "on_screen_text", "claim_ids", "source_ids", "excerpt_ids"):
             if new.get(k):
                 sc[k] = new[k]
+        drop_unknown(sc, ids)
         fix_refs(sc, packet)
         sc["est_seconds"] = round(len(sc["narration"].split()) / style.wpm * 60)
     text = ep.path("script.md").read_text(encoding="utf-8")
@@ -475,6 +538,28 @@ def check(ep: Episode) -> list[Check]:
     out.append(Check(OK, f"{len(scenes)} scenes, {words} words (about {minutes:.1f} min in the {style.name} "
                          f"style), reading grade {grade}."))
     return out
+
+
+def repair(ep: Episode) -> list[str]:
+    """Take made-up IDs out of script.md and fill each fact scene's sources from the ticked evidence
+    for its claims. Returns notes about what changed."""
+    path = ep.path("script.md")
+    text = path.read_text(encoding="utf-8")
+    script = parse(text)
+    packet = selected_packet(ep)
+    ids = known_ids(packet)
+    notes = []
+    for sc in script["scenes"]:
+        dropped = drop_unknown(sc, ids)
+        if dropped:
+            notes.append(f"{sc['scene_id']}: removed {', '.join(dropped)}")
+        notes += fix_refs(sc, packet)
+        if sc.get("role") in FACT_ROLES and not sc["claim_ids"] and ids["claim_ids"]:
+            notes.append(f"{sc['scene_id']}: no claim left; add one by hand or write the scene again")
+    header_line = next((ln for ln in text.splitlines() if ln.startswith("**Episode:**")), "")
+    header = {k: v.strip() for k, v in re.findall(r"\*\*(.+?):\*\* ([^·]+?)(?: · |$)", header_line)}
+    write_text(path, render(script["title"], script["scenes"], header or {"Episode": ep.project_id}))
+    return notes
 
 
 def wanted_unticked(ep: Episode) -> dict[str, list[str]]:

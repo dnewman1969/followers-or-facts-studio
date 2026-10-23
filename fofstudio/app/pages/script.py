@@ -61,6 +61,12 @@ class ScriptPage(StagePage):
         want.addWidget(self.want_show)
         want.addWidget(self.want_tick)
         self.body.addLayout(want)
+        self.repair_btn = QPushButton("Remove made-up IDs")
+        self.repair_btn.setObjectName("primary")
+        self.repair_btn.setToolTip("Take out claim/source IDs the AI invented and use the ticked evidence instead")
+        self.repair_btn.clicked.connect(self._repair)
+        self.repair_btn.hide()
+        want.addWidget(self.repair_btn)
         self.editor = QPlainTextEdit()
         self.editor.setFont(QFont("Consolas", 11))
         self.body.addWidget(self.editor, 1)
@@ -111,6 +117,14 @@ class ScriptPage(StagePage):
         self.toast(f"Ticked {len(w)} piece(s) of evidence on the Research page.")
         self.refresh()
 
+    def _repair(self) -> None:
+        notes = script_stage.repair(self.ep)
+        self.ep.record("script", "awaiting_approval", "made-up IDs removed")
+        self.editor.document().setModified(False)
+        self.toast("Fixed: " + ("; ".join(notes[:4]) if notes else "nothing needed changing") + ". Read those scenes "
+                   "and approve.")
+        self.refresh()
+
     def _show_on_research(self) -> None:
         self.win.nav.setCurrentRow(1)
         self.win.pages[1].show_wanted()
@@ -149,6 +163,8 @@ class ScriptPage(StagePage):
         if self.ep and self.ep.path("script.md").exists():
             self.write_btn.setText("Write it again")
         self._show_wanted()
+        invented = any("may have invented" in self.checks.item(i).text() for i in range(self.checks.count()))
+        self.repair_btn.setVisible(bool(self.ep) and invented and not busy)
 
     def watched(self) -> list[str]:
         return ["script", "stories"]

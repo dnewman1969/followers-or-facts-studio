@@ -456,3 +456,39 @@ def test_ollama_streams_progress(data):
                on_text=seen.append)
     srv.shutdown()
     assert out == {"title": "A real bug", "scenes": []} and seen
+
+
+def test_made_up_ids_never_reach_the_script(episode, monkeypatch):
+    """Dave's S01E02: a scene came back citing claim C-10 and sources S-5, S-7, which don't exist."""
+    ep = episode
+    research_and_story(ep)
+    real = Ollama.chat_json
+    seen = {}
+
+    def inventive(self, messages, schema, **kw):
+        out = real(self, messages, schema, **kw)
+        props = schema["properties"]
+        if "narration" in props and "visual" in props:
+            seen["enum"] = props["source_ids"]["items"].get("enum")
+            out["claim_ids"] = out.get("claim_ids", []) + ["C-10"]
+            out["source_ids"] = out.get("source_ids", []) + ["S-5", "S-7"]
+        return out
+    monkeypatch.setattr(Ollama, "chat_json", inventive)
+    pipeline.run_now(ep, "script")
+    assert seen["enum"], "the writer is only offered the real source IDs"
+    msgs = [c.message for c in pipeline.checks(ep, "script")]
+    assert not any("may have invented" in m for m in msgs), msgs
+    text = ep.path("script.md").read_text(encoding="utf-8")
+    assert "S-5" not in text and "C-10" not in text
+
+
+def test_repair_removes_made_up_ids_from_an_existing_script(episode):
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    text = ep.path("script.md").read_text(encoding="utf-8")
+    text = text.replace("sources: S-", "sources: S-5, S-7, S-", 1).replace("claims: C-", "claims: C-10, C-", 1)
+    ep.path("script.md").write_text(text, encoding="utf-8")
+    assert any("may have invented" in c.message for c in pipeline.checks(ep, "script"))
+    notes = script_stage.repair(ep)
+    assert notes and not any("may have invented" in c.message for c in pipeline.checks(ep, "script"))
