@@ -13,8 +13,9 @@ from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QLi
 
 from ... import jobs, pipeline
 from ...stages import research as rs
+from ...stages import script as script_stage
 from ...util import read_json
-from ..common import GOLD, GREEN, MUTED, table
+from ..common import GOLD, GREEN, MUTED, table, tint
 from ..widgets import StagePage, click_feedback
 
 TYPE_COLORS = {"court": "#e67e22", "gov": "#4aa3df", "wire": GREEN, "journalism": GREEN, "academic": "#9b59b6",
@@ -25,7 +26,8 @@ DEPTHS = [("Only the sources already on file (a few minutes)", "files"),
           ("Quick search (about 5-10 minutes)", "quick"),
           ("Normal search (about 15-30 minutes)", "normal"),
           ("Deep search (an hour or more)", "deep")]
-SHOW = [("Show everything", "all"), ("Only ticked", "ticked"), ("Only new finds", "new"),
+HIGHLIGHT = QColor(212, 160, 23, 90)
+SHOW = [("Show everything", "all"), ("Only what the script wants", "wanted"), ("Only ticked", "ticked"), ("Only new finds", "new"),
         ("Only quotes", "quote"), ("Only court and government", "official")]
 
 
@@ -36,6 +38,7 @@ class ResearchPage(StagePage):
             "for word, and save a permanent Wayback Machine copy of every link. Everything they find is saved in "
             "the database. Nothing is ticked to begin with: tick what this video will use.")
     APPROVE_STAGE = "research"
+    SHOW_PROGRESS = False  # this page has its own progress line
 
     def __init__(self, window):
         super().__init__(window)
@@ -66,6 +69,20 @@ class ResearchPage(StagePage):
         self.status = QLabel("")
         self.status.setWordWrap(True)
         self.body.addWidget(self.status)
+        # the script uses evidence that isn't ticked: say so, and offer to tick it
+        want = QHBoxLayout()
+        self.want_text = QLabel("")
+        self.want_text.setWordWrap(True)
+        self.want_text.setStyleSheet(f"background:{tint(GOLD, 0.16)}; border:1px solid {GOLD}; border-radius:6px; "
+                                     "padding:8px; font-size:11pt;")
+        self.want_btn = QPushButton("Tick them for me")
+        self.want_btn.setObjectName("primary")
+        self.want_btn.setMinimumHeight(40)
+        self.want_btn.clicked.connect(self._tick_wanted)
+        want.addWidget(self.want_text, 1)
+        want.addWidget(self.want_btn)
+        self.body.addLayout(want)
+        self._wanted: dict[str, list[str]] = {}
 
         # a big progress line right on the page, as well as the bar at the top
         self.live = QLabel("")
@@ -150,11 +167,24 @@ class ResearchPage(StagePage):
                                 f"{last.get('new_evidence', 0)} new pieces of evidence (marked NEW). It's all saved "
                                 "in the database for any video on this subject.")
         self._progress(busy)
-        sig = (packet.get("built_at"), len(packet.get("evidence", [])))
+        wanted = script_stage.wanted_unticked(self.ep)
+        sig = (packet.get("built_at"), len(packet.get("evidence", [])), tuple(sorted(wanted)))
+        self._wanted = wanted
+        self._show_wanted()
         if sig != self._sig:
             self._sig = sig
             self._fill(packet.get("evidence", []))
         self._update_count()
+
+    def _show_wanted(self) -> None:
+        w = self._wanted
+        self.want_text.setVisible(bool(w))
+        self.want_btn.setVisible(bool(w))
+        if w:
+            scenes = sorted({s for v in w.values() for s in v})
+            self.want_text.setText(f"<b>The script uses {len(w)} piece(s) of evidence that aren't ticked</b> "
+                                   f"(in {', '.join(scenes)}). They're highlighted in gold below. Tick them so the "
+                                   "script can use them, or take them out of the script.")
 
     def _progress(self, busy: bool) -> None:
         job = next((j for j in jobs.jobs(30) if j["project_id"] == self.ep.project_id and j["stage"] == "research"
@@ -172,11 +202,14 @@ class ResearchPage(StagePage):
     # ------------------------------------------------------------ the list
     def _fill(self, evidence: list[dict]) -> None:
         # new finds first, then quotes, then links; keep the order stable within each
-        self._evidence = sorted(evidence, key=lambda e: (not e.get("new"), e["kind"] != "quote"))
+        self._evidence = sorted(evidence, key=lambda e: (e["id"] not in self._wanted, not e.get("new"),
+                                                         e["kind"] != "quote"))
         self._apply_filter()
 
     def _matches(self, e: dict) -> bool:
         show = self.show_what.currentData()
+        if show == "wanted" and e["id"] not in self._wanted:
+            return False
         if show == "ticked" and not e.get("include"):
             return False
         if show == "new" and not e.get("new"):
@@ -204,7 +237,8 @@ class ResearchPage(StagePage):
             self.table.setItem(r, 0, use)
             title = (f"“{e['quote']}”" if e["kind"] == "quote" else "") or (e.get("title") or e["id"])
             shows = e.get("summary") or e.get("supports") or ""
-            vals = ["NEW" if e.get("new") else "", TYPE_NAMES.get(e.get("type") or "", e.get("type") or ""),
+            wanted = e["id"] in self._wanted and not e.get("include")
+            vals = ["SCRIPT" if wanted else "NEW" if e.get("new") else "", TYPE_NAMES.get(e.get("type") or "", e.get("type") or ""),
                     title[:140], shows[:180], e.get("claim") or e["claim_id"],
                     "agent" if e.get("found_by") == "agent" else "database"]
             for c, v in enumerate(vals, 1):
@@ -215,9 +249,14 @@ class ResearchPage(StagePage):
                     item.setForeground(QColor(GOLD))
                 if c == 2:
                     item.setForeground(QColor(TYPE_COLORS.get(e.get("type") or "", MUTED)))
+                if wanted:
+                    item.setBackground(HIGHLIGHT)
+                    item.setToolTip(f"The script uses this in {', '.join(self._wanted[e['id']])}. Tick it.")
                 self.table.setItem(r, c, item)
+            if wanted:
+                use.setBackground(HIGHLIGHT)
         self.table.setColumnWidth(0, 44)
-        self.table.setColumnWidth(1, 44)
+        self.table.setColumnWidth(1, 70)
         self.table.setColumnWidth(2, 110)
         self.table.setColumnWidth(3, 380)
         self.table.setColumnWidth(4, 420)
@@ -248,12 +287,24 @@ class ResearchPage(StagePage):
         if self.stage_status("research")["status"] != "not_started":
             self.checks.set_checks(pipeline.checks(self.ep, "research"))
 
+    def _tick_wanted(self) -> None:
+        ids = list(self._wanted)
+        self._save_ticks(ids, True)
+        self._wanted = {}
+        self._show_wanted()
+        self._apply_filter()
+        self.toast(f"Ticked {len(ids)} piece(s) of evidence the script uses. Go back to Script and approve.")
+
     def _toggled(self, item) -> None:
         if self._filling or item.column() != 0:
             return
         e = self._evidence[self._shown[item.row()]]
         self._save_ticks([e["id"]], item.checkState() == Qt.Checked)
-        if self.show_what.currentData() == "ticked":
+        if e["id"] in self._wanted and item.checkState() == Qt.Checked:
+            self._wanted = script_stage.wanted_unticked(self.ep)
+            self._show_wanted()
+            self._apply_filter()
+        elif self.show_what.currentData() == "ticked":
             self._apply_filter()
 
     def _tick_shown(self, on: bool) -> None:
@@ -262,6 +313,10 @@ class ResearchPage(StagePage):
         self._save_ticks([self._evidence[i]["id"] for i in self._shown], on)
         self._apply_filter()
         self.toast(f"{'Ticked' if on else 'Unticked'} {len(self._shown)} pieces of evidence.")
+
+    def show_wanted(self) -> None:
+        """Called from the Script page: show only what the script wants."""
+        self.show_what.setCurrentIndex(self.show_what.findData("wanted"))
 
     def _detail(self) -> None:
         r = self.table.currentRow()
@@ -276,6 +331,9 @@ class ResearchPage(StagePage):
                  + f" · found by {'the research agent' if e.get('found_by') == 'agent' else 'the database'}"
                  f" · {esc(e['id'])}</p>",
                  f"<p><b>Claim:</b> {esc(e.get('claim') or e['claim_id'])}</p>"]
+        if e["id"] in self._wanted and not e.get("include"):
+            parts.insert(1, f"<p style='color:{GOLD}'><b>The script uses this in "
+                            f"{esc(', '.join(self._wanted[e['id']]))}. Tick it so it can.</b></p>")
         if e.get("summary"):
             parts.append(f"<p><b>What it is and what it shows:</b> {esc(e['summary'])}</p>")
         else:

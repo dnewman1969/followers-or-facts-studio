@@ -111,7 +111,7 @@ def run(ctx: Context) -> None:
             {"role": "user", "content": f"Evidence:\n{evidence_for_prompt(ep)}\n\nHere is a story plan:\n"
                                         f"{json.dumps(old, ensure_ascii=False)}\n\nRewrite it with these notes "
                                         f"from the producer: {rewrite['notes']}"},
-        ], STORY_SCHEMA, temperature=0.6)
+        ], STORY_SCHEMA, temperature=0.6, on_text=ctx.writing(f"Rewriting story {i + 1}", 20, 95, 450))
         new = _clean(new, valid)
         new["revision"] = old.get("revision", 1) + 1
         new["notes_applied"] = rewrite["notes"]
@@ -126,7 +126,8 @@ def run(ctx: Context) -> None:
                 {"role": "system", "content": RULES},
                 {"role": "user", "content": f"Evidence:\n{evidence_for_prompt(ep)}\n\nPlan ONE story with this "
                                             f"angle: {angle}\n6 to 10 beats."},
-            ], STORY_SCHEMA, temperature=0.8)
+            ], STORY_SCHEMA, temperature=0.8,
+                on_text=ctx.writing(f"Writing story {n + 1} of 3", 10 + n * 30, 38 + n * 30, 450))
             story = _clean(story, valid)
             story["angle_hint"] = angle
             story["revision"] = 1

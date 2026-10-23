@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsOpacityEffect, QHB
 
 from .. import jobs, pipeline
 from ..util import StageError
-from .common import GOLD, GREEN, MUTED, PANEL, RED, STATUS_COLORS, STATUS_WORDS, error
+from .common import GOLD, GREEN, MUTED, PANEL, RED, STATUS_COLORS, STATUS_WORDS, error, tint
 
 CHECK_COLORS = {"block": RED, "warn": GOLD, "ok": GREEN}
 CHECK_ICONS = {"block": "✖", "warn": "!", "ok": "✔"}
@@ -34,7 +34,7 @@ class Chip(QLabel):
     def set_status(self, status: str, text: str | None = None) -> None:
         color = STATUS_COLORS.get(status, MUTED)
         self.setText(text or STATUS_WORDS.get(status, status))
-        self.setStyleSheet(f"background:{color}22; color:{color}; border:1px solid {color}; "
+        self.setStyleSheet(f"background:{tint(color, 0.13)}; color:{color}; border:1px solid {color}; "
                            "border-radius:10px; padding:2px 10px; font-weight:600;")
 
 
@@ -191,6 +191,54 @@ class ChecksList(QListWidget):
         self.setFixedHeight(min(150, 26 * max(1, len(checks)) + 8))
 
 
+class PageProgress(QFrame):
+    """A big progress line on the page itself while one of its jobs runs: what it's doing right now,
+    a bar, and how long it's been going."""
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("pageprogress")
+        self.setStyleSheet(f"QFrame#pageprogress {{ background:#1d2133; border:1px solid {tint(GOLD, 0.45)}; "
+                           "border-radius:6px; }")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 8, 12, 8)
+        top = QHBoxLayout()
+        self.text = QLabel("")
+        self.text.setWordWrap(True)
+        self.text.setStyleSheet("font-size:11pt;")
+        self.elapsed = QLabel("")
+        self.elapsed.setStyleSheet(f"color:{MUTED}; font-size:11pt;")
+        top.addWidget(self.text, 1)
+        top.addWidget(self.elapsed)
+        lay.addLayout(top)
+        self.bar = QProgressBar()
+        self.bar.setStyleSheet(f"QProgressBar {{ background:#22263a; border:none; border-radius:6px; height:16px; "
+                               f"color:white; text-align:center; }} QProgressBar::chunk {{ background:{GOLD}; "
+                               "border-radius:6px; }")
+        lay.addWidget(self.bar)
+        self.hide()
+
+    def show_job(self, job: dict[str, Any] | None) -> None:
+        if not job:
+            self.hide()
+            return
+        label = pipeline.stage(job["stage"]).label if job["stage"] in pipeline.BY_NAME else job["stage"]
+        if job["status"] == "queued":
+            self.text.setText(f"<b style='color:{GOLD}'>●</b> <b>{label}</b>: waiting for the job ahead of it to finish...")
+            self.bar.setRange(0, 0)
+            self.elapsed.setText("")
+        else:
+            self.text.setText(f"<b style='color:{GOLD}'>●</b> <b>{label}</b>: "
+                              f"{job['progress'] or 'starting the local AI (loading the model can take a minute)...'}")
+            if job["progress_pct"] is None:
+                self.bar.setRange(0, 0)
+            else:
+                self.bar.setRange(0, 100)
+                self.bar.setValue(int(job["progress_pct"]))
+            self.elapsed.setText(_ago(job["started_at"]))
+        self.show()
+
+
 class StagePage(QWidget):
     """Base for the pipeline pages. Subclasses set STAGES (stage names the page runs),
     build their own content, and call self.run_stage / self.approve."""
@@ -198,6 +246,7 @@ class StagePage(QWidget):
     TITLE = ""
     HELP = ""
     APPROVE_STAGE = ""      # the stage the big "Approve and continue" button approves
+    SHOW_PROGRESS = True    # the progress line on the page (Research has its own)
     go_next = Signal()
 
     def __init__(self, window):
@@ -225,6 +274,8 @@ class StagePage(QWidget):
         self.checks = ChecksList()
         self.checks.setVisible(False)
         outer.addWidget(self.checks)
+        self.page_progress = PageProgress()
+        outer.addWidget(self.page_progress)
         self.body = QVBoxLayout()
         outer.addLayout(self.body, 1)
         self._last_status: dict[str, str] = {}
@@ -241,6 +292,7 @@ class StagePage(QWidget):
         self.toast(f"Started: {label or pipeline.stage(stage).label}. Watch the bar at the top.", "info")
         self.win.activity.refresh()
         self.refresh()
+        self._show_progress()
 
     def stage_status(self, stage: str) -> dict[str, Any]:
         return self.ep.stage_status(stage) if self.ep else {"status": "not_started"}
@@ -283,8 +335,17 @@ class StagePage(QWidget):
         else:
             self.checks.set_checks(pipeline.checks(self.ep, self.APPROVE_STAGE))
 
+    def _show_progress(self) -> None:
+        job = None
+        if self.ep and self.SHOW_PROGRESS:
+            mine = set(self.watched()) | {self.APPROVE_STAGE}
+            job = next((j for j in jobs.jobs(30) if j["project_id"] == self.ep.project_id and j["stage"] in mine
+                        and j["status"] in ("running", "queued")), None)
+        self.page_progress.show_job(job)
+
     def poll(self) -> None:
         """Every second or so: refresh when any of this page's stages changed status."""
+        self._show_progress()
         if not self.ep:
             return
         now = {s: self.ep.stage_status(s)["status"] for s in self.watched()}

@@ -371,3 +371,53 @@ def test_research_file_from_v02_still_works(episode):
     write_json(ep.path("research.json"), p)
     sel = rs.selected(p)
     assert any(c["excerpts"] for c in sel["claims"])
+
+
+def test_script_points_at_unticked_evidence_it_uses(episode):
+    """Dave's S01E02: the story leaned on the Senate report, which wasn't ticked."""
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    assert script_stage.wanted_unticked(ep) == {}
+    cited = next(s for sc in scriptfmt.parse(ep.path("script.md").read_text(encoding="utf-8"))["scenes"]
+                 for s in sc["source_ids"])
+    rows = [e["id"] for e in read_json(ep.path("research.json"))["evidence"] if e["source_id"] == cited]
+    rs.set_include(ep, rows, False)
+    wanted = script_stage.wanted_unticked(ep)
+    assert set(wanted) & set(rows) and all(v[0].startswith("SCENE_") for v in wanted.values())
+    msgs = [c.message for c in pipeline.checks(ep, "script")]
+    assert any("isn't ticked" in m and "Tick what the script needs" in m for m in msgs), msgs
+    rs.set_include(ep, list(wanted), True)  # what the "Tick what the script needs" button does
+    assert script_stage.wanted_unticked(ep) == {}
+    assert not any("isn't ticked" in c.message for c in pipeline.checks(ep, "script"))
+
+
+def test_ollama_streams_progress(data):
+    """The local AI's answer arrives a bit at a time, so the page can show words written so far."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from fofstudio import config
+
+    class Fake(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.end_headers()
+            for part in ['{"title": "A', ' real bug", ', '"scenes": []}']:
+                self.wfile.write((json.dumps({"message": {"content": part}, "done": False}) + "\n").encode())
+            self.wfile.write((json.dumps({"message": {"content": ""}, "done": True, "done_reason": "stop"}) + "\n").encode())
+
+        def log_message(self, *a):
+            pass
+    srv = HTTPServer(("127.0.0.1", 0), Fake)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    cfg = dict(config.settings()["ollama"], url=f"http://127.0.0.1:{srv.server_address[1]}")
+    seen = []
+    import fofstudio.llm as llm
+    real = llm.Ollama.chat_json  # the test fixtures may have replaced it; use the real one
+    out = real(llm.Ollama(cfg), [{"role": "user", "content": "hi"}], {"type": "object", "properties": {}},
+               on_text=seen.append)
+    srv.shutdown()
+    assert out == {"title": "A real bug", "scenes": []} and seen

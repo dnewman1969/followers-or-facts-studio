@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+import time
+from typing import Any, Callable
 
 import requests
 
@@ -43,13 +44,45 @@ class Ollama:
         except Exception as exc:  # noqa: BLE001 - shown to the user
             return False, f"Ollama not reachable at {self.url}: {exc}"
 
+    def _stream(self, payload: dict[str, Any], on_text: Callable[[str], None]) -> dict[str, Any]:
+        """Like _post, but the answer arrives a few words at a time; on_text gets the text so far
+        (about once a second) so the window can show that something is happening."""
+        text, last, final = "", 0.0, {}
+        with requests.Session() as s:
+            s.trust_env = False
+            try:
+                r = s.post(self.url + "/api/chat", json=payload, stream=True,
+                           timeout=(5, self.cfg["timeout_seconds"]), allow_redirects=False)
+            except requests.ConnectionError:
+                raise StageError(f"Ollama is not running at {self.url}. Start Ollama and try again.")
+            with r:
+                if r.status_code == 404 and "model" in r.text:
+                    raise StageError(f"Ollama doesn't have model {payload.get('model')!r}. "
+                                     f"Run: ollama pull {payload.get('model')}")
+                r.raise_for_status()
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    chunk = json.loads(line)
+                    if chunk.get("error"):
+                        raise StageError(f"Ollama error: {chunk['error']}")
+                    text += (chunk.get("message") or {}).get("content", "")
+                    if time.monotonic() - last > 1.0:
+                        last = time.monotonic()
+                        on_text(text)
+                    if chunk.get("done"):
+                        final = chunk
+                        break
+        final["message"] = {"content": text}
+        return final
+
     def chat(self, messages: list[dict[str, str]], model: str | None = None,
              schema: dict[str, Any] | None = None, temperature: float = 0.4,
-             seed: int | None = None) -> str:
+             seed: int | None = None, on_text: Callable[[str], None] | None = None) -> str:
         payload: dict[str, Any] = {
             "model": model or self.cfg["writer_model"],
             "messages": messages,
-            "stream": False,
+            "stream": bool(on_text),
             "think": self.cfg.get("think", False),
             "options": {"temperature": temperature, "num_ctx": self.cfg["num_ctx"],
                         "num_predict": self.cfg["num_predict"]},
@@ -58,7 +91,10 @@ class Ollama:
             payload["options"]["seed"] = seed
         if schema is not None:
             payload["format"] = schema
-        data = self._post("/api/chat", payload, timeout=(5, self.cfg["timeout_seconds"]))
+        if on_text:
+            data = self._stream(payload, on_text)
+        else:
+            data = self._post("/api/chat", payload, timeout=(5, self.cfg["timeout_seconds"]))
         content = (data.get("message") or {}).get("content", "").strip()
         if not content:
             raise StageError("The local AI returned an empty answer.")

@@ -107,6 +107,22 @@ Dave also asked for:
 
 42 tests pass.
 
+## 2026-10-22 — v0.3.1: the script points at evidence to tick; progress while the AI writes
+
+S01E02's story (written before ticks existed) leaned on the Senate final report, which wasn't
+ticked, so the script check blocked it. Now `script.wanted_unticked` finds evidence the script
+uses that isn't ticked; the Script page shows a gold box with **Tick what the script needs** and
+**Show me on Research**, and the Research page highlights those rows in gold (tag SCRIPT, filter
+"Only what the script wants", **Tick them for me**).
+
+Progress while the local AI writes: `Ollama.chat(on_text=...)` streams the answer and
+`Context.writing()` reports "N words written so far" with a rough percent (script, 3 stories,
+rewrites). Every step page now has its own progress line (`widgets.PageProgress`) while one of
+its jobs runs. Also fixed see-through colours (Qt reads #rrggbbaa as #aarrggbb, which made gold
+chips and boxes red): `common.tint()`.
+
+44 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then carry on with S01E02 (press Write it again on Script) or start fresh; report anything odd.

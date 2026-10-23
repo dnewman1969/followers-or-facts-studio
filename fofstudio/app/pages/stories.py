@@ -62,7 +62,7 @@ class StoriesPage(StagePage):
             opt = (data or {}).get("options", [None] * 3)[i] if data and i < len(data.get("options", [])) else None
             picked = data and data.get("chosen") == i
             if busy:
-                view.setHtml(f"<p style='color:{MUTED}'>Writing... (see the bar at the top)</p>")
+                view.setHtml(f"<p style='color:{MUTED}'>Writing... (watch the progress line above)</p>")
             elif not opt:
                 view.setHtml(f"<p style='color:{MUTED}'>Story {i + 1} will appear here.</p>")
             else:

@@ -178,7 +178,9 @@ def run(ctx: Context) -> None:
                if ctx.options.get("direction") else "")
             + story_text
             + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
-    ], SCRIPT_SCHEMA, temperature=0.6)
+    ], SCRIPT_SCHEMA, temperature=0.6,
+        # the answer also carries picture descriptions and source lists: roughly twice the narration
+        on_text=ctx.writing("Writing the script", 10, 95, expect_words=words * 2))
     scenes = answer.get("scenes") or []
     if len(scenes) < 3:
         raise StageError("The draft came back with fewer than 3 scenes. Run the stage again.")
@@ -198,6 +200,7 @@ def check(ep: Episode) -> list[Check]:
     if not path.exists():
         return [Check(BLOCK, "No script yet. Run this stage (or write script.md yourself).")]
     packet = selected_packet(ep)
+    raw_ev = (read_json(ep.path("research.json")) or {}).get("evidence", [])
     script = parse(path.read_text(encoding="utf-8"))
     scenes = script["scenes"]
     out: list[Check] = []
@@ -229,8 +232,13 @@ def check(ep: Episode) -> list[Check]:
                 out.append(Check(BLOCK, f"{sid}: source {src} is a Knowledge Fight episode. It's a research "
                                         "index, not evidence."))
             elif src not in all_ticked:
-                out.append(Check(BLOCK, f"{sid}: source {src} isn't ticked on the Research page. Tick it "
-                                        "there, or take it out of this scene."))
+                title = next((e.get("title") for e in raw_ev if e["source_id"] == src), None)
+                if title:
+                    out.append(Check(BLOCK, f"{sid} uses \"{title[:60]}\", which isn't ticked. "
+                                            "Press Tick what the script needs, or take it out of this scene."))
+                else:
+                    out.append(Check(BLOCK, f"{sid}: source {src} isn't part of this video's research (the AI "
+                                            "brought it in). Take it out of this scene."))
         if sc["claim_ids"] and not sc["source_ids"]:
             out.append(Check(BLOCK, f"{sid}: states facts about {', '.join(sc['claim_ids'])} "
                                     "but lists no source IDs."))
@@ -260,6 +268,34 @@ def check(ep: Episode) -> list[Check]:
     out.append(Check(OK, f"{len(scenes)} scenes, {words} words (~{words / WORDS_PER_MINUTE:.1f} "
                          f"min), reading grade {grade}."))
     return out
+
+
+def wanted_unticked(ep: Episode) -> dict[str, list[str]]:
+    """Evidence the script uses that isn't ticked on the Research page: {evidence id: [scenes]}.
+    For a source, the item to tick is its link row (or, failing that, its quote rows)."""
+    path = ep.path("script.md")
+    raw = read_json(ep.path("research.json")) or {}
+    evidence = raw.get("evidence", [])
+    if not path.exists() or not evidence:
+        return {}
+    ticked_sources = {e["source_id"] for e in evidence if e.get("include")}
+    ticked_ids = {e["id"] for e in evidence if e.get("include")}
+    full = {**raw, "claims": raw.get("claims", [])}  # E-numbers resolve against everything on file
+    out: dict[str, list[str]] = {}
+    for sc in parse(path.read_text(encoding="utf-8"))["scenes"]:
+        fix_refs(sc, full, fill=False)
+        for src in sc["source_ids"]:
+            if src in ticked_sources:
+                continue
+            rows = [e for e in evidence if e["source_id"] == src]
+            pick = [e for e in rows if e["kind"] == "link"] or rows
+            for e in pick:
+                out.setdefault(e["id"], []).append(sc["scene_id"])
+        for q in sc["excerpt_ids"]:
+            eid = f"E{q}"
+            if eid not in ticked_ids and any(e["id"] == eid for e in evidence):
+                out.setdefault(eid, []).append(sc["scene_id"])
+    return {k: list(dict.fromkeys(v)) for k, v in out.items()}
 
 
 def load(ep: Episode) -> dict[str, Any]:

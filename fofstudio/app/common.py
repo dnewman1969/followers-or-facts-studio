@@ -21,6 +21,12 @@ RED = "#c0392b"
 GREEN = "#27ae60"
 MUTED = "#8a8fa3"
 
+def tint(color: str, alpha: float) -> str:
+    """A see-through version of a #rrggbb colour for style sheets (Qt reads #rrggbbaa as #aarrggbb)."""
+    c = color.lstrip("#")
+    return f"rgba({int(c[0:2], 16)}, {int(c[2:4], 16)}, {int(c[4:6], 16)}, {alpha})"
+
+
 CHECK_ICON = (Path(__file__).parent / "check.svg").as_posix()
 
 STYLE = f"""

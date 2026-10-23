@@ -28,6 +28,18 @@ class Context:
     progress: Callable[..., None] = lambda text, pct=None: None
     cancelled: Callable[[], bool] = lambda: False
 
+    def writing(self, what: str, start: float = 5, end: float = 95, expect_words: int = 0) -> Callable[[str], None]:
+        """A progress callback for the local AI's streamed answer: 'Writing the script: 240 words so far'."""
+        def update(text: str) -> None:
+            self.check_cancel()
+            n = len(text.split())
+            pct = None
+            if expect_words:
+                pct = min(end, start + (end - start) * n / expect_words)
+            self.progress(f"{what}: {n:,} words written so far" + (f" (about {expect_words:,} expected)"
+                                                                   if expect_words else ""), pct)
+        return update
+
     def check_cancel(self) -> None:
         from ..util import StageError
         if self.cancelled():
