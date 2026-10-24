@@ -56,3 +56,48 @@ The beat sheets are in `fofstudio/storytypes.py`; the writer styles in `fofstudi
    just under 8 minutes with real material to add, it mentions that YouTube's mid-video ads start at 8:00,
    but never stretches it for you.
 4. Set the **length**, then **Produce script**.
+
+# How big is the story? (Stories page)
+
+Before the story writer starts, the local AI reads all the ticked evidence and judges how much explaining
+each claim needs and how many timeline events, people and groups, and separate threads there are. The
+program does the arithmetic (`stages/storysize.py`):
+
+- **Video length**: the Script page's length formula, with no 20-minute cap.
+- **Book pages**: 450 words per claim + 220 per source + 100 per quote + 120 per person or group + 100 per
+  timeline event, at 300 words a page.
+- **Short** if it's 3 minutes or less; **one video** up to 20 minutes with at most 6 claims and 2 threads;
+  otherwise a **series** of about 15-minute parts; a **book** when there's enough for `[book] min_pages`
+  pages (45 by default) and at least 3 claims or 15 sources.
+
+The verdict shows above the three stories. A book-sized subject still gets its three video stories.
+
+# The book (Stories page → Write the book)
+
+The whole story with references, as a 6 × 9 inch PDF (`<episode>/book/book.pdf`): where it started, who
+was involved, how it spread, what the record shows claim by claim, who profited, the damage, how the
+deception worked, and the verdict. It uses only the evidence ticked on the Research page, so tick
+everything the book should use (usually more than a video needs).
+
+How "nothing made up" is enforced (plain text checks, `stages/book.py`):
+
+- The chapter plan can only point at claim and evidence IDs that exist; every ticked item is used.
+- Each chapter is written from its own material only: the ticked quotes and source write-ups, and passages
+  from the saved copies of those sources. Every paragraph must cite what it relies on.
+- The AI never types a quote: it names the quote's E-number and the program prints the verified,
+  word-for-word text. Words the AI put in quotation marks must be found word for word in the sources.
+- Every number and year must appear in the material that paragraph cites.
+- It may only say someone lied or meant to deceive when the cited material (a court finding, an official
+  record, their own words) says so; otherwise it sets out the claim and the record.
+- A chapter that fails gets one rewrite with the problems listed; paragraphs that still fail are removed.
+  Names that aren't in the material are flagged. Both are listed in `book/review.md` ("What to check").
+- Careful topics: "courts only" claims use only court and government sources.
+
+Until you press **Approve the book**, every page says DRAFT. The book is saved chapter by chapter, so a
+stopped job carries on where it left off; "Write it again from the start" throws the chapters away.
+Changing the ticked evidence also starts it again.
+
+Before selling: read every page, and think about a legal read for anything that accuses named people.
+In the US, text written by AI isn't protected by copyright on its own; your own editing, additions and
+the selection and arrangement can be. If you register it, the Copyright Office asks you to say which parts
+were AI-written. (Not legal advice.)

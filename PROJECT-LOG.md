@@ -313,6 +313,20 @@ uses a throwaway data folder even without the data fixture; Update Studio.cmd's 
   "to suit the style". "Scan the story" (hidden stage `scan`, `stages/lengthscan.py`) estimates the honest
   length; then "Produce script". 96 tests pass.
 
+## 2026-10-24 — v0.5.2: story size check and the book
+
+- Stories now sizes the story up first (`stages/storysize.py`): the local AI judges complexity, timeline
+  events, people and threads; the program works out Short / one video / series / book, with minutes and
+  pages, shown above the three stories (`size.json`).
+- Book (hidden stage `book`, `stages/book.py`, PDF by `bookpdf.py` with ReportLab, BSD): chapter plan in
+  fixed parts (introduction, origin, players, spread, record, profit, damage, techniques, verdict), then
+  chapter by chapter from that chapter's evidence and saved-source passages only. Text checks: every
+  paragraph cites; numbers must be in the cited material; quotation marks must match the sources word for
+  word; quotes are printed by the program; unknown names flagged. One rewrite, then failing paragraphs are
+  removed and listed in `book/review.md`. DRAFT on every page until Approve the book. Resumes chapter by
+  chapter. Stories page: Write the book / Finish / Write again / Open the PDF / What to check / Approve.
+  102 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

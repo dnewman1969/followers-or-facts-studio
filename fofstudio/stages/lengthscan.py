@@ -80,10 +80,9 @@ def estimate(counts: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def counts_from(ep: Episode, story: dict[str, Any], judged: dict[str, Any]) -> dict[str, Any]:
-    from .research import selected
-    packet = selected(read_json(ep.path("research.json")) or {})
-    primary = {}
+def primary_counts(packet: dict[str, Any]) -> dict[str, int]:
+    """How many primary sources were ticked for each claim (ticked packet from research.selected)."""
+    primary: dict[str, int] = {}
     for e in packet.get("evidence", []):
         if e.get("type") in ("court", "government", "primary", "document", "court_record") or e.get("is_primary"):
             primary[e["claim_id"]] = primary.get(e["claim_id"], 0) + 1
@@ -92,6 +91,13 @@ def counts_from(ep: Episode, story: dict[str, Any], judged: dict[str, Any]) -> d
     for c in packet.get("claims", []):
         primary[c["claim_id"]] = max(primary.get(c["claim_id"], 0),
                                      sum(1 for s in c.get("sources", []) if s.get("is_primary")))
+    return primary
+
+
+def counts_from(ep: Episode, story: dict[str, Any], judged: dict[str, Any]) -> dict[str, Any]:
+    from .research import selected
+    packet = selected(read_json(ep.path("research.json")) or {})
+    primary = primary_counts(packet)
     judged_c = {c["claim_id"]: COMPLEXITY.get(c["complexity"], 1.25) for c in judged.get("claims", [])}
     claims = [{"claim_id": c["claim_id"], "primary_sources": primary.get(c["claim_id"], 0),
                "complexity": judged_c.get(c["claim_id"], 1.25)} for c in packet.get("claims", [])]

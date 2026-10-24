@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from . import (captions, lengthscan, music, narration, production, publish, render, research, script, stories,
+from . import (book, captions, lengthscan, music, narration, production, publish, render, research, script, stories,
                storyboard, video)
 from .base import Stage
 
@@ -64,5 +64,8 @@ STAGES.append(Stage("autopublish", "Automatic upload", "network", (), publish.au
 
 STAGES.append(Stage("scan", "Story scan", "ollama", (), lengthscan.run, lambda ep: [], hidden=True,
                     description="Reads the story and evidence and works out how long the video should be."))
+
+STAGES.append(Stage("book", "Book", "ollama", (), book.run, book.check, hidden=True,
+                    description="The whole story with references, as a PDF, written only from the ticked research."))
 
 BY_NAME = {s.name: s for s in STAGES}

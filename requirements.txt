@@ -6,6 +6,7 @@ Pillow>=10.0
 numpy>=1.26
 kokoro-onnx>=0.4      # narration voice (Apache-2.0), runs on the CPU
 pypdf>=4.0            # read text out of PDF sources (court filings etc.)
+reportlab>=4.0        # lays out the book PDFs (BSD)
 faster-whisper>=1.0   # exact word timing for captions (MIT), CPU
 ddgs>=9.0             # web search for the research agents (MIT), no key needed
 trafilatura>=2.0      # reads the article text out of web pages (Apache-2.0)

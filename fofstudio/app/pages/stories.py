@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import html
 
-from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QPushButton, QTextBrowser, QVBoxLayout, QWidget)
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton, QTextBrowser,
+                               QVBoxLayout, QWidget)
 
 from ... import storytypes, techniques
-from ...stages import stories
+from ...stages import book, stories, storysize
 from ...util import read_json
-from ..common import GOLD, GREEN, MUTED
+from ..common import GOLD, GREEN, MUTED, tint
 from ..creative import CreativePanel
 from ..widgets import StagePage, click_feedback
 
+e = html.escape
 ROLE_NAMES = {"intro": "Opening", "claim": "The claim", "record": "What the record shows",
               "benefit": "Who cashed in", "harm": "Who got hurt", "tell": "Owlbert names the trick",
               "toolkit": "The question to ask", "verdict": "Verdict", "outro": "Sign-off"}
@@ -23,7 +27,8 @@ class StoriesPage(StagePage):
     HELP = ("Step 3. First choose how the video is told: the style, length and humor. Then the local AI writes three "
             "ways to tell how the lie was built and take it apart, using only the evidence you ticked, and names the "
             "trick Owlbert will teach. Pick one, or Rewrite with notes. All three are kept: to make another later, go "
-            "to Database → Researched ★.")
+            "to Database → Researched ★. Before writing, it sizes the story up: a Short, one video, a series, or "
+            "big enough for a book. Write the book makes a PDF with references, from the ticked research only.")
     APPROVE_STAGE = "stories"
     CLEAR_STAGE = "stories"
 
@@ -38,6 +43,33 @@ class StoriesPage(StagePage):
         top.addWidget(self.make_btn)
         top.addStretch(1)
         self.body.addLayout(top)
+        self.size_text = QLabel("")
+        self.size_text.setWordWrap(True)
+        self.size_text.setStyleSheet(f"background:{tint(GOLD, 0.10)}; border:1px solid {GOLD}; border-radius:6px; "
+                                     "padding:8px;")
+        self.body.addWidget(self.size_text)
+        shelf = QHBoxLayout()
+        self.book_btn = QPushButton("📚 Write the book")
+        self.book_btn.setToolTip("The local AI writes the whole story as a book, chapter by chapter, using only the "
+                                 "evidence you ticked, with references. Makes a PDF. Takes a while; it carries on "
+                                 "where it stopped if you stop it.")
+        click_feedback(self.book_btn, lambda: self.run_stage("book", {}, "Writing the book"))
+        self.book_again = QPushButton("Write it again from the start")
+        click_feedback(self.book_again, self._book_fresh)
+        self.book_open = QPushButton("Open the PDF")
+        self.book_open.clicked.connect(lambda: self._open("book.pdf"))
+        self.book_notes = QPushButton("What to check")
+        self.book_notes.setToolTip("Paragraphs that were removed and names to check (book/review.md).")
+        self.book_notes.clicked.connect(lambda: self._open("review.md"))
+        self.book_ok = QPushButton("Approve the book")
+        self.book_ok.setToolTip("You've read every page: make the final PDF without the DRAFT marks.")
+        click_feedback(self.book_ok, self._book_approve)
+        for b in (self.book_btn, self.book_again, self.book_open, self.book_notes, self.book_ok):
+            shelf.addWidget(b)
+        self.book_state = QLabel("")
+        self.book_state.setWordWrap(True)
+        shelf.addWidget(self.book_state, 1)
+        self.body.addLayout(shelf)
         cols = QHBoxLayout()
         self.cards: list[tuple[QTextBrowser, QPushButton, QPushButton]] = []
         for i in range(3):
@@ -71,6 +103,7 @@ class StoriesPage(StagePage):
         data = read_json(self.ep.path("stories.json")) if self.ep else None
         self.make_btn.setText("Create 3 new stories" if data else "Create 3 stories")
         used = stories.used_by(self.ep) if data else {}
+        self._refresh_book()
         for i, (view, use, redo) in enumerate(self.cards):
             opt = (data or {}).get("options", [None] * 3)[i] if data and i < len(data.get("options", [])) else None
             picked = data and data.get("chosen") == i
@@ -112,6 +145,56 @@ class StoriesPage(StagePage):
                 + teach + f"<p><b>How it goes:</b></p><ol>{beats}</ol>"
                 f"<p><b>Where Owlbert appears:</b></p><ul>{owl}</ul>")
 
+    def _refresh_book(self) -> None:
+        size = storysize.load(self.ep) if self.ep else {}
+        self.size_text.setVisible(bool(size))
+        if size:
+            self.size_text.setText(storysize.summary_html(size))
+        research_ok = bool(self.ep) and self.stage_status("research")["status"] == "approved"
+        busy = self.busy("book")
+        b = book.load(self.ep) if self.ep else {}
+        written = bool(b.get("pdf")) and self.ep.abs(b["pdf"]).exists()
+        st = book.stats(b) if b else {}
+        partly = bool(b.get("chapters")) and st.get("unwritten")
+        self.book_btn.setText("📚 Finish the book" if partly else "📚 Write the book")
+        self.book_btn.setObjectName("primary" if size.get("format") == "book" and not written else "")
+        self.book_btn.setStyleSheet("")
+        self.book_btn.setEnabled(research_ok and not busy)
+        self.book_again.setVisible(bool(b.get("chapters")))
+        self.book_again.setEnabled(research_ok and not busy)
+        for w in (self.book_open, self.book_notes, self.book_ok):
+            w.setVisible(written)
+            w.setEnabled(not busy)
+        if busy:
+            self.book_state.setText(f"<span style='color:{MUTED}'>Writing the book... (watch the bar at the top)</span>")
+        elif written:
+            done = (f"<b style='color:{GREEN}'>✔ Approved</b> " if b.get("approved") else
+                    f"<b style='color:{GOLD}'>Draft</b> - read it, then Approve. ")
+            self.book_state.setText(f"{done}{e(b.get('title', ''))}: {st['chapters']} chapters, about "
+                                    f"{st['words']:,} words ({st['pages']} pages). {st['dropped']} paragraph(s) "
+                                    f"removed, {st['warnings']} name(s) to check.")
+        elif partly:
+            self.book_state.setText(f"{st['unwritten']} of {len(b['chapters'])} chapters still to write.")
+        else:
+            self.book_state.setText("" if research_ok else f"<span style='color:{MUTED}'>Approve Research first.</span>")
+
+    def _open(self, name: str) -> None:
+        path = self.ep.path("book", name) if self.ep else None
+        if path and path.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        else:
+            self.toast(f"There's no {name} yet.", "warn")
+
+    def _book_fresh(self) -> None:
+        if QMessageBox.question(self, "Write the book again", "Throw away the chapters written so far and write the "
+                                "whole book again from the start?") == QMessageBox.StandardButton.Yes:
+            self.run_stage("book", {"fresh": True}, "Writing the book from the start")
+
+    def _book_approve(self) -> None:
+        book.approve(self.ep)
+        self.toast("Book approved: the final PDF (no DRAFT marks) is in the book folder.")
+        self.refresh()
+
     def _use(self, i: int) -> None:
         stories.choose(self.ep, i)
         self.ep.record("stories", "awaiting_approval", f"option {i + 1} chosen")
@@ -124,4 +207,4 @@ class StoriesPage(StagePage):
             self.run_stage("stories", {"rewrite": {"index": i, "notes": notes.strip()}}, f"Rewriting story {i + 1}")
 
     def watched(self) -> list[str]:
-        return ["stories", "research"]
+        return ["stories", "research", "book"]

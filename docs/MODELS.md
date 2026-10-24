@@ -22,6 +22,7 @@ Check a model's licence before adding it, and add a line here when you do.
 | Owlbert's mouth timing | Rhubarb Lip Sync 1.14 | MIT | `fof-data/models/rhubarb` | small | seconds per line, CPU |
 | Web search for the research agents | ddgs (DuckDuckGo, Bing, Brave... no key) | MIT | pip package | | |
 | Reading article text from pages | trafilatura | Apache-2.0 | pip package | | |
+| Book PDFs | ReportLab (`reportlab`), with the PDF's built-in Times and Helvetica fonts (nothing embedded) | BSD | pip package | | seconds |
 
 `scripts/get-comfy-models.ps1` downloads the Wan 2.2 and ACE-Step files; add `-TextToVideo` for TI2V-5B.
 

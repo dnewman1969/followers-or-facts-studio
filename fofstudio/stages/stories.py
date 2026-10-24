@@ -154,6 +154,12 @@ def run(ctx: Context) -> None:
         data["options"][i] = new
         data.pop("chosen", None)
     else:
+        from . import storysize
+        ctx.progress("Sizing up the story: a Short, one video, a series or a book?", 3)
+        size = storysize.assess(ep, _packet(ep), evidence_for_prompt(ep), llm,
+                                on_text=ctx.writing("Sizing up the story", 3, 9, 250))
+        ctx.progress(f"Size: {storysize.FORMATS[size['format']]} (about {size['video_seconds'] / 60:.0f} min of "
+                     f"video, or a {size['pages']}-page book).", 10)
         options = []
         picks = storytypes.pick_three(ep.creative(), f"{ep.project_id}-{utc_now()}")
         for n, (stype, writer) in enumerate(picks):
@@ -173,7 +179,8 @@ def run(ctx: Context) -> None:
             story["story_type"], story["writer"] = stype.key, writer.key
             story["revision"] = 1
             options.append(story)
-        data = {"options": options, "made_at": utc_now(), "set_id": f"{ep.project_id}-{utc_now()}"}
+        data = {"options": options, "made_at": utc_now(), "set_id": f"{ep.project_id}-{utc_now()}",
+                "size": size["format"]}
     write_json(ep.path("stories.json"), data)
     ctx.progress("Stories ready. Pick one.", 100)
 

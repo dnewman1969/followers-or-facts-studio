@@ -87,6 +87,13 @@ def test_every_page_opens_and_reacts(app, episode):
     sp.creative.style.setCurrentIndex(sp.creative.style.findData("cartoon"))
     assert ep.creative()["style"] == "cartoon"
     sp._use(1)
+    assert sp.size_text.isVisible() and "work with" in sp.size_text.text()
+    assert sp.book_btn.isEnabled() and not sp.book_open.isVisible()
+    pipeline.run_now(ep, "book")
+    sp.refresh()
+    assert sp.book_open.isVisible() and "Draft" in sp.book_state.text()
+    sp._book_approve()
+    assert "Approved" in sp.book_state.text()
 
     sb = pages["StoryboardPage"]
     w.nav.setCurrentRow(4)

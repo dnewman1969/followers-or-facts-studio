@@ -100,6 +100,39 @@ def fake_llm(get_packet):
                     "tricks_taught": 1, "steelman": False, "pad_risk": "low", "split_risk": "low",
                     "reasons": ["three claims with court records"], "if_shorter": ["drop the 1997 radio show"],
                     "if_longer": ["the 2000 follow-up broadcast"]}
+        if "threads" in props:   # the story size check
+            claims = get_packet()["claims"]
+            return {"claims": [{"claim_id": c["claim_id"], "complexity": "some explaining"} for c in claims],
+                    "timeline_events": 5, "people_and_groups": 2, "threads": 1,
+                    "reasons": ["one claim with a court record"], "parts": [{"title": "All of it", "claim_ids":
+                                                                            [c["claim_id"] for c in claims] + ["C-NOPE"]}]}
+        if "subtitle" in props:   # the book's chapter plan
+            ev = props["chapters"]["items"]["properties"]["evidence_ids"]["items"]["enum"]
+            cl = props["chapters"]["items"]["properties"]["claim_ids"]["items"]["enum"]
+            return {"title": "The Y2K Fear Machine", "subtitle": "How a real bug was sold as doom",
+                    "chapters": [{"part": "verdict", "title": "What we know", "purpose": "the verdict",
+                                  "claim_ids": cl, "evidence_ids": ev[:1]},
+                                 {"part": "origin", "title": "A real bug", "purpose": "where it started",
+                                  "claim_ids": cl + ["C-MADE-UP"], "evidence_ids": ["E-MADE-UP"]},
+                                 {"part": "nonsense", "title": "Bad part", "purpose": "", "claim_ids": [],
+                                  "evidence_ids": []},
+                                 {"part": "damage", "title": "Who paid", "purpose": "the damage", "claim_ids": cl,
+                                  "evidence_ids": ev[:2]}]}
+        if "paragraphs" in props:   # one book chapter
+            item = props["paragraphs"]["items"]["properties"]
+            cites = [c for c in item["cites"]["items"]["enum"] if not c.startswith("T-")]
+            quotes = [q for q in item["quote_after"]["enum"] if q]
+            fixing = "found problems" in messages[-1]["content"]
+            return {"paragraphs": [
+                {"heading": "The court", "text": "A court looked at what was sold and why.", "cites": cites[:1],
+                 "quote_after": quotes[0] if quotes else ""},
+                {"heading": "", "text": "In 1987 he sold 4,000 radios.", "cites": cites[:1], "quote_after": ""},
+                {"heading": "", "text": ("The court said he sold survival supplies to scared people."
+                                         if fixing else "The court called it \"a fraud from start to finish\"."),
+                 "cites": cites[:1], "quote_after": ""},
+                {"heading": "", "text": "Listeners trusted Gary Northman and his radio show.", "cites": cites[:1],
+                 "quote_after": "E-MADE-UP"},
+            ]}
         if "how_it_plays" in props:
             return {"how_it_plays": "The camera drifts toward the clock.", "motion_prompt": "slow push in",
                     "camera": "zoom_in", "seconds": 4}
