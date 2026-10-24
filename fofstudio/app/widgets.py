@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QPropertyAnimation, QTimer, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
+from PySide6.QtWidgets import (QSizePolicy, QApplication, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
                                QListWidget, QListWidgetItem, QProgressBar, QPushButton, QVBoxLayout,
                                QWidget)
 
@@ -88,6 +88,9 @@ class ActivityBar(QFrame):
         self.dot = QLabel("●")
         self.text = QLabel("Ready")
         self.text.setStyleSheet("font-size:11pt;")
+        # a long progress line must never push the bar and buttons off the window: let it be cut short
+        self.text.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.text.setMinimumWidth(120)
         self.bar = QProgressBar()
         self.bar.setFixedWidth(260)
         self.bar.setTextVisible(True)
@@ -225,6 +228,7 @@ class PageProgress(QFrame):
         self.text = QLabel("")
         self.text.setWordWrap(True)
         self.text.setStyleSheet("font-size:11pt;")
+        self.text.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.elapsed = QLabel("")
         self.elapsed.setStyleSheet(f"color:{MUTED}; font-size:11pt;")
         top.addWidget(self.text, 1)

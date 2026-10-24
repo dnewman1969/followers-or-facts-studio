@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton)
+from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
+                               QPushButton)
 
-from ... import pipeline
+from ... import filmstyles, pipeline
+from ...stages import lengthscan
 from ...stages import research as rs
 from ...stages import script as script_stage
 from ...util import read_json, write_text
@@ -15,13 +17,46 @@ from ..widgets import StagePage, click_feedback
 
 class ScriptPage(StagePage):
     TITLE = "Script"
-    HELP = ("Step 4. Owlbert's narration, written scene by scene from the story you chose, in the video's style. Every "
-            "scene lists the proof it relies on. Change any words you like, press Save, and the checks run again.")
+    HELP = ("Step 4. Choose the kind of video (genre) and the director's style, press Scan to work out how long the "
+            "story needs, set your length, then Produce script: Owlbert's narration scene by scene, with the music "
+            "and his moves. Every scene lists its proof. Change any words you like, press Save, and the checks run again.")
     APPROVE_STAGE = "script"
     CLEAR_STAGE = "script"
 
     def __init__(self, window):
         super().__init__(window)
+        film = QHBoxLayout()
+        self.genre = QComboBox()
+        self.genre.setMinimumWidth(260)
+        self.genre.setToolTip("The kind of video: changes the tone, pacing, the look of the pictures and the music. "
+                              "The facts never change.")
+        self.director = QComboBox()
+        self.director.setMinimumWidth(330)
+        self.director.setToolTip("The director's way of shooting: framing, camera moves, how long shots hold, "
+                                 "transitions, music and silence. Described to the AI by its traits only.")
+        self.genre.currentIndexChanged.connect(self._film_changed)
+        self.director.currentIndexChanged.connect(self._film_changed)
+        self.scan_btn = QPushButton("Scan the story")
+        self.scan_btn.setToolTip("The local AI reads the story and the ticked evidence and works out how long the "
+                                 "video needs to be to tell it properly (no padding)")
+        click_feedback(self.scan_btn, lambda: self.run_stage("scan", {}, "Scanning the story for its length"))
+        film.addWidget(QLabel("<b>Genre</b>"))
+        film.addWidget(self.genre)
+        film.addWidget(QLabel("<b>Director</b>"))
+        film.addWidget(self.director)
+        film.addWidget(self.scan_btn)
+        film.addStretch(1)
+        self.body.addLayout(film)
+        self.film_blurb = QLabel("")
+        self.film_blurb.setWordWrap(True)
+        self.film_blurb.setObjectName("muted")
+        self.body.addWidget(self.film_blurb)
+        self.scan_text = QLabel("")
+        self.scan_text.setWordWrap(True)
+        self.scan_text.setStyleSheet(f"background:{tint(GOLD, 0.10)}; border:1px solid {GOLD}; border-radius:6px; "
+                                     "padding:8px;")
+        self.body.addWidget(self.scan_text)
+        self._loading_film = False
         row = QHBoxLayout()
         self.minutes = QDoubleSpinBox()
         self.minutes.setRange(1, 30)
@@ -31,7 +66,7 @@ class ScriptPage(StagePage):
         self.minutes.valueChanged.connect(self._minutes_changed)
         self.direction = QLineEdit()
         self.direction.setPlaceholderText("Optional notes for the writer, e.g. 'shorter opening, more on the money'")
-        self.write_btn = QPushButton("Write the script")
+        self.write_btn = QPushButton("Produce script")
         self.write_btn.setObjectName("primary")
         click_feedback(self.write_btn, self._write)
         self.longer_btn = QPushButton("Make it longer")
@@ -77,6 +112,42 @@ class ScriptPage(StagePage):
         save_row.addStretch(1)
         self.body.addLayout(save_row)
 
+    def _fill_film(self) -> None:
+        c = self.ep.creative()
+        self._loading_film = True
+        self.genre.clear()
+        for g in filmstyles.allowed_genres(bool(c.get("careful"))):
+            self.genre.addItem(g.name, g.key)
+            self.genre.setItemData(self.genre.count() - 1, f"{g.definition}\nSuits: {g.suits}\nAvoid: {g.avoid}", 3)
+        self.genre.setCurrentIndex(max(0, self.genre.findData(c.get("genre") or filmstyles.DEFAULT_GENRE)))
+        self.director.clear()
+        self.director.addItem("No particular director", "")
+        for d in filmstyles.allowed_directors(bool(c.get("careful"))):
+            self.director.addItem(d.label, d.key)
+            self.director.setItemData(self.director.count() - 1, f"{d.prompt}\nGood for: {d.topics}", 3)
+        self.director.setCurrentIndex(max(0, self.director.findData(c.get("director") or "")))
+        self._loading_film = False
+        self._film_blurb()
+
+    def _film_changed(self) -> None:
+        if self._loading_film or not self.ep:
+            return
+        self.ep.set_creative(genre=self.genre.currentData() or filmstyles.DEFAULT_GENRE,
+                             director=self.director.currentData() or "")
+        self._film_blurb()
+
+    def _film_blurb(self) -> None:
+        g, d = filmstyles.chosen(self.ep.creative())
+        parts = []
+        if g:
+            parts.append(f"<b>{g.name}:</b> {g.definition}")
+        if d:
+            parts.append(f"<b>{d.label}:</b> shots hold about {d.shot_seconds[0]}-{d.shot_seconds[1]} s. Good for "
+                         f"{d.topics}")
+        if self.ep.creative().get("careful"):
+            parts.append("Careful topic: only the sober genres and styles are offered.")
+        self.film_blurb.setText("<br>".join(parts))
+
     def _minutes_changed(self, value: float) -> None:
         if self.ep:
             self.ep.set_creative(minutes=float(value))
@@ -88,6 +159,8 @@ class ScriptPage(StagePage):
             self.minutes.setValue(float(ep.creative().get("minutes", 8)))
             self.minutes.blockSignals(False)
         super().set_episode(ep)
+        if ep:
+            self._fill_film()
 
     def _write(self) -> None:
         opts = {"minutes": self.minutes.value()}
@@ -143,9 +216,15 @@ class ScriptPage(StagePage):
             self.minutes.blockSignals(True)
             self.minutes.setValue(float(self.ep.creative().get("minutes", 8)))
             self.minutes.blockSignals(False)
-        busy = self.busy("script")
+        busy = self.busy("script") or self.busy("scan")
         ok_to_write = bool(self.ep) and self.stage_status("stories")["status"] == "approved"
         self.write_btn.setEnabled(ok_to_write and not busy)
+        self.scan_btn.setEnabled(ok_to_write and not busy)
+        scan = lengthscan.load(self.ep) if self.ep else {}
+        self.scan_text.setVisible(bool(scan))
+        if scan:
+            self.scan_text.setText(lengthscan.summary_html(scan) + "<br>Set the length you want, then press "
+                                   "<b>Produce script</b>.")
         self.longer_btn.setEnabled(ok_to_write and not busy and bool(self.ep) and self.ep.path("script.md").exists())
         if self.ep:
             from ... import styles
@@ -167,4 +246,4 @@ class ScriptPage(StagePage):
         self.repair_btn.setVisible(bool(self.ep) and invented and not busy)
 
     def watched(self) -> list[str]:
-        return ["script", "stories"]
+        return ["script", "stories", "scan"]

@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from . import (captions, music, narration, production, publish, render, research, script, stories,
+from . import (captions, lengthscan, music, narration, production, publish, render, research, script, stories,
                storyboard, video)
 from .base import Stage
 
@@ -61,5 +61,8 @@ STAGES.append(Stage("selftest", "Worker test", "cpu", (), _selftest, lambda ep: 
 
 STAGES.append(Stage("autopublish", "Automatic upload", "network", (), publish.autopublish, lambda ep: [],
                     hidden=True, description="After a final render: write it up and upload it as private."))
+
+STAGES.append(Stage("scan", "Story scan", "ollama", (), lengthscan.run, lambda ep: [], hidden=True,
+                    description="Reads the story and evidence and works out how long the video should be."))
 
 BY_NAME = {s.name: s for s in STAGES}

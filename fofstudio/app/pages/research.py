@@ -8,7 +8,7 @@ import html
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QProgressBar,
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QProgressBar, QSizePolicy,
                                QPushButton, QSplitter, QTableWidgetItem, QTextBrowser)
 
 from ... import jobs, pipeline
@@ -87,12 +87,22 @@ class ResearchPage(StagePage):
         # a big progress line right on the page, as well as the bar at the top
         self.live = QLabel("")
         self.live.setWordWrap(True)
+        self.live.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.bar = QProgressBar()
         self.bar.setStyleSheet(f"QProgressBar {{ background:#22263a; border:none; border-radius:6px; height:18px; "
                                f"color:white; text-align:center; }} QProgressBar::chunk {{ background:{GOLD}; "
                                "border-radius:6px; }")
         self.body.addWidget(self.live)
         self.body.addWidget(self.bar)
+        # the phases of the research, and a scrolling list of every step so far
+        self.phases = QLabel("")
+        self.phases.setWordWrap(True)
+        self.body.addWidget(self.phases)
+        self.steps = QListWidget()
+        self.steps.setMaximumHeight(150)
+        self.steps.setStyleSheet("QListWidget { background:#141722; border-radius:6px; font-size:10pt; }")
+        self.body.addWidget(self.steps)
+        self._steps_seen = 0
 
         filt = QHBoxLayout()
         self.search = QLineEdit()
@@ -186,9 +196,45 @@ class ResearchPage(StagePage):
                                    f"(in {', '.join(scenes)}). They're highlighted in gold below. Tick them so the "
                                    "script can use them, or take them out of the script.")
 
+    PHASES = [("Sources on file", ("Reading sources on file",)), ("Quotes", ("Finding quotes",)),
+              ("Web, courts and news", ("Planning searches", "Searching", "Reading ")),
+              ("Summaries", ("Writing a summary",)), ("Permanent copies", ("Wayback",)), ("Done", ("Done:",))]
+
+    def _steps(self, busy: bool) -> None:
+        """The scrolling list of research steps, and which phase it's in."""
+        f = self.ep.path("logs", "research-steps.log")
+        lines = f.read_text(encoding="utf-8", errors="replace").splitlines() if f.exists() else []
+        self.steps.setVisible(bool(lines))
+        self.phases.setVisible(bool(lines))
+        if len(lines) < self._steps_seen:      # a new run started
+            self.steps.clear()
+            self._steps_seen = 0
+        for ln in lines[self._steps_seen:]:
+            t, pct, text = (ln.split("\t", 2) + ["", ""])[:3]
+            self.steps.addItem(f"{t}   {(pct + '%') if pct else '':>5}   {text}")
+        if len(lines) > self._steps_seen:
+            self.steps.scrollToBottom()
+        self._steps_seen = len(lines)
+        reached = -1
+        for ln in lines:
+            text = ln.split("\t", 2)[-1]
+            for k, (_, keys) in enumerate(self.PHASES):
+                if any(text.startswith(x) or x in text for x in keys):
+                    reached = max(reached, k)
+        parts = []
+        for k, (name, _) in enumerate(self.PHASES):
+            if k < reached or (k == reached and name == "Done"):
+                parts.append(f"<span style='color:{GREEN}'>✔ {name}</span>")
+            elif k == reached:
+                parts.append(f"<b style='color:{GOLD}'>● {name}</b>" if busy else f"<span style='color:{GREEN}'>✔ {name}</span>")
+            else:
+                parts.append(f"<span style='color:{MUTED}'>○ {name}</span>")
+        self.phases.setText(" &nbsp;→&nbsp; ".join(parts))
+
     def _progress(self, busy: bool) -> None:
         job = next((j for j in jobs.jobs(30) if j["project_id"] == self.ep.project_id and j["stage"] == "research"
                     and j["status"] in ("running", "queued")), None)
+        self._steps(busy)
         self.bar.setVisible(busy)
         self.live.setVisible(busy)
         if job:

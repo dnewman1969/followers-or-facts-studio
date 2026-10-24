@@ -154,6 +154,13 @@ def run(ctx: Context) -> None:
     else:
         genre_key = creative.get("music_genre") or ""
     genre = musicbook.genre_for(style.key, genre_key if genre_key != "library" else "")
+    if not genre_key:   # "to suit the style": the film genre chosen for the script leads, if there is one
+        from .. import filmstyles
+        film, _ = filmstyles.chosen(creative)
+        if film and film.music_tags:
+            tags = ", ".join(t for t in (x.strip() for x in film.music_tags.split(","))
+                             if t and "bpm" not in t.lower() and t.lower() != "instrumental")
+            genre = musicbook.Genre(f"film-{film.key}", f"{film.name} score", tags, film.bpm)
     cues = plan_cues(script["scenes"], _scene_seconds(ep), bool(creative.get("careful")))
     if genre_key == "library":
         tracks = library_tracks()

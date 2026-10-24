@@ -157,6 +157,7 @@ DEFAULTS: dict[str, Any] = {
         "presenter_corner": "bottom_right",
         "presenter_height": 0.34,
         "moves": True,
+        "in_scenes": False,   # also stand big Owlbert inside some pictures (off: only the corner Owlbert)
         "rhubarb": "",
     },
     "services": {

@@ -92,6 +92,14 @@ def fake_llm(get_packet):
             kinds = props["shots"]["items"]["properties"]["kind"]["enum"]
             return {"shots": [{"kind": kinds[i % len(kinds)], "idea": f"shot idea {i} {messages[-1]['content'][-30:]}",
                                "person_id": ""} for i in range(n)]}
+        if "tricks_taught" in props:   # the length scan
+            claims = get_packet()["claims"]
+            return {"claims": [{"claim_id": c["claim_id"], "complexity": "some explaining", "why": "a timeline"}
+                               for c in claims],
+                    "timeline_events_explained": 4, "timeline_events_mentioned": 6, "people_introduced": 3,
+                    "tricks_taught": 1, "steelman": False, "pad_risk": "low", "split_risk": "low",
+                    "reasons": ["three claims with court records"], "if_shorter": ["drop the 1997 radio show"],
+                    "if_longer": ["the 2000 follow-up broadcast"]}
         if "how_it_plays" in props:
             return {"how_it_plays": "The camera drifts toward the clock.", "motion_prompt": "slow push in",
                     "camera": "zoom_in", "seconds": 4}

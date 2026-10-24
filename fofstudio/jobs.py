@@ -292,12 +292,29 @@ def run_job(job: dict[str, Any]) -> None:
             db.execute("UPDATE job SET heartbeat_at=?, progress=?, progress_pct=? WHERE job_id=?",
                        (utc_now(), progress_text["value"][:500], progress_text["pct"], job_id))
 
+    steps: dict[str, Any] = {"file": None, "last": ""}
+    try:   # every step of this job, for the page's scrolling list (logs/<stage>-steps.log in the episode)
+        steps["file"] = Episode.load(job["project_id"]).path("logs", f"{job['stage']}-steps.log")
+        steps["file"].parent.mkdir(parents=True, exist_ok=True)
+        steps["file"].write_text("", encoding="utf-8")
+    except Exception:  # noqa: BLE001 - the list is a nicety
+        steps["file"] = None
+
     def progress(text: str, pct: float | None = None) -> None:
         """Shown live in the window: a line of text and, when known, a percentage."""
         progress_text["value"] = text
         if pct is not None:
             progress_text["pct"] = max(0, min(100, int(pct)))
         log.info(text)
+        key = text.split(":")[0] if "words written so far" in text else text   # one line per AI answer
+        if steps["file"] and key != steps["last"]:
+            steps["last"] = key
+            try:
+                with steps["file"].open("a", encoding="utf-8") as f:
+                    f.write(f"{time.strftime('%H:%M:%S')}\t{progress_text['pct'] if progress_text['pct'] is not None else ''}"
+                            f"\t{text}\n")
+            except OSError:
+                pass
         if time.time() - progress_text["written"] > 0.8:  # don't hammer the database
             progress_text["written"] = time.time()
             db.execute("UPDATE job SET heartbeat_at=?, progress=?, progress_pct=? WHERE job_id=?",

@@ -146,7 +146,9 @@ def test_only_one_owlbert_on_screen(episode):
     from fofstudio import pipeline
     from fofstudio.stages import storyboard, video
     from tests.test_pipeline import research_and_story
+    from fofstudio.config import settings
     ep = episode
+    settings()["owl"]["in_scenes"] = True        # the optional big on-set Owlbert
     research_and_story(ep)
     for st in ("script",):
         pipeline.run_now(ep, st)
@@ -180,3 +182,16 @@ def test_only_one_owlbert_on_screen(episode):
     pipeline.approve(ep, "production")
     pipeline.run_now(ep, "render", {"draft": True})
     assert ep.path("render", "owl-stage-480.txt").exists() and ep.path("render", "preview.mp4").exists()
+
+
+def test_by_default_only_the_corner_owlbert(episode):
+    from fofstudio import pipeline
+    from fofstudio.stages import storyboard
+    from tests.test_pipeline import research_and_story
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    pipeline.approve(ep, "script")
+    pipeline.run_now(ep, "storyboard")
+    assert not any(sh["kind"] == "owl" for sc in ep.storyboard()["scenes"] for sh in sc["shots"])
+    assert not any(s.get("owl_live") for s in storyboard.shots(ep))

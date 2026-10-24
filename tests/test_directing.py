@@ -213,3 +213,50 @@ def test_stories_carry_their_type_and_writer(episode):
     chosen = stories.chosen(ep)
     from fofstudio import storytypes as stt
     assert f"**Writer:** {stt.writers()[chosen['writer']].name}" in text
+
+
+def test_scan_recommends_a_length(episode):
+    from fofstudio.stages import lengthscan
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "scan")
+    s = lengthscan.load(ep)
+    assert 180 <= s["recommended_seconds"] <= 1200 and s["min_seconds"] <= s["recommended_seconds"] <= s["max_seconds"]
+    assert s["recommended_seconds"] % 30 == 0
+    assert abs(sum(b["seconds"] for b in s["beats"]) - s["recommended_seconds"]) <= len(s["beats"]) + 2
+    assert ep.creative()["minutes"] == round(s["recommended_seconds"] / 60, 1)
+    assert "Best length" in lengthscan.summary_html(s)
+    # the arithmetic on its own: a thin story stays short, a big one is a series
+    thin = lengthscan.estimate({"claims": [{"primary_sources": 1, "complexity": 1.0}], "events_explained": 0,
+                                "events_mentioned": 0, "people": 0, "tricks": 1, "pad_risk": "high"})
+    assert thin["recommended_seconds"] <= 300
+    big = lengthscan.estimate({"claims": [{"primary_sources": 4, "complexity": 1.5}] * 8, "events_explained": 10,
+                               "events_mentioned": 10, "people": 8, "tricks": 3})
+    assert big["format"] == "series"
+
+
+def test_genre_and_director_shape_script_pictures_and_music(episode):
+    from fofstudio import filmstyles
+    ep = episode
+    research_and_story(ep)
+    ep.set_creative(genre="film_noir", director="suspense_engine")
+    pipeline.run_now(ep, "script")
+    text = ep.path("script.md").read_text(encoding="utf-8")
+    assert "**Genre:** Film Noir" in text and "Suspense Engine (inspired by Hitchcock)" in text
+    pipeline.approve(ep, "script")
+    pipeline.run_now(ep, "storyboard")
+    shot = next(sh for sc in ep.storyboard()["scenes"] for sh in sc["shots"])
+    assert "chiaroscuro" in shot["candidates"][0]["full_prompt"]          # the noir look reaches the painter
+    for st in ("narration", "captions"):
+        pipeline.run_now(ep, st)
+        pipeline.approve(ep, st)
+    pipeline.run_now(ep, "music")
+    meta = read_json(ep.path("audio", "music", "music.json"))
+    assert meta["genre"] == "film-film_noir" and "muted trumpet" in meta["cues"][0]["tags"]
+    # careful topics can't pick playful genres or styles
+    g, d = filmstyles.chosen({"careful": True, "genre": "comedy_satire", "director": "dollhouse_symmetry"})
+    assert g.key == filmstyles.DEFAULT_GENRE and d is None
+    assert all(x.careful_ok for x in filmstyles.allowed_genres(True))
+    assert len(filmstyles.genres()) >= 14 and len(filmstyles.directors()) >= 16
+    for d in filmstyles.directors().values():
+        assert d.inspired_by.split()[-1] not in d.prompt          # the AI gets traits, never the name

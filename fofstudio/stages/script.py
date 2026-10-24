@@ -435,6 +435,9 @@ def run(ctx: Context) -> None:
         storytypes.STORY_TYPES[storytypes.DEFAULT_TYPE]
     writer = storytypes.writers().get((story or {}).get("writer") or creative.get("writer", "")) or \
         storytypes.writers()[storytypes.DEFAULT_WRITER]
+    from .. import filmstyles
+    genre, director = filmstyles.chosen(creative)
+    film_text = filmstyles.script_block(genre, director) if (genre or director) else ""
     type_text = (f"\n{stype.sheet()}\nFollow this beat sheet in order: each scene's role is its beat's role; a beat "
                  "with a big share can take two or more scenes.\n" + storytypes.SHARED_RULES + "\n")
     llm = Ollama()
@@ -451,6 +454,7 @@ def run(ctx: Context) -> None:
             "(purpose), how it links to the one before (open / but / therefore; avoid 'and then'), the claim_ids, "
             "source_ids (S-...) and excerpt_ids (numbers) it uses, whether Owlbert is on camera, and a picture "
             "idea that fits the style. Include a 'tell' scene and a 'toolkit' scene.\n" + type_text
+            + (f"\n{film_text}\n" if film_text else "")
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
             + story_text + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
     ], with_known_ids(OUTLINE_SCHEMA, ids, inside_scenes=True), temperature=0.6,
@@ -476,7 +480,8 @@ def run(ctx: Context) -> None:
         prev = scenes[-1]["narration"] if scenes else ""
         pct0, pct1 = 15 + 80 * (n - 1) / len(planned), 15 + 80 * n / len(planned)
         messages = [
-            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT + "\n\n" + storytypes.writer_block(writer)},
+            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT + "\n\n" + storytypes.writer_block(writer)
+             + (f"\n\n{film_text}" if film_text else "")},
             {"role": "user", "content": (
                 f"Video: {title}. Central question: {outline.get('central_question', '')}\n{style_text}\n"
                 f"Story type: {stype.name}. Writing style: {writer.name} (keep to it in every scene).\n\n"
@@ -520,7 +525,9 @@ def run(ctx: Context) -> None:
     for sc in scenes:
         sc["est_seconds"] = round(len(sc.get("narration", "").split()) / style.wpm * 60)
     header = {"Episode": ep.project_id, "Arc": (packet.get("arc") or {}).get("arc_id", "-"),
-              "Style": style.name, "Story type": stype.name, "Writer": writer.name, "Target": f"{minutes:g} min",
+              "Style": style.name, "Story type": stype.name, "Writer": writer.name,
+              **({"Genre": genre.name} if genre else {}), **({"Director": director.label} if director else {}),
+              "Target": f"{minutes:g} min",
               "Drafted by": model}
     write_text(ep.path("script.md"), render(title, scenes, header))
     total = sum(len(sc.get("narration", "").split()) for sc in scenes)

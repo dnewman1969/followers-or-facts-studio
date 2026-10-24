@@ -188,3 +188,25 @@ def test_tags_are_trimmed_to_youtubes_limit():
     tags = sanitize_tags(["x" * 120] + [f"tag number {i}" for i in range(60)])
     assert sum(len(t) + (2 if " " in t else 0) for t in tags) + len(tags) - 1 <= 500
     assert all(len(t) <= 100 for t in tags)
+
+
+def test_long_progress_text_never_pushes_the_bar_off_the_window(app, episode):
+    from fofstudio import db
+    from fofstudio.app.main import MainWindow
+    w = MainWindow()
+    w.resize(1280, 800)
+    w.show()
+    jobs.enqueue(episode.project_id, "selftest")
+    db.execute("UPDATE job SET status='running', started_at=?, progress=?, progress_pct=40 WHERE stage='selftest'",
+               ("2026-10-24T12:00:00+00:00", "Searching: \"" + "a very long search phrase " * 40 + "\""))
+    w.activity.refresh()
+    for _ in range(5):
+        app.processEvents()
+    bar = w.activity.bar
+    assert bar.isVisible()
+    right = bar.mapTo(w, bar.rect().topRight()).x()
+    assert right <= w.width(), (right, w.width())
+    from PySide6.QtCore import QTimer
+    for t in w.findChildren(QTimer):   # nothing may poll the test database after it's gone
+        t.stop()
+    w.close()

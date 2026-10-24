@@ -80,10 +80,12 @@ def scene_seconds(sc: dict[str, Any], style: styles.Style) -> float:
     return len(sc["narration"].split()) / (style.wpm / 60) + 1.0
 
 
-def shots_needed(sc: dict[str, Any], style: styles.Style, card_seconds: float) -> int:
+def shots_needed(sc: dict[str, Any], style: styles.Style, card_seconds: float, shot_seconds: float | None = None) -> int:
+    """How many different pictures cover the scene. The director's style can hold shots longer or cut faster."""
     limit = int(settings()["storyboard"].get("shot_limit_per_scene", 24))
-    room = max(style.shot_seconds, scene_seconds(sc, style) - card_seconds)
-    return max(1, min(limit, math.ceil(room / style.shot_seconds)))
+    each = shot_seconds or style.shot_seconds
+    room = max(each, scene_seconds(sc, style) - card_seconds)
+    return max(1, min(limit, math.ceil(room / each)))
 
 
 # ---------------------------------------------------------------- shot ideas
@@ -91,13 +93,13 @@ SHOTS_PER_REQUEST = 6   # ask for a few shots at a time so every answer fits com
 
 
 def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str], people: list[dict[str, Any]],
-                restrictions: list[str], on_text=None) -> list[dict[str, Any]]:
+                restrictions: list[str], on_text=None, film: str = "") -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     size = SHOTS_PER_REQUEST
     while len(out) < n:
         k = min(size, n - len(out))
         try:
-            out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text)
+            out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text, film)
         except StageError:
             if k <= 2:
                 raise
@@ -107,7 +109,7 @@ def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str
 
 def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.Style, kinds: list[str],
                 people: list[dict[str, Any]], restrictions: list[str], so_far: list[dict[str, Any]],
-                on_text=None) -> list[dict[str, Any]]:
+                on_text=None, film: str = "") -> list[dict[str, Any]]:
     schema = {"type": "object", "properties": {"shots": {"type": "array", "minItems": k, "maxItems": k, "items": {
         "type": "object", "properties": {
             "kind": {"type": "string", "enum": kinds},
@@ -132,7 +134,8 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
             "describe him, he's added live from his artwork; 'caricature' = a cartoon "
             "caricature of one of the cast doing the documented thing the narration describes. Never name a real "
             "person. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
-            "Keep each idea short.")},
+            "Keep each idea short." + (f"\n{film}\nUse that genre look and directing style for every shot: "
+                                         "framing, lighting, palette, camera." if film else ""))},
         {"role": "user", "content": f"Style: {style.look}\nOwlbert's scenes look like: {style.owl_look}\n"
                                     f"Scene visual note: {sc['visual']}\nNarration: {sc['narration']}\n"
                                     f"Careful-topic rules: {restrictions or 'none'}{who}\n\n{part}"},
@@ -188,13 +191,16 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
            ) -> dict[str, Any]:
     name = f"{shot['shot_id']}-c{k}"
     cfg = settings()["comfyui"]
+    from .. import filmstyles
+    genre, _ = filmstyles.chosen(ep.creative())
+    look = f"{style.look}. {genre.look}" if genre and genre.look else style.look
     if shot["kind"] == "caricature":
         person = people[shot["person_id"]]
-        full = f"{shot['idea']}. The character: {person['design']}. {style.look}. {CARICATURE_GUARD}"
+        full = f"{shot['idea']}. The character: {person['design']}. {look}. {CARICATURE_GUARD}"
     elif shot["kind"] == "owl":
-        full = f"{set_only(shot['idea'])}. {OWL_SET}. {style.look}. {GUARD}"
+        full = f"{set_only(shot['idea'])}. {OWL_SET}. {look}. {GUARD}"
     else:
-        full = f"{shot['idea']}. {style.look}. {GUARD}"
+        full = f"{shot['idea']}. {look}. {GUARD}"
     full += f". Avoid: {style.negative}, washed out, low contrast"
     raw, meta, seed = _comfy_image(ep, name, full)
     picture = raw
@@ -261,6 +267,9 @@ def run(ctx: Context) -> None:
     from .stories import chosen
     story_tech = (chosen(ep) or {}).get("techniques", [])
     n_cands = max(1, min(3, int(settings()["storyboard"].get("candidates_per_shot", 2))))
+    from .. import filmstyles
+    genre, director = filmstyles.chosen(creative)
+    film = filmstyles.visual_block(genre, director)
     people = {p["person_id"]: p for p in cast.approved(ep)} if creative["caricatures"] else {}
     board = ep.storyboard() or {}
     old = {s["scene_id"]: s for s in board.get("scenes", [])} if board.get("version") == VERSION else {}
@@ -273,26 +282,30 @@ def run(ctx: Context) -> None:
         sid = sc["scene_id"]
         prev = old.get(sid)
         same = (prev and prev.get("visual") == sc["visual"] and prev.get("narration") == sc["narration"]
-                and prev.get("style") == style.key and sid not in replan)
+                and prev.get("style") == style.key and prev.get("film", "") == film and sid not in replan)
         card_list = _cards(ep, sc, excerpts, story_tech)
         entry = {"scene_id": sid, "role": sc.get("role", ""), "visual": sc["visual"], "narration": sc["narration"],
-                 "style": style.key, "seconds": round(scene_seconds(sc, style), 1), "cards": card_list,
+                 "style": style.key, "film": film, "seconds": round(scene_seconds(sc, style), 1), "cards": card_list,
                  "claim_ids": sc.get("claim_ids", []), "source_ids": sc.get("source_ids", [])}
         if same:
             entry["shots"] = prev["shots"]
         else:
             kinds = [k for k in style.shot_types if k in ("broll", "owl", "caricature")] or ["broll"]
-            if "owl" not in kinds:
-                kinds.append("owl")
+            if settings()["owl"].get("in_scenes"):
+                if "owl" not in kinds:
+                    kinds.append("owl")
+            else:   # Owlbert lives in the corner (and his moves); scenes are scenes
+                kinds = [k for k in kinds if k != "owl"] or ["broll"]
             scene_people = [p for p in people.values() if set(p["claims"]) & set(sc.get("claim_ids", []))] \
                 if sc.get("source_ids") else []   # caricatures only in scenes that cite the documented act
             if not scene_people and "caricature" in kinds:
                 kinds.remove("caricature")
-            need = shots_needed(sc, style, sum(CARD_SECONDS.get(c["type"], 4) for c in card_list))
+            need = shots_needed(sc, style, sum(CARD_SECONDS.get(c["type"], 4) for c in card_list),
+                                director.average_shot if director else None)
             ctx.progress(f"Planning {need} shots for {sid} ({n + 1}/{total})", 100 * n / total)
             ideas = _plan_shots(sc, need, style, kinds, scene_people, restrictions,
                                 on_text=ctx.writing(f"Planning {need} shots for {sid}", 100 * n / total,
-                                                    100 * (n + 0.1) / total, need * 30))
+                                                    100 * (n + 0.1) / total, need * 30), film=film)
             entry["shots"] = [{"shot_id": f"{sid}-s{i + 1:02d}", **idea, "candidates": [None] * n_cands, "pick": 0}
                               for i, idea in enumerate(ideas)]
         shots = entry["shots"]
@@ -379,7 +392,10 @@ def shots(ep: Episode) -> list[dict[str, Any]]:
                             "person_id": shot.get("person_id", "")}
                     if shot["kind"] == "owl" and c.get("set"):    # the empty set; Owlbert is added live
                         item["image"] = {**c, "path": c["set"], "raw": c["set_raw"]}
-                        item["owl_live"] = "left" if c.get("side", 0) == 0 else "right"
+                        if settings()["owl"].get("in_scenes"):
+                            item["owl_live"] = "left" if c.get("side", 0) == 0 else "right"
+                        else:
+                            item["kind"] = "broll"               # just the set; the corner Owlbert talks
                     out.append(item)
         else:
             for k in s.get("picked", []):
@@ -414,6 +430,14 @@ def check(ep: Episode) -> list[Check]:
         elif script_ids != board_ids:
             out.append(Check(BLOCK, "The script changed since these pictures were made. Make pictures again "
                                     "(pictures for unchanged scenes are kept)."))
+    painted = [sh["shot_id"] for sc in board["scenes"] for sh in sc.get("shots", [])
+               if sh["kind"] == "owl" and not sh.get("skip") and not settings()["owl"].get("in_scenes")
+               and not ((sh["candidates"][sh.get("pick", 0)] or {}) if 0 <= sh.get("pick", 0) < len(sh["candidates"])
+                        else {}).get("set")]
+    if painted:
+        out.append(Check(WARN, f"{len(painted)} shot(s) have a big Owlbert painted in by an older version "
+                               f"({', '.join(painted[:5])}). Untick them or press Remake, so only the corner "
+                               "Owlbert shows."))
     names = person_names()
     excerpts = _excerpts(ep)
     creative = ep.creative()

@@ -299,6 +299,20 @@ uses a throwaway data folder even without the data fixture; Update Studio.cmd's 
 
 92 tests pass.
 
+## 2026-10-24 — v0.5.1: corner Owlbert only, research steps, genre + director + length scan
+
+- Dave's screenshot (from 0.4.x): a big pasted Owlbert, an AI-drawn owl and the corner owl together. Now
+  scenes have no Owlbert at all by default (`owl.in_scenes` False: the storyboard doesn't plan owl shots);
+  only the corner presenter and his moves. Old painted owl shots are listed on the Storyboard page.
+- Research page: phase strip (sources on file → quotes → web/courts/news → summaries → permanent copies →
+  done) and a scrolling list of every step (jobs write logs/<stage>-steps.log). The top progress text no
+  longer pushes the bar off the window (label size policy Ignored).
+- Script page (research "Film genres directors and video length"): 16 genres (`data/genres.json`) and 18
+  director styles (`data/directors.json`, trait-only prompts, shown as "X (inspired by Y)"), used by the
+  script writer, the storyboard art director and picture prompts, shot length, and the music when it's
+  "to suit the style". "Scan the story" (hidden stage `scan`, `stages/lengthscan.py`) estimates the honest
+  length; then "Produce script". 96 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

@@ -12,14 +12,14 @@ Owlbert narrates every video and appears throughout it:
 
 ## Only one Owlbert at a time
 
-- **Owlbert shots** (the storyboard's "Owlbert" shots) are painted as an *empty set*; the program
-  removes any mention of him from the picture idea so the painter can't draw a second owl. When the video
-  renders, the real Owlbert stands on that set, big (two thirds of the frame height), talking with his
-  beak and blinking. The storyboard still shows the picture with him in it, so you can judge it.
-- While an Owlbert shot is on screen, the **corner Owlbert hides**. If one of his moves (a hat trick, say)
-  happens during that shot, the set stays empty while he does it from the corner. Older videos with
-  Owlbert painted into the picture move the move to after the shot instead.
-- While a move plays, the corner Owlbert hides too.
+- Owlbert is the little presenter in the corner, plus his moves (flying in and off, the hat trick...).
+  Scene pictures don't have him in them: the storyboard no longer plans "Owlbert" shots, and the painter
+  is told to leave owls out.
+- While a move plays, the corner Owlbert hides (he's the one flying), so there's never two.
+- Want him big inside some scenes too? Settings → owl → `in_scenes`. Then those shots are painted as an
+  empty set and he stands on it, big and talking, while the corner one hides.
+- Older storyboards may still have shots with a big Owlbert painted in: the Storyboard page lists them;
+  untick them or press Remake.
 
 ## His moves
 
