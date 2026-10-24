@@ -4,6 +4,7 @@ Tracks (top to bottom, like a video editor):
   V1 Video    intro bumper, every approved clip in scene order, outro bumper
   V2 Owlbert  when the talking owl presenter shows in the corner
   V3 Moves    Owlbert's moves: flying in and off, pointing at the evidence, the hat trick
+  A3 Effects  whooshes, pops and stings that go with the moves and the music
   A1 Speech   Owlbert reading each scene of the script
   A2 Music    the music bed (ducked under his voice when rendered)
 
@@ -157,11 +158,124 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
     music = read_json(ep.path("audio", "music", "music.json"))
     music_ok = ep.stage_status("music")["status"] == "approved" and not \
         (ep.stage_status("music").get("note") or "").startswith("SKIPPED")
-    if music and music_ok and ep.abs(music["path"]).exists():
+    if music and music_ok and music.get("cues"):
+        tl["music"] = music_track(ep, tl, script, music["cues"], end)
+    elif music and music_ok and ep.abs(music["path"]).exists():
         tl["music"].append({"id": "music", "src": music["path"], "start": 0.0, "duration": round(end, 3),
                             "volume": 1.0})
     tl["moves"] = plan_moves(ep, tl, script)
+    tl["sfx"] = sfx_track(ep, tl, script, music.get("cues", []) if music and music_ok else [])
     return tl
+
+
+CROSSFADE = 2.0                       # seconds two cues overlap
+ENERGY_GAIN = {1: 0.7, 2: 0.85, 3: 1.0, 4: 1.12, 5: 1.25}
+
+
+def _words(ep: Episode) -> dict[str, list[dict[str, Any]]]:
+    return {k: v.get("words", []) for k, v in
+            ((read_json(ep.path("captions", "words.json"), {}) or {}).get("scenes", {}) or {}).items()}
+
+
+def _sentence_end(words: list[dict[str, Any]], start: float) -> float:
+    for w in words:
+        if w["start"] >= start and w["word"].rstrip('"”’)').endswith((".", "!", "?")):
+            return float(w["end"])
+    return float(words[-1]["end"]) if words else start + 3.0
+
+
+def music_track(ep: Episode, tl: dict[str, Any], script: dict[str, Any], cues: list[dict[str, Any]],
+                end: float) -> list[dict[str, Any]]:
+    """Lay the music cues along the timeline: each starts where its first scene starts (a sting or hard cut
+    lands on the word), cross-fades into the next, drops out before a 'drop before' line so the voice
+    arrives alone, and the last one carries on under the outro."""
+    roles = {sc["scene_id"]: sc.get("role", "") for sc in script.get("scenes", [])}
+    timing = {sc["scene_id"]: sc for sc in bits.scenes_from_timeline(tl, roles)}
+    words = _words(ep)
+    out: list[dict[str, Any]] = []
+    starts = []
+    for k, cue in enumerate(cues):
+        first = timing.get(cue["scenes"][0])
+        if not first:
+            starts.append(None)
+            continue
+        t = 0.0 if k == 0 else first["start"] - CROSSFADE / 2
+        if cue.get("change") in ("sting", "hard_cut"):
+            t = first["speech_start"]
+            for mark in cue.get("marks", []):
+                if mark.get("sting_at") and mark["scene_id"] == first["scene_id"]:
+                    at = bits.word_time(mark["sting_at"], words.get(first["scene_id"], []))
+                    if at is not None:
+                        t = first["speech_start"] + at
+        starts.append(max(0.0, t))
+    for k, cue in enumerate(cues):
+        t0 = starts[k]
+        if t0 is None or cue.get("silence") or not cue.get("path"):
+            continue
+        nxt = next((x for x in starts[k + 1:] if x is not None), None)
+        t1 = end if nxt is None else nxt + (0.3 if cues[k + 1].get("change") in ("sting", "hard_cut") else CROSSFADE)
+        hard_in = cue.get("change") in ("sting", "hard_cut") and k > 0
+        gain = ENERGY_GAIN.get(int(cue.get("energy", 3)), 1.0) * (1.15 if cue.get("mood") == "theme" else 1.0)
+        pieces = [(t0, t1)]
+        for mark in cue.get("marks", []):                 # music out before a key line, back after it
+            if not mark.get("drop_before"):
+                continue
+            sc = timing.get(mark["scene_id"])
+            at = bits.word_time(mark["drop_before"], words.get(mark["scene_id"], [])) if sc else None
+            if at is None:
+                continue
+            cut = sc["speech_start"] + at - 0.25
+            back = sc["speech_start"] + _sentence_end(words.get(mark["scene_id"], []), at) + 0.6
+            if roles.get(mark["scene_id"]) == "verdict":
+                back = sc["end"] + 0.5                     # after the verdict, only the next cue comes in
+            new = []
+            for a, b in pieces:
+                if a < cut < b:
+                    new.append((a, cut))
+                    if back < b - 1.0:
+                        new.append((back, b))
+                else:
+                    new.append((a, b))
+            pieces = new
+        for j, (a, b) in enumerate(pieces):
+            out.append({"id": f"music-{cue['cue_id']}-{j}", "src": cue["path"], "start": round(a, 3),
+                        "duration": round(b - a, 3), "inpoint": round(a - t0, 3), "volume": round(gain, 3),
+                        "fade_in": 0.05 if (hard_in and j == 0) else (0.4 if k == 0 and j == 0 else
+                                                                     CROSSFADE if j == 0 else 1.5),
+                        "fade_out": 4.0 if b >= end - 0.01 else (0.6 if j < len(pieces) - 1 else CROSSFADE),
+                        "label": f"Music: {cue['mood']}" + (f" (energy {cue['energy']})" if cue.get("energy") else ""),
+                        "cue": cue["cue_id"]})
+    return out
+
+
+def sfx_track(ep: Episode, tl: dict[str, Any], script: dict[str, Any], cues: list[dict[str, Any]]) -> list[dict]:
+    """Sound effects: whooshes, pops and sparkles for Owlbert's moves, and a musical sting on each
+    'sting at' line (made by fofstudio/sfx.py, so they're ours)."""
+    from .. import sfx
+    out: list[dict[str, Any]] = []
+    for mv in tl.get("moves", []):
+        for name, dt in sfx.MOVE_SOUNDS.get(mv["kind"], []):
+            out.append({"id": f"sfx-{mv['id']}-{name}-{len(out)}", "src": str(sfx.path(name)),
+                        "start": round(mv["start"] + dt, 3), "volume": 0.35, "label": name})
+    roles = {sc["scene_id"]: sc.get("role", "") for sc in script.get("scenes", [])}
+    timing = {sc["scene_id"]: sc for sc in bits.scenes_from_timeline(tl, roles)}
+    words = _words(ep)
+    for cue in cues:
+        for mark in cue.get("marks", []):
+            sc = timing.get(mark["scene_id"])
+            if not (mark.get("sting_at") and sc):
+                continue
+            at = bits.word_time(mark["sting_at"], words.get(mark["scene_id"], []))
+            if at is None:
+                continue
+            name = "sting_minor" if cue.get("mood") in ("tense", "somber", "investigative") else "sting"
+            out.append({"id": f"sfx-sting-{mark['scene_id']}", "src": str(sfx.path(name)),
+                        "start": round(max(0.0, sc["speech_start"] + at - 0.05), 3), "volume": 0.45,
+                        "label": "Sting"})
+    out.sort(key=lambda x: x["start"])
+    for x in out:
+        x["duration"] = 1.0
+    return out
 
 
 def plan_moves(ep: Episode, tl: dict[str, Any], script: dict[str, Any]) -> list[dict[str, Any]]:
@@ -175,7 +289,37 @@ def plan_moves(ep: Episode, tl: dict[str, Any], script: dict[str, Any]) -> list[
         tricks = (chosen(ep) or {}).get("techniques", [])
     except Exception:  # noqa: BLE001 - an older project without a chosen story still gets its moves
         tricks = []
-    return bits.plan(bits.scenes_from_timeline(tl, roles), ep.creative(), tricks, ep.project_id)
+    scenes = bits.scenes_from_timeline(tl, roles)
+    by_id = {sc["scene_id"]: sc for sc in script.get("scenes", [])}
+    if not any(sc.get("owlbert") for sc in by_id.values()):
+        return bits.plan(scenes, ep.creative(), tricks, ep.project_id)   # an older script: the planner decides
+    words = (read_json(ep.path("captions", "words.json"), {}) or {}).get("scenes", {})
+    for sc in scenes:
+        src = by_id.get(sc["scene_id"], {})
+        sc["directions"] = src.get("owlbert", [])
+        sc["source_ids"] = src.get("source_ids", [])
+        sc["words"] = (words.get(sc["scene_id"]) or {}).get("words", [])
+    return bits.plan_directed(scenes, ep.creative(), tricks, prop_info(ep, by_id))
+
+
+def prop_info(ep: Episode, scenes: dict[str, dict[str, Any]]) -> dict[str, dict[str, str]]:
+    """What the document from Owlbert's hat says (the scene's first source) and the verdict word for the stamp."""
+    packet = read_json(ep.path("research.json")) or {}
+    sources = {s["source_id"]: s for c in packet.get("claims", []) for s in c.get("sources", [])}
+    verdict = {c["claim_id"]: c.get("falsity_status", "") for c in packet.get("claims", [])}
+    out: dict[str, dict[str, str]] = {}
+    for sid, sc in scenes.items():
+        info: dict[str, str] = {}
+        src = next((sources[x] for x in sc.get("source_ids", []) if x in sources), None)
+        if src:
+            title = (src.get("title") or "The record")[:90]
+            when = " · ".join(x for x in (src.get("publisher"), src.get("date")) if x)
+            info["document"] = f"{title}|{when}"
+        v = next((verdict[c] for c in sc.get("claim_ids", []) if c in verdict), "") or \
+            next(iter(verdict.values()), "")
+        info["verdict"] = bits.VERDICT_WORDS.get(str(v).lower().replace(" ", "_"), str(v).upper() or "VERDICT")
+        out[sid] = info
+    return out
 
 
 def _stale_reason(ep: Episode, tl: dict[str, Any]) -> str:

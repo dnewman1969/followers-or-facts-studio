@@ -11,7 +11,7 @@ from typing import Any
 
 from .. import bits, cards, media, owl
 from ..config import settings
-from ..engines.render import AudioCue, Segment, Timeline, render
+from ..engines.render import AudioCue, Effect, MusicCue, Segment, Timeline, render
 from ..episode import Episode
 from ..util import StageError, read_json, utc_now, write_json, write_text
 from . import production
@@ -62,8 +62,15 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
     clip_gain = float(music[0].get("volume", 1.0)) if music else 1.0
     if abs(clip_gain - 0.18) < 1e-6:  # timelines from v0.3 and earlier stored the old fixed music level here
         clip_gain = 1.0
-    tl = Timeline(segments, cues, music=ep.abs(music[0]["src"]) if music else None,
-                  music_volume=clip_gain * 10 ** (mix["music_db"] / 20),
+    cued = any("fade_in" in m for m in music)   # v0.4.4+: one piece of music per mood, from the script
+    music_cues = [MusicCue(ep.abs(m["src"]), m["start"], m["duration"], float(m.get("inpoint", 0.0)),
+                           float(m.get("fade_in", 1.5)), float(m.get("fade_out", 2.0)), float(m.get("volume", 1.0)))
+                  for m in music if ep.abs(m["src"]).exists()] if cued else []
+    effects = [Effect(ep.abs(x["src"]), x["start"], float(x.get("volume", 0.5)))
+               for x in tl_json.get("sfx", []) if ep.abs(x["src"]).exists()]
+    tl = Timeline(segments, cues, music=ep.abs(music[0]["src"]) if music and not cued else None,
+                  music_cues=music_cues, effects=effects,
+                  music_volume=(1.0 if cued else clip_gain) * 10 ** (mix["music_db"] / 20),
                   duck=bool(settings()["video"]["duck_music"]), width=w, height=h, fps=fps,
                   speech_db=mix["speech_db"], master_db=mix["master_db"],
                   loudness_lufs=float(snd["loudness_lufs"]) if snd["normalize_loudness"] else None)

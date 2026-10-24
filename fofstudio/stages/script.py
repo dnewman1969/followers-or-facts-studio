@@ -21,7 +21,7 @@ from .. import db
 from ..config import settings
 from ..episode import Episode
 from ..llm import Ollama
-from ..scriptfmt import ROLES, parse, quotes_in, render
+from ..scriptfmt import CHANGES, MOODS, MOVES, PROPS, ROLES, parse, quotes_in, render
 from ..util import StageError, normalize_for_match, read_json, reading_grade, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 
@@ -87,6 +87,50 @@ SCENE_SCHEMA = {
     },
     "required": ["narration", "visual", "on_screen_text", "claim_ids", "source_ids", "excerpt_ids"],
 }
+# written after the narration, so the quoted words can be copied from it
+SCENE_SCHEMA["properties"]["music"] = {"type": "object", "properties": {
+    "mood": {"type": "string", "enum": list(MOODS)},
+    "energy": {"type": "integer", "minimum": 1, "maximum": 5},
+    "change": {"type": "string", "enum": list(CHANGES)},
+    "drop_before": {"type": "string"},
+    "sting_at": {"type": "string"}},
+    "required": ["mood", "energy", "change", "drop_before", "sting_at"]}
+SCENE_SCHEMA["properties"]["owlbert"] = {"type": "array", "maxItems": 3, "items": {"type": "object", "properties": {
+    "move": {"type": "string", "enum": list(MOVES)},
+    "prop": {"type": "string", "enum": ["", *PROPS]},
+    "at": {"type": "string"}},
+    "required": ["move", "prop", "at"]}}
+SCENE_SCHEMA["required"] += ["music", "owlbert"]
+
+DIRECTING = """Music and Owlbert's moves for this scene (the program does the timing from your words):
+
+MUSIC: the mood under this scene, chosen by the scene's ROLE, never by the verdict (music must not tell
+the viewer what to think before the evidence does).
+  intro: curious, energy 4 · claim: tense, 3 · record: investigative, 2 · benefit: warm, 2 · harm: somber, 2
+  (or change "silence") · tell: playful, 4 (warm if the topic is careful) · toolkit: encouraging, 3 ·
+  verdict: resolved, 3 · outro: theme, 4.
+  change: "continue" when this scene carries on the same thought as the last one (most scenes in the same
+  section), "crossfade" for a new section, "sting" for a reveal (set sting_at to the words it lands on, at
+  most one sting every few scenes), "hard_cut" for a sharp change, "silence" for no music.
+  drop_before: words copied exactly from your narration where the music stops so the voice arrives alone
+  (always the verdict sentence in the verdict scene; also a claim's exact quote). Otherwise "".
+OWLBERT: 0 to 2 moves, each tied to 2-6 words copied EXACTLY from your narration (put moves on the new
+fact, the number, the name or the source, never on "I", "we" or "this"). Empty is fine: never add motion
+just to fill a scene.
+  point: point at the evidence while it's on screen (claim, record, benefit, toolkit).
+  glasses: push up his spectacles before reading a quote closely.
+  hat_trick + prop: pulls something out of his cap as the transition into what he's talking about:
+    document = the source he's about to quote (record or claim scenes), card = the trick's name (tell),
+    bulb = the question to ask (toolkit), magnifier = "let's look closer". Not two scenes in a row.
+  think: wing to chin before a question. surprised: a little jump at a number or contradiction (only about
+  the trick or the seller). hat_tip: hello or thanks to a source. stamp: the verdict stamp, on the verdict
+  word, verdict scene only. swoop: flies across the screen at a big section change. flourish: spreads his
+  wings (intro title or toolkit). fly_in: first scene only. fly_out: last scene only. solemn: cap to his
+  chest, for harm to real people (the only move allowed in a harm scene besides point and glasses).
+  Never react to the people who believed it; react with the viewer, to the trick or the seller.
+  Example (record scene): narration "...The answer is in the original agency caption. It's dated May 2009..."
+  -> [{"move": "hat_trick", "prop": "document", "at": "the original agency caption"},
+      {"move": "glasses", "prop": "", "at": "It's dated May 2009"}]"""
 
 FACT_ROLES = ("claim", "record", "benefit", "harm")
 
@@ -265,6 +309,68 @@ def _facts_for(scene: dict[str, Any], packet: dict[str, Any]) -> str:
     return json.dumps(out, ensure_ascii=False, indent=1) if out else "(no facts: this scene must not state facts)"
 
 
+def _in_narration(words: str, narration: str) -> str:
+    """The quoted words if they really are in the narration (ignoring case and punctuation), else ""."""
+    def norm(x: str) -> str:
+        return " ".join("".join(ch for ch in w.lower() if ch.isalnum()) for w in x.split()).strip()
+    w = norm(words or "")
+    return words.strip().strip('"“”') if w and w in norm(narration) else ""
+
+
+def _sentences(text: str) -> list[str]:
+    return [x.strip() for x in re.split(r"(?<=[.!?])\s+", text) if x.strip()]
+
+
+def tidy_directions(sc: dict[str, Any], creative: dict[str, Any], before: list[dict[str, Any]]) -> list[str]:
+    """Check the writer's music and Owlbert lines against the rules, fixing or dropping what breaks them."""
+    notes = []
+    role, nar = sc.get("role", ""), sc.get("narration", "")
+    m = dict(sc.get("music") or {})
+    defaults = {"intro": ("curious", 4), "claim": ("tense", 3), "record": ("investigative", 2),
+                "benefit": ("warm", 2), "harm": ("somber", 2), "tell": ("playful", 4),
+                "toolkit": ("encouraging", 3), "verdict": ("resolved", 3), "outro": ("theme", 4)}
+    mood0, energy0 = defaults.get(role, ("investigative", 2))
+    if m.get("mood") not in MOODS:
+        m["mood"] = mood0
+    m["energy"] = max(1, min(5, int(m.get("energy") or energy0)))
+    if m.get("change") not in CHANGES:
+        m["change"] = "crossfade" if not before else "continue"
+    for key in ("drop_before", "sting_at"):
+        m[key] = _in_narration(m.get(key, ""), nar)
+    if m["mood"] == "playful" and (role == "harm" or creative.get("careful")):
+        m["mood"] = "somber" if role == "harm" else "warm"
+        notes.append(f"{sc.get('scene_id')}: no playful music here; changed to {m['mood']}.")
+    if role in ("record", "claim", "benefit") and m["energy"] > 3:
+        m["energy"] = 3                               # no big music under the evidence
+    if role == "verdict" and not m["drop_before"]:
+        sents = _sentences(nar)
+        pick = next((x for x in sents if re.search(r"verdict|false|true|unproven|misleading", x, re.I)),
+                    sents[-1] if sents else "")
+        m["drop_before"] = " ".join(pick.split()[:6])
+    stings = sum(1 for b in before if (b.get("music") or {}).get("change") == "sting")
+    if m["change"] == "sting" and (stings >= 6 or not m["sting_at"]):
+        m["change"] = "crossfade"
+    if not before and m["change"] == "continue":
+        m["change"] = "crossfade"
+    sc["music"] = {k: v for k, v in m.items() if v not in ("", None)}
+    moves = []
+    for d in sc.get("owlbert") or []:
+        if d.get("move") not in MOVES:
+            continue
+        x = {"move": d["move"]}
+        if d.get("prop") in PROPS and d["move"] == "hat_trick":
+            x["prop"] = d["prop"]
+        at = _in_narration(d.get("at", ""), nar)
+        if at:
+            x["at"] = at
+        elif d.get("at") and d["move"] not in ("fly_in", "fly_out"):
+            notes.append(f"{sc.get('scene_id')}: Owlbert's {d['move']} was tied to words that aren't in the "
+                         "narration, so it plays near the start of the scene.")
+        moves.append(x)
+    sc["owlbert"] = moves[:3]
+    return notes
+
+
 def _problems(sc: dict[str, Any], target: int) -> list[str]:
     words = len(sc.get("narration", "").split())
     low = sc.get("narration", "").lower()
@@ -375,7 +481,9 @@ def run(ctx: Context) -> None:
                 "source_ids and excerpt_ids you used. The visual describes the picture for an illustrator in "
                 "this style.\n"
                 + (f"The previous scene ended: \"{' '.join(prev.split()[-40:])}\"\n" if prev else "")
-                + f"\nFacts for this scene:\n{_facts_for(plan_sc, packet)}")},
+                + (f"The music in the previous scene: {json.dumps(scenes[-1].get('music', {}))}\n" if scenes else "")
+                + ("This is a careful topic: no playful music or moves.\n" if creative.get("careful") else "")
+                + f"\nFacts for this scene:\n{_facts_for(plan_sc, packet)}\n\n{DIRECTING}")},
         ]
         sc = llm.chat_json(messages, scene_schema, temperature=0.75,
                            on_text=ctx.writing(f"Writing scene {n} of {len(planned)}", pct0, pct1 - 2, target + 60))
@@ -389,6 +497,8 @@ def run(ctx: Context) -> None:
             ], scene_schema, temperature=0.7, on_text=ctx.writing(f"Polishing scene {n}", pct1 - 2, pct1, target + 60))
         sc["role"] = plan_sc["role"]
         sc["scene_id"] = f"SCENE_{n:03d}"
+        for note in tidy_directions(sc, creative, scenes):
+            ctx.log(note)
         dropped = drop_unknown(sc, ids)
         if dropped:
             ctx.log(f"{sc['scene_id']}: removed IDs that aren't in the ticked evidence: {', '.join(dropped)}")

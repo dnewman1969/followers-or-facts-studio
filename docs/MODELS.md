@@ -14,7 +14,8 @@ Check a model's licence before adding it, and add a line here when you do.
 | Narration | Kokoro-82M v1.0 (ONNX) | Apache-2.0 | `fof-data/models/kokoro` | ~340 MB | ~2x real time on the CPU |
 | Voice cloning (optional) | Chatterbox | MIT, adds an inaudible watermark | downloaded on first use | | needs ~6 GB VRAM |
 | Captions | faster-whisper `small.en` | MIT | downloaded on first use | ~0.5 GB | CPU |
-| Music (optional) | ACE-Step v1 3.5B | Apache-2.0 | `models/checkpoints` | ~7.7 GB | |
+| Music (optional) | ACE-Step v1 3.5B (ACE-Step 1.5, MIT, is the upgrade: export its ComfyUI template in API format with the same placeholders) | Apache-2.0 | `models/checkpoints` | ~7.7 GB | one cue per mood change, 20–180 s each |
+| Sound effects, Owlbert's moves | our own code (`sfx.py`, `rig.py`, `bits.py`) | ours | | | |
 | B-roll from words (optional) | Wan 2.2 TI2V-5B (`wan2.2_ti2v_5B_fp16` + `wan2.2_vae`) | Apache-2.0 | `models/diffusion_models`, `models/vae` | ~10 GB + 1.4 GB | not measured yet; "under 9 min per 5 s 720p" on a consumer GPU per Wan; native 24 fps |
 | Smooth camera moves | OpenCV (`opencv-python-headless`) | Apache-2.0 | pip package | | a 5 s 1080p move in a few seconds on the CPU |
 | Owlbert's mouth timing | Rhubarb Lip Sync 1.14 | MIT | `fof-data/models/rhubarb` | small | seconds per line, CPU |
@@ -36,6 +37,10 @@ about 16 GB of VRAM. HunyuanVideo 1.5's licence excludes the EU, UK and South Ko
 | MiniMax H3 | Free licence excludes the US, EU, UK and South Korea, outputs included. Commercial licence from $5,000/month. |
 | XTTS v2 | Coqui Public Model Licence: non-commercial, for the model and its audio. Coqui shut down, so it can't be bought. |
 | F5-TTS, MMAudio | Non-commercial. |
+| MusicGen, SongBloom | Non-commercial weights (CC-BY-NC). |
+| GIMM-VFI (frame interpolation) | S-Lab licence, non-commercial. Use RIFE or FILM (Apache-2.0). |
+| Depth Anything 3 LARGE v1.0 / GIANT / NESTED, Video Depth Anything Base/Large | Non-commercial. The SMALL/BASE/MONO-LARGE/METRIC-LARGE/LARGE-1.1 and Video-Small checkpoints are Apache-2.0. |
+| madmom (beat tracking) models; aubio | Non-commercial models; GPL. Use librosa (ISC). |
 | FLUX.1 dev, FLUX.1 Kontext dev, FLUX.2 klein 9B, FLUX.2 dev | Non-commercial licences. (FLUX.2 klein 4B is Apache-2.0 and would be fine.) |
 
 ## Keeping the owl on model

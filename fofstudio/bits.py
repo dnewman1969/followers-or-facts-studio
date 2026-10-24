@@ -32,11 +32,23 @@ KINDS = {
     "point": "Point at the evidence",
     "hat_trick": "Hat trick",
     "flourish": "Wing flourish",
+    "surprised": "Surprised",
+    "think": "Thinking",
+    "glasses": "Push up his glasses",
+    "hat_tip": "Hat tip",
+    "solemn": "Cap to his chest",
+    "swoop": "Swoop across",
+    "stamp": "Verdict stamp",
     "fly_out": "Fly off",
 }
-LENGTH = {"fly_in": 2.4, "point": 2.4, "hat_trick": 5.2, "flourish": 1.6, "fly_out": 2.0}
-BIG = {"fly_in", "hat_trick", "flourish", "fly_out"}
-PLAYFUL = {"hat_trick", "flourish"}
+LENGTH = {"fly_in": 2.4, "point": 2.4, "hat_trick": 5.2, "flourish": 1.6, "surprised": 1.0, "think": 2.2,
+          "glasses": 1.0, "hat_tip": 1.3, "solemn": 3.2, "swoop": 1.9, "stamp": 2.4, "fly_out": 2.0}
+BIG = {"fly_in", "hat_trick", "surprised", "swoop", "stamp", "fly_out"}
+PLAYFUL = {"flourish", "surprised", "swoop"}        # never in careful topics (the hat trick only shows a document there)
+SOMBER_OK = {"point", "glasses", "solemn"}          # all he does in a harm scene
+VERDICT_WORDS = {"false": "FALSE", "true": "TRUE", "misleading": "MISLEADING", "mostly_false": "MOSTLY FALSE",
+                 "unverified": "UNPROVEN", "contested": "CONTESTED", "partly_true": "PARTLY TRUE"}
+PROP_NAMES = {"card": "trick card", "document": "document", "bulb": "light bulb", "magnifier": "magnifying glass"}
 POINT_ROLES = ("record", "claim", "harm", "benefit")
 
 
@@ -124,6 +136,48 @@ def prop_image(kind: str, text: str = "", height: int = 300) -> Image.Image:
             y = h * 0.86 + k * h * 0.04
             d.rounded_rectangle((cx - r * 0.42, y, cx + r * 0.42, y + h * 0.035), radius=4 * ss,
                                 fill=(150, 156, 170, 255), outline=(20, 20, 30, 255), width=2 * ss)
+    elif kind == "document":
+        # a page from the record: what it is and when, typed on a sheet with a stamp
+        w = int(h * 0.8)
+        img = Image.new("RGBA", (w + 24 * ss, h + 24 * ss), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.rectangle((16 * ss, 18 * ss, w + 18 * ss, h + 20 * ss), fill=(0, 0, 0, 90))
+        d.polygon([(6 * ss, 6 * ss), (w - 40 * ss, 6 * ss), (w + 6 * ss, 52 * ss), (w + 6 * ss, h + 6 * ss),
+                   (6 * ss, h + 6 * ss)], fill=(252, 250, 242, 255), outline=(60, 60, 70, 255))
+        d.polygon([(w - 40 * ss, 6 * ss), (w - 40 * ss, 52 * ss), (w + 6 * ss, 52 * ss)], fill=(222, 218, 205, 255),
+                  outline=(60, 60, 70, 255))
+        title, _, date = (text or "The record").partition("|")
+        small = cards.font("sans_bold", int(h * 0.055))
+        d.text((30 * ss, 30 * ss), "THE RECORD", font=small, fill=(150, 40, 40, 255))
+        size = int(h * 0.085)
+        while size > 10:
+            big = cards.font("serif_bold", size)
+            lines = cards._wrap(d, title, big, w - 60 * ss)
+            if len(lines) <= 4:
+                break
+            size -= 3
+        y = 30 * ss + small.size * 1.8
+        for ln in lines[:4]:
+            d.text((30 * ss, y), ln, font=big, fill=(24, 30, 48, 255))
+            y += size * 1.2
+        if date.strip():
+            d.text((30 * ss, y + 4 * ss), date.strip(), font=small, fill=(90, 90, 100, 255))
+            y += small.size * 1.6
+        rnd = random.Random(title)
+        y += 14 * ss
+        while y < h - 40 * ss:   # the rest of the page, as lines of type
+            d.line((30 * ss, y, 30 * ss + (w - 60 * ss) * rnd.uniform(0.6, 1.0), y), fill=(175, 175, 185, 255),
+                   width=5 * ss)
+            y += 20 * ss
+        stamp = Image.new("RGBA", (int(w * 0.55), int(h * 0.16)), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(stamp)
+        sd.rounded_rectangle((3, 3, stamp.width - 4, stamp.height - 4), radius=10, outline=(180, 30, 30, 220),
+                             width=6 * ss)
+        sf = cards.font("sans_bold", int(stamp.height * 0.5))
+        sd.text(((stamp.width - sd.textlength("SOURCE", font=sf)) / 2, stamp.height * 0.2), "SOURCE", font=sf,
+                fill=(180, 30, 30, 220))
+        stamp = stamp.rotate(12, expand=True, resample=Image.BICUBIC)
+        img.alpha_composite(stamp, (int(w * 0.4), int(h * 0.74)))
     else:   # magnifying glass
         w = h
         img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -138,6 +192,29 @@ def prop_image(kind: str, text: str = "", height: int = 300) -> Image.Image:
         d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(200, 230, 245, 200))
         d.arc((cx - r * 0.7, cy - r * 0.7, cx + r * 0.7, cy + r * 0.7), 200, 260, fill=(255, 255, 255, 255),
               width=int(h * 0.03))
+    return img.resize((max(1, img.width // ss), max(1, img.height // ss)), Image.LANCZOS)
+
+
+@lru_cache(maxsize=8)
+def verdict_stamp(word: str, height: int) -> Image.Image:
+    """A rubber-stamp verdict ("FALSE", "UNPROVEN"...) in red ink, slightly rotated."""
+    ss = 2
+    f = cards.font("sans_bold", int(height * 0.55 * ss))
+    probe = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    w = int(probe.textlength(word, font=f) + height * 0.6 * ss)
+    h = height * ss
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    ink = (196, 30, 36, 235) if word not in ("TRUE", "PARTLY TRUE") else (30, 130, 70, 235)
+    d.rounded_rectangle((6 * ss, 6 * ss, w - 6 * ss, h - 6 * ss), radius=16 * ss, outline=ink, width=9 * ss)
+    d.rounded_rectangle((18 * ss, 18 * ss, w - 18 * ss, h - 18 * ss), radius=10 * ss, outline=ink, width=3 * ss)
+    d.text(((w - d.textlength(word, font=f)) / 2, (h - f.size) / 2 - f.size * 0.08), word, font=f, fill=ink)
+    rnd = random.Random(word)       # worn ink: a few gaps
+    a = np.asarray(img).copy()
+    for _ in range(int(w * h / 900)):
+        x, y = rnd.randrange(w), rnd.randrange(h)
+        a[max(0, y - 2):y + 2, max(0, x - 3):x + 3, 3] //= 3
+    img = Image.fromarray(a, "RGBA").rotate(-8, expand=True, resample=Image.BICUBIC)
     return img.resize((max(1, img.width // ss), max(1, img.height // ss)), Image.LANCZOS)
 
 
@@ -197,6 +274,9 @@ class Move:
             exit_x = w * (0.5 - inward * 0.75)          # off the edge he sits nearest to
             self.path = [(hx, hy), (hx - inward * w * 0.03, hy - h * 0.18), (hx - inward * w * 0.1, h * 0.25),
                          (exit_x, -h * 0.25)]
+        elif kind == "swoop":   # a loop across the screen and back: marks a new section
+            self.path = [(hx, hy), (hx + inward * w * 0.2, h * 0.3), (w * (0.5 + inward * 0.42), h * 0.42),
+                         (w * 0.5, h * 0.62), (hx + inward * w * 0.1, hy - h * 0.05), (hx, hy)]
         if kind == "hat_trick":
             px = hx + inward * (w * 0.32)
             self.spot = (max(w * 0.18, min(w * 0.82, px)), h * 0.40)
@@ -263,6 +343,83 @@ class Move:
         hop = math.sin(math.pi * _ramp(t, 0.15, self.d - 0.3)) * self.st.h * 0.025
         return replace(base, y=base.y - hop, spread=open_, flap_l=flap * open_, flap_r=flap * open_)
 
+    def _surprised(self, t: float, base: Pose) -> Pose:
+        """A little jump: squash, pop up with wings out, settle."""
+        d = self.d
+        if t < 0.12:
+            return replace(base, squash=0.08 * _ease(t / 0.12))
+        k = _ramp(t, 0.12, d)
+        hop = math.sin(math.pi * min(1.0, (t - 0.12) / 0.45)) * self.st.h * 0.03 if t < 0.57 else 0.0
+        out = math.sin(math.pi * k)
+        return replace(base, y=base.y - hop, squash=-0.06 * out if t < 0.5 else 0.04 * math.sin(math.pi * k),
+                       wing_l=35 * out, wing_r=35 * out, cap_dy=-40 * math.sin(math.pi * min(1.0, (t - 0.12) / 0.4)))
+
+    def _think(self, t: float, base: Pose) -> Pose:
+        """Wing across to his chin, a slow rock, eyes to one side."""
+        up = _ramp(t, 0.0, 0.35) * (1 - _ramp(t, self.d - 0.35, self.d))
+        rock = 3.5 * math.sin(2 * math.pi * 0.7 * t) * up
+        tap = 4 * math.sin(2 * math.pi * 2.0 * t) * up       # tapping his chin
+        p = replace(base, rot=rock, gaze=round(1.5 * up) * -self.st.inward)
+        if self.st.inward < 0:
+            p.wing_r = -78 * up + tap
+        else:
+            p.wing_l = -78 * up + tap
+        return p
+
+    def _hat_tip(self, t: float, base: Pose) -> Pose:
+        """Lifts his cap a little and tilts it, like a gentleman owl."""
+        k = math.sin(math.pi * _ramp(t, 0.1, self.d - 0.1))
+        p = replace(base, cap_dy=-70 * k, cap_rot=-14 * k * self.st.inward, rot=2 * k * self.st.inward)
+        if self.st.inward < 0:
+            p.wing_r = 60 * k
+        else:
+            p.wing_l = 60 * k
+        return p
+
+    def _swoop(self, t: float, base: Pose) -> Pose:
+        if t < 0.2:
+            return replace(base, squash=0.07 * _ease(t / 0.2), spread=_ramp(t, 0.05, 0.2), flap_l=20, flap_r=20)
+        land = self.d - 0.3
+        u = _ease((t - 0.2) / (land - 0.2))
+        p = self._fly(t, base, u)
+        if t >= land:
+            k = (t - land) / 0.3
+            p.x, p.y, p.rot = base.x, base.y, 0.0
+            p.spread = max(0.0, 1 - k * 3)
+            p.squash = 0.06 * math.sin(math.pi * min(1.0, k))
+        return p
+
+    def _glasses(self, t: float, base: Pose) -> Pose:
+        """Wing up to his spectacles: 'let's read this closely'."""
+        k = math.sin(math.pi * _ramp(t, 0.0, self.d))
+        nudge = 3 * math.sin(2 * math.pi * 3 * t) * k
+        p = replace(base, squash=-0.015 * k)
+        if self.st.inward < 0:
+            p.wing_r = -118 * k + nudge
+        else:
+            p.wing_l = -118 * k + nudge
+        return p
+
+    def _solemn(self, t: float, base: Pose) -> Pose:
+        """Takes his cap off and holds it to his chest, wings folded: for the harm a claim did."""
+        d = self.d
+        k = _ease(_ramp(t, 0.0, 0.6)) * (1 - _ease(_ramp(t, d - 0.6, d)))
+        return replace(base, cap_dy=400 * k, cap_rot=-8 * k * self.st.inward, rot=-1.5 * k * self.st.inward,
+                       wing_l=-30 * k, wing_r=-30 * k)
+
+    def _stamp(self, t: float, base: Pose) -> Pose:
+        """Raises a wing and brings it down as the verdict stamp lands."""
+        up = _ramp(t, 0.0, 0.25)
+        down = _ramp(t, 0.25, 0.38)
+        rest = 1 - _ramp(t, self.d - 0.5, self.d)
+        ang = (110 * up - 80 * down) * rest
+        p = replace(base, squash=0.05 * math.sin(math.pi * _ramp(t, 0.36, 0.6)))
+        if self.st.inward < 0:
+            p.wing_l = ang
+        else:
+            p.wing_r = ang
+        return p
+
     def _hat_trick(self, t: float, base: Pose) -> Pose:
         inward = self.st.inward
         d = self.d
@@ -295,6 +452,9 @@ class Move:
 
     # ------------------------------------------------------------ extras on top
     def extras(self, t: float, pose: Pose, img: Image.Image, cap_opening: tuple[float, float] | None) -> None:
+        if self.kind == "stamp":
+            self._stamp_extra(t, img)
+            return
         if self.kind != "hat_trick" or cap_opening is None:
             return
         d = self.d
@@ -325,7 +485,27 @@ class Move:
             _paste(img, pic, left, top)
         self.sparkles.draw(img, t)
 
+    def _stamp_extra(self, t: float, img: Image.Image) -> None:
+        if t < 0.33:
+            return
+        word = (self.prop.get("text") or "VERDICT").upper()
+        k = _ramp(t, 0.33, 0.45)
+        fade = 1 - _ramp(t, self.d - 0.45, self.d)
+        h = int(self.st.h * 0.2)
+        pic = verdict_stamp(word, h)
+        scale = 1.5 - 0.5 * k
+        pw, ph = max(1, int(pic.width * scale)), max(1, int(pic.height * scale))
+        pic = pic.resize((pw, ph), Image.LANCZOS)
+        if fade < 1:
+            a = np.asarray(pic).copy()
+            a[..., 3] = (a[..., 3] * fade).astype("uint8")
+            pic = Image.fromarray(a, "RGBA")
+        cx = self.st.w * 0.5 + self.st.inward * -self.st.w * 0.05
+        _paste(img, pic, int(cx - pw / 2), int(self.st.h * 0.42 - ph / 2))
+
     def dim_at(self, t: float) -> float:
+        if self.kind == "stamp":
+            return 0.3 * _ramp(t, 0.3, 0.45) * (1 - _ramp(t, self.d - 0.45, self.d))
         if self.kind != "hat_trick":
             return 0.0
         return 0.35 * _ramp(t, 1.2, 1.7) * (1 - _ramp(t, self.d - 1.3, self.d - 0.9))
@@ -462,6 +642,120 @@ def plan(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks: list[st
         if out and b["start"] < out[-1]["start"] + out[-1]["duration"] + 0.5:
             continue
         out.append(b)
+    return out
+
+
+def _norm(w: str) -> str:
+    return "".join(ch for ch in w.lower() if ch.isalnum())
+
+
+def word_time(phrase: str, words: list[dict[str, Any]]) -> float | None:
+    """When (seconds into the scene's narration) Owlbert starts saying the phrase, or None."""
+    want = [_norm(w) for w in phrase.split() if _norm(w)]
+    have = [_norm(w["word"]) for w in words]
+    if not want:
+        return None
+    for i in range(len(have) - len(want) + 1):
+        if have[i:i + len(want)] == want:
+            return float(words[i]["start"])
+    for size in range(min(3, len(want)), 0, -1):   # the writer paraphrased: try the first few words
+        for i in range(len(have) - size + 1):
+            if have[i:i + size] == want[:size]:
+                return float(words[i]["start"])
+    return None
+
+
+def plan_directed(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks: list[str],
+                  info: dict[str, dict[str, str]] | None = None) -> list[dict]:
+    """Owlbert's moves as the script directs them (each scene's OWLBERT lines), checked against the rules
+    from the research (docs/OWLBERT.md), because the writer can't be trusted to follow them alone:
+      * at most one big move and two small ones a scene; small moves 4 s apart; never two at once;
+      * fly in only in the first scene, fly off only in the last, the verdict stamp only in the verdict;
+      * no hat trick two scenes running, at most three a video; at most two swoops;
+      * harm scenes: only point, glasses or cap to the chest; careful topics and humor 0: nothing playful,
+        and the hat shows a document, never a joke card.
+    A direction that breaks a rule is dropped (not rewritten), so the result is predictable.
+
+    scenes: like plan(), plus "directions" ([{"move", "prop", "at"}]) and "words" (timed words of the line).
+    info: scene_id -> {"document": "title|date", "verdict": "FALSE"} for the props."""
+    from . import techniques
+    info = info or {}
+    careful = bool(creative.get("careful"))
+    no_jokes = careful or int(creative.get("humor", 1)) == 0
+    tech = techniques.get(tricks[0]) if tricks else None
+    wanted: list[dict[str, Any]] = []
+    for k, sc in enumerate(scenes):
+        role = sc.get("role", "")
+        for d in sc.get("directions") or []:
+            kind = d.get("move")
+            if kind not in KINDS:
+                continue
+            if (kind == "fly_in" and k != 0) or (kind == "fly_out" and k != len(scenes) - 1) or \
+                    (kind == "stamp" and role != "verdict"):
+                continue
+            if (kind in PLAYFUL and no_jokes) or (role == "harm" and kind not in SOMBER_OK):
+                continue
+            prop = None
+            if kind == "hat_trick":
+                p = d.get("prop") or ("card" if role == "tell" else "bulb" if role == "toolkit"
+                                      else "document" if sc.get("source_ids") else "magnifier")
+                if careful and p == "card":
+                    p = "document" if sc.get("source_ids") else "magnifier"
+                text = {"card": tech.name if tech else "The Trick",
+                        "document": info.get(sc["scene_id"], {}).get("document", "The record")}.get(p, "")
+                prop = {"kind": p, "text": text}
+            elif kind == "stamp":
+                prop = {"kind": "stamp", "text": info.get(sc["scene_id"], {}).get("verdict", "VERDICT")}
+            if kind == "fly_in":
+                t = sc["start"]
+            elif kind == "fly_out":
+                t = max(sc["speech_start"] + 0.5, sc["end"] - LENGTH["fly_out"])
+            else:
+                at = word_time(d.get("at", ""), sc.get("words") or []) if d.get("at") else None
+                t = sc["speech_start"] + (at if at is not None else 1.0)
+                t -= {"hat_trick": 1.1, "stamp": 0.35}.get(kind, 0.15)   # the prop lands as he says it
+            wanted.append({"kind": kind, "start": max(0.0, t), "scene_id": sc["scene_id"], "prop": prop,
+                           "scene_no": k})
+    if scenes and not any(w["kind"] == "fly_in" for w in wanted):
+        wanted.insert(0, {"kind": "fly_in", "start": scenes[0]["start"], "scene_id": scenes[0]["scene_id"],
+                          "prop": None, "scene_no": 0})
+    if len(scenes) > 1 and not any(w["kind"] == "fly_out" for w in wanted):
+        last = scenes[-1]
+        wanted.append({"kind": "fly_out", "start": max(last["speech_start"] + 0.5, last["end"] - LENGTH["fly_out"]),
+                       "scene_id": last["scene_id"], "prop": None, "scene_no": len(scenes) - 1})
+    wanted.sort(key=lambda w: w["start"])
+    out: list[dict[str, Any]] = []
+    big_in: dict[str, int] = {}
+    small_in: dict[str, list[float]] = {}
+    hat_scenes: list[int] = []
+    swoops = stamps = 0
+    for w in wanted:
+        kind, sid = w["kind"], w["scene_id"]
+        if out and w["start"] < out[-1]["start"] + out[-1]["duration"] + 0.4:
+            w["start"] = out[-1]["start"] + out[-1]["duration"] + 0.4      # wait for the one before to finish
+        if kind in BIG:
+            if big_in.get(sid, 0) >= 1 and kind not in ("fly_in", "fly_out"):
+                continue
+            if kind == "hat_trick" and (len(hat_scenes) >= 3 or (hat_scenes and w["scene_no"] - hat_scenes[-1] <= 1)):
+                continue
+            if kind == "swoop" and swoops >= 2 or kind == "stamp" and stamps >= 1:
+                continue
+            big_in[sid] = big_in.get(sid, 0) + 1
+            hat_scenes += [w["scene_no"]] if kind == "hat_trick" else []
+            swoops += kind == "swoop"
+            stamps += kind == "stamp"
+        else:
+            times = small_in.setdefault(sid, [])
+            if len(times) >= 2 or any(abs(w["start"] - x) < 4 for x in times):
+                continue
+            times.append(w["start"])
+        item = {"id": f"{kind}-{len(out) + 1}", "kind": kind, "start": round(w["start"], 3),
+                "duration": LENGTH[kind], "scene_id": sid, "label": KINDS[kind], "variant": len(out) % 2}
+        if w["prop"]:
+            item["prop"] = w["prop"]
+            if kind == "hat_trick":
+                item["label"] = f"Hat trick: {PROP_NAMES[w['prop']['kind']]}"
+        out.append(item)
     return out
 
 

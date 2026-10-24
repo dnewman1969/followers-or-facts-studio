@@ -237,10 +237,42 @@ Three things from Dave's latest test:
 
 79 tests pass.
 
+## 2026-10-23 — v0.4.4: unstuck AI, the script directs music and Owlbert
+
+Dave was still on 0.4.2 (title bar) when the storyboard failed again. Two real problems in it:
+
+- **The AI got stuck writing blank space** ("29 words written so far" for minutes, then out of room).
+  Every answer is now streamed; 150 pieces in a row of only spaces/new lines stop it early and it tries
+  again a little differently (warmer, more presence penalty, new seed). Shot planning halves its batch
+  if a batch still fails.
+- **"The script changed since these pictures were made"** was wrong: the board was only half made
+  because the run stopped. It now says "Pictures are made for N of M scenes... press Make pictures to
+  carry on".
+
+Research ("ComfyUI music and Owlbert directing", project docs) then shaped:
+
+- **script.md gets MUSIC and OWLBERT sections** per scene (mood/energy/change/drop before/sting at; moves
+  tied to quoted narration words). The writer fills them; `script.tidy_directions` enforces the rules
+  (mood by role never verdict, no playful over harm or careful topics, ≤6 stings, music out before the
+  verdict line, quoted words must be in the narration).
+- **Music per mood**: `stages/music.py` groups scenes into cues and makes each with ACE-Step in one of
+  25 genres (`musicbook.py`, picker on the Production page) at one tempo and related keys; the outro
+  theme is made once and reused; or tracks from the library matched by mood, with licence notes checked.
+  The timeline lays cues with cross-fades, stings and drops; the render mixes several cues and effects.
+- **Owlbert moves from the script** (`bits.plan_directed`): new glasses, think, hat tip, solemn, surprised,
+  swoop and verdict stamp moves, a document prop (source title and date) for the hat trick; budgets from
+  the research (1 big + 2 small a scene, no hat trick two scenes running, harm scenes respectful only).
+- **Sound effects** made in code (`sfx.py`): whoosh, flutter, pop, sparkle, stings, stamp thud (A3 track).
+- docs/MUSIC.md (public-domain rules for 2026: songs ≤1930, recordings ≤1925), MODELS.md ruled-out list.
+
+88 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.
-2. Owlbert: technique props (cherry, mask...), thinking pose, verdict stamp; Qwen-Image-Edit wing drawings.
+2. Owlbert: technique props (cherry, mask...); Qwen-Image-Edit wing drawings.
+2. Music: own recordings of public-domain pieces (MIDI + FluidSynth + MIT SoundFont); beat snapping (librosa).
+2. ComfyUI: Kandinsky 5/6 Lite B-roll, SeedVR2 upscale, RIFE 16→24 fps, Depth Anything 3 (Apache sizes) parallax.
 2. Fix whatever the first real run turns up in the ComfyUI templates and prompts.
 3. Owlbert on model: turnaround sheet, LoRA, intro/outro shots.
 4. Shorts: vertical clips from the render.

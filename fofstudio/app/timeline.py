@@ -25,9 +25,9 @@ MIN_PPS, MAX_PPS = 1.0, 400.0  # pixels per second: whole hour visible ... singl
 RULER_H = 26
 SNAP_PX = 8
 TRACKS = [("video", "V1  Video"), ("owl", "V2  Owlbert"), ("moves", "V3  Moves"), ("speech", "A1  Speech"),
-          ("music", "A2  Music")]
+          ("music", "A2  Music"), ("sfx", "A3  Effects")]
 COLORS = {"bumper": "#b8860b", "clip": "#2f5d9e", "clip_ai": "#3a4f8f", "owl": "#6b4c9a", "moves": "#9a4c7d",
-          "speech": "#2f7d4f", "music": "#21717a"}
+          "speech": "#2f7d4f", "music": "#21717a", "sfx": "#7a6a21"}
 
 
 @lru_cache(maxsize=128)
@@ -300,8 +300,10 @@ class TimelineEditor(QWidget):
                 elif track == "speech":
                     color, label = COLORS["speech"], f"{c.get('scene_id', '')}  {c.get('text', '')[:60]}"
                     wav = str(self.resolve(c["src"]))
+                elif track == "sfx":
+                    color, label, wav = COLORS["sfx"], c.get("label", "Effect"), None
                 else:
-                    color, label, wav = COLORS["music"], "Music", str(self.resolve(c["src"]))
+                    color, label, wav = COLORS["music"], c.get("label", "Music"), str(self.resolve(c["src"]))
                 item = ClipItem(ti, c, self.scene, label, color, wav, self._changed,
                                 trimmable=track in ("video", "owl", "music"))
                 self.scene.addItem(item)

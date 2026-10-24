@@ -83,9 +83,15 @@ SHOTS_PER_REQUEST = 6   # ask for a few shots at a time so every answer fits com
 def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str], people: list[dict[str, Any]],
                 restrictions: list[str], on_text=None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
+    size = SHOTS_PER_REQUEST
     while len(out) < n:
-        k = min(SHOTS_PER_REQUEST, n - len(out))
-        out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text)
+        k = min(size, n - len(out))
+        try:
+            out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text)
+        except StageError:
+            if k <= 2:
+                raise
+            size = max(2, k // 2)   # a smaller answer is easier to finish
     return out[:n]
 
 
@@ -377,7 +383,13 @@ def check(ep: Episode) -> list[Check]:
         return out
     if ep.path("script.md").exists():
         script_ids = [s["scene_id"] for s in parse(ep.path("script.md").read_text(encoding="utf-8"))["scenes"]]
-        if script_ids != [s["scene_id"] for s in board["scenes"]]:
+        board_ids = [s["scene_id"] for s in board["scenes"]]
+        if board.get("partial") or (board_ids != script_ids and board_ids == script_ids[:len(board_ids)]):
+            done = sum(1 for x in board_ids if x in script_ids)
+            out.append(Check(BLOCK, f"Pictures are made for {done} of {len(script_ids)} scenes: the last run stopped "
+                                    "partway (the Queue page says why). Press Make pictures to carry on; the "
+                                    "finished scenes are kept."))
+        elif script_ids != board_ids:
             out.append(Check(BLOCK, "The script changed since these pictures were made. Make pictures again "
                                     "(pictures for unchanged scenes are kept)."))
     names = person_names()

@@ -17,18 +17,38 @@ also draws what the picture doesn't show: spread wings for flying, the top of hi
 cap, the inside of the cap, and the props. He is never flipped left-to-right, so the tassel always
 hangs on the viewer's right.
 
-| Move | When the planner uses it | What he does |
-|---|---|---|
-| Fly in | Start of the first scene | Flies in from the far side, flaps, flares his wings and lands in the corner |
-| Point at the evidence | Claim, record, harm and benefit scenes (at most every 25 s) | Looks toward the picture and raises his wing at it |
-| Hat trick | The "tell" scene (the trick's name on a card) and the "toolkit" scene (a light bulb) | Waves his wing, his cap pops off, turns over, and the card rises out of it with sparkles; the picture dims while it's held up |
-| Wing flourish | The verdict | Spreads both wings and gives a little hop |
-| Fly off | End of the last scene | Crouches, spreads his wings and flies off the near edge |
+The script writer directs him: every scene has an **OWLBERT** section, one move per line, tied to
+the words he's saying when it happens:
 
-Rules (`fofstudio/bits.py`): at most one big move a scene, big moves at least 20 s apart, at most
-two hat tricks a video, never two moves at once. Careful topics (deaths, victims, court-only
-stories) get no hat trick and no flourish. Humor 0 drops the flourish. His beak keeps moving with
-his words while he flies, and he hides from the corner while a move plays.
+```
+### OWLBERT
+- hat_trick document at "the original agency caption"
+- glasses at "It's dated May 2009"
+```
+
+| Move | Size | What he does | Where it belongs |
+|---|---|---|---|
+| fly_in | big | Flies in from the far side and lands in the corner | First scene only |
+| fly_out | big | Crouches, spreads his wings and flies off | Last scene only |
+| point | small | Looks at the picture and raises his wing at it | While evidence is on screen |
+| glasses | small | Pushes up his spectacles | Before reading a quote closely |
+| think | small | Wing to his chin, a slow rock | Before a question |
+| hat_tip | small | Lifts his cap a little | Hello, or thanks to a source |
+| solemn | small | Cap off and held to his chest | Harm to real people |
+| surprised | big | A little jump | A number or contradiction (about the trick or the seller) |
+| flourish | small | Spreads both wings with a hop | Intro title, toolkit |
+| swoop | big | Loops across the screen | A big section change |
+| hat_trick + document / card / bulb / magnifier | big | Cap off, turned over, pulls the thing out with sparkles while the picture dims | document: the source he's about to quote (shows its title and date); card: the trick's name (tell); bulb: the question (toolkit) |
+| stamp | big | Brings his wing down as a red verdict stamp (FALSE, UNPROVEN...) lands | Verdict scene, on the verdict word |
+
+The program checks every direction (`bits.plan_directed`) and drops any that break the rules from the
+research: at most one big and two small moves a scene, small moves 4 s apart, never two at once, no
+hat trick two scenes running (at most three a video), at most two swoops, one stamp; in a harm scene only
+point, glasses or solemn; careful topics and humor 0 get nothing playful, and the hat shows a document,
+never a joke card. Scripts without OWLBERT lines get moves picked by scene role, as before.
+
+Each move has its own sound on **A3 Effects**: a whoosh and wing flutter for flying, a pop and sparkle
+for the hat, a thud for the stamp.
 
 On the Production page the moves are pink bars on **V3 Moves**: drag one to move it, press Delete
 to remove it, or pick a move under the inspector and press **Add move** to put one at the playhead.

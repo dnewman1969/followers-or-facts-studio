@@ -64,10 +64,29 @@ def fake_llm(get_packet):
             sids = [x["source_id"] for x in fl[0]["sources"]][:2] if fl else []
             sentence = "People were scared, and someone sold that fear for money. "
             words = (sentence * (target // 10 + 1)).split()[:target]
+            role_m = _re.search(r"Role: (\w+)\.", text)
+            role = role_m.group(1) if role_m else "record"
+            # the writer directs the music and Owlbert too (some of it breaks the rules on purpose)
+            music = {"intro": ("curious", 4, "crossfade"), "claim": ("tense", 5, "crossfade"),
+                     "record": ("investigative", 2, "crossfade"), "benefit": ("investigative", 2, "continue"),
+                     "harm": ("playful", 2, "crossfade"), "tell": ("playful", 4, "sting"),
+                     "toolkit": ("encouraging", 3, "crossfade"), "verdict": ("resolved", 3, "crossfade")}
+            mood, energy, change = music.get(role, ("investigative", 2, "continue"))
+            moves = {"intro": [{"move": "fly_in", "prop": "", "at": ""}],
+                     "record": [{"move": "hat_trick", "prop": "document", "at": "someone sold that fear"},
+                                {"move": "point", "prop": "", "at": "not in the narration at all"}],
+                     "harm": [{"move": "surprised", "prop": "", "at": "People were scared"},
+                              {"move": "solemn", "prop": "", "at": "People were scared"}],
+                     "tell": [{"move": "hat_trick", "prop": "card", "at": "sold that fear"}],
+                     "verdict": [{"move": "stamp", "prop": "", "at": "for money"},
+                                 {"move": "fly_in", "prop": "", "at": ""}]}.get(role, [])
             return {"narration": "This part is short and plain. " + " ".join(words),
                     "visual": "An old desk with a newspaper and a clock",
                     "on_screen_text": "December 31, 1999" if not cids else "",
-                    "claim_ids": cids, "source_ids": sids, "excerpt_ids": []}
+                    "claim_ids": cids, "source_ids": sids, "excerpt_ids": [],
+                    "music": {"mood": mood, "energy": energy, "change": change, "drop_before": "",
+                              "sting_at": "sold that fear" if change == "sting" else ""},
+                    "owlbert": moves}
         if "shots" in props:   # storyboard shot ideas
             n = props["shots"].get("minItems", 3)
             kinds = props["shots"]["items"]["properties"]["kind"]["enum"]

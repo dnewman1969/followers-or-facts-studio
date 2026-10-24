@@ -19,9 +19,10 @@ def _server(answers):
             seen.append(body["options"])
             reply = answers[min(len(seen) - 1, len(answers) - 1)]
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/x-ndjson")
             self.end_headers()
-            self.wfile.write(json.dumps(reply).encode())
+            for part in reply if isinstance(reply, list) else [reply]:   # a list = streamed pieces
+                self.wfile.write(json.dumps(part).encode() + b"\n")
 
         def log_message(self, *a):
             pass
@@ -61,3 +62,16 @@ def test_gives_up_with_a_clear_message(data):
         _real_chat_json(_client(srv))
     srv.shutdown()
     assert seen[-1]["num_predict"] == 8000   # it tried up to the limit
+
+
+def test_stuck_answer_is_stopped_and_tried_again(data):
+    """Dave's storyboard sat at '29 words written' until it ran out of room: the AI was writing blank space."""
+    stuck = [{"message": {"content": '{"shots": ['}, "done": False}] + \
+            [{"message": {"content": "\n"}, "done": False} for _ in range(400)]
+    good = {"message": {"content": '{"shots": []}'}, "done": True, "done_reason": "stop"}
+    srv, seen = _server([stuck, good])
+    client = _client(srv)
+    out = _real_chat_json(client)
+    srv.shutdown()
+    assert out == {"shots": []} and len(seen) == 2
+    assert seen[1]["temperature"] > seen[0]["temperature"] and "stuck" in client.retries[0]

@@ -57,11 +57,33 @@ class AudioCue:
 
 
 @dataclass
+class MusicCue:
+    """One piece of music on the timeline: plays from `inpoint` (looping if it's short), fades in and out."""
+    path: Path
+    start: float
+    duration: float
+    inpoint: float = 0.0
+    fade_in: float = 1.5
+    fade_out: float = 2.0
+    gain: float = 1.0
+
+
+@dataclass
+class Effect:
+    """A short sound effect (whoosh, pop, sting...)."""
+    path: Path
+    start: float
+    gain: float = 0.5
+
+
+@dataclass
 class Timeline:
     segments: list[Segment]
     narration: list[AudioCue] = field(default_factory=list)
     music: Path | None = None
     music_volume: float = 0.18
+    music_cues: list[MusicCue] = field(default_factory=list)   # instead of one looped `music` file
+    effects: list[Effect] = field(default_factory=list)
     duck: bool = True
     # the mix: speech level, and the whole video's loudness (YouTube plays everything near -14 LUFS)
     speech_db: float = 0.0
@@ -269,13 +291,20 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
             args += ["-i", str(cue.path)]
         if tl.music:
             args += ["-stream_loop", "-1", "-i", str(tl.music)]
+        cue_in = n + len(tl.narration) + (1 if tl.music else 0)
+        for cue in tl.music_cues:
+            args += ["-stream_loop", "-1", "-i", str(cue.path)]
+        fx_in = cue_in + len(tl.music_cues)
+        for fx in tl.effects:
+            args += ["-i", str(fx.path)]
+        extra_audio = len(tl.music_cues) + len(tl.effects)
         owl_in = None
         if tl.presenter and tl.presenter_ranges:
-            owl_in = n + len(tl.narration) + (1 if tl.music else 0)
+            owl_in = n + len(tl.narration) + (1 if tl.music else 0) + extra_audio
             args += ["-f", "concat", "-safe", "0", "-i", str(tl.presenter)]
         moves_in = None
         if tl.moves and tl.moves_ranges:
-            moves_in = n + len(tl.narration) + (1 if tl.music else 0) + (1 if owl_in is not None else 0)
+            moves_in = n + len(tl.narration) + (1 if tl.music else 0) + extra_audio + (1 if owl_in is not None else 0)
             args += ["-f", "concat", "-safe", "0", "-i", str(tl.moves)]
 
         steps: list[str] = []
@@ -319,15 +348,31 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
             steps.append(f"{''.join(labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,"
                          f"volume={tl.speech_db:.2f}dB,apad,atrim=0:{total}[narr]")
             a = "narr"
+        have_music = bool(tl.music or tl.music_cues)
         if tl.music:
             m_in = n + len(tl.narration)
             steps.append(f"[{m_in}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
                          f"atrim=0:{total},volume={tl.music_volume},"
                          f"afade=t=in:d=2,afade=t=out:st={max(0.0, tl.total - 4):.3f}:d=4[mus]")
+        elif tl.music_cues:
+            labels = []
+            for k, cue in enumerate(tl.music_cues):
+                d = max(0.1, min(cue.duration, tl.total - cue.start))
+                fi, fo = min(cue.fade_in, d / 2), min(cue.fade_out, d / 2)
+                steps.append(f"[{cue_in + k}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+                             f"atrim={cue.inpoint:.3f}:{cue.inpoint + d:.3f},asetpts=PTS-STARTPTS,"
+                             f"volume={tl.music_volume * cue.gain:.4f},"
+                             + (f"afade=t=in:d={fi:.3f}," if fi > 0 else "")
+                             + (f"afade=t=out:st={d - fo:.3f}:d={fo:.3f}," if fo > 0 else "")
+                             + f"adelay={round(cue.start * 1000)}:all=1[mc{k}]")
+                labels.append(f"[mc{k}]")
+            steps.append(f"{''.join(labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,"
+                         f"apad,atrim=0:{total}[mus]")
+        if have_music:
             if a and tl.duck:
                 steps.append("[narr]asplit=2[narr1][key]")
-                steps.append("[mus][key]sidechaincompress=threshold=0.02:ratio=10:attack=15:"
-                             "release=600:makeup=1[ducked]")
+                steps.append("[mus][key]sidechaincompress=threshold=0.02:ratio=6:attack=20:"
+                             "release=500:makeup=1[ducked]")
                 steps.append("[narr1][ducked]amix=inputs=2:duration=first:normalize=0[mix]")
                 a = "mix"
             elif a:
@@ -335,6 +380,19 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
                 a = "mix"
             else:
                 a = "mus"
+        if tl.effects:
+            labels = []
+            for k, fx in enumerate(tl.effects):
+                steps.append(f"[{fx_in + k}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+                             f"volume={fx.gain:.3f},adelay={round(fx.start * 1000)}:all=1[fx{k}]")
+                labels.append(f"[fx{k}]")
+            steps.append(f"{''.join(labels)}amix=inputs={len(labels)}:duration=longest:normalize=0,"
+                         f"apad,atrim=0:{total}[fxall]")
+            if a:
+                steps.append(f"[{a}][fxall]amix=inputs=2:duration=first:normalize=0[withfx]")
+                a = "withfx"
+            else:
+                a = "fxall"
 
         if a:
             # overall level: either normalize to the target loudness (raised or lowered by master_db),

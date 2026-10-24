@@ -9,7 +9,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QPushButton,
                                QSlider, QSplitter, QVBoxLayout)
 
-from ... import bits, pipeline
+from ... import bits, musicbook, pipeline
 from ...stages import production as prod
 from ...util import read_json
 from ..common import PANEL
@@ -32,7 +32,15 @@ class ProductionPage(StagePage):
         self.b_speech = QPushButton("1. Make speech track")
         click_feedback(self.b_speech, lambda: self._chain(["narration", "captions"], "Owlbert reading the script"))
         self.b_music = QPushButton("2. Make music")
-        click_feedback(self.b_music, lambda: self.run_stage("music", {}, "Making a music bed"))
+        self.genre = QComboBox()
+        self.genre.addItem("Music: to suit the style", "")
+        for key, g in musicbook.GENRES.items():
+            self.genre.addItem(f"Music: {g.name}", key)
+        self.genre.addItem("Music: from my library folder (picked by mood)", "library")
+        self.genre.setToolTip("The kind of music. The script's MUSIC lines choose the mood of each scene "
+                              "(curious, tense, somber...) and the program makes a matching piece for each change.")
+        click_feedback(self.b_music, lambda: self.run_stage("music", {"genre": self.genre.currentData()},
+                                                            "Making the music, one piece for each mood"))
         self.b_nomusic = QPushButton("No music")
         click_feedback(self.b_nomusic, self._skip_music, "Skipping...")
         self.b_assemble = QPushButton("3. Assemble timeline")
@@ -45,7 +53,7 @@ class ProductionPage(StagePage):
         self.b_render = QPushButton("4. Render final video")
         self.b_render.setObjectName("primary")
         click_feedback(self.b_render, self._render)
-        for b in (self.b_speech, self.b_music, self.b_nomusic, self.b_assemble, self.b_rebuild,
+        for b in (self.b_speech, self.genre, self.b_music, self.b_nomusic, self.b_assemble, self.b_rebuild,
                   self.b_preview, self.b_render):
             steps.addWidget(b)
         steps.addStretch(1)
@@ -326,7 +334,7 @@ class ProductionPage(StagePage):
         self.i_vol.setEnabled(track == "music")
         vol = float(c.get("volume", 1.0))
         self.i_vol.setValue(1.0 if abs(vol - 0.18) < 1e-6 else vol)  # 0.18 was the old fixed music level
-        self.i_delete.setEnabled(track in ("owl", "music", "moves"))
+        self.i_delete.setEnabled(track in ("owl", "music", "moves", "sfx"))
 
     def _apply(self) -> None:
         if not self._sel:
@@ -344,7 +352,7 @@ class ProductionPage(StagePage):
         self._save()
 
     def _delete(self) -> None:
-        if not self._sel or self._sel[0] not in ("owl", "music", "moves"):
+        if not self._sel or self._sel[0] not in ("owl", "music", "moves", "sfx"):
             return
         self._undo_stack.append(json.dumps(self._tl))
         track, c = self._sel
@@ -441,6 +449,9 @@ class ProductionPage(StagePage):
         self.b_speech.setText("1. Speech track ✔" if narr == "approved" and
                               self.stage_status("captions")["status"] == "approved" else "1. Make speech track")
         self.b_music.setEnabled(not busy)
+        if self.ep and getattr(self, "_genre_for", None) != self.ep.project_id:   # show this video's choice
+            self._genre_for = self.ep.project_id
+            self.genre.setCurrentIndex(max(0, self.genre.findData(self.ep.creative().get("music_genre", ""))))
         self.b_nomusic.setEnabled(not busy)
         self.b_assemble.setEnabled(not busy and video_ok and narr in ("approved", "awaiting_approval"))
         self.b_rebuild.setEnabled(not busy and bool(prod.load(self.ep)))
