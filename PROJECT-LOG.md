@@ -267,6 +267,13 @@ Research ("ComfyUI music and Owlbert directing", project docs) then shaped:
 
 88 tests pass.
 
+## 2026-10-23 — v0.4.4 fix: the update was blocked by a stray database
+
+v0.4.3 accidentally committed `F:/AI/fof-data/db/studio.sqlite` (an import check run here, outside the tests,
+made a folder literally named "F:"). On Dave's PC git saw it as his real database and refused to update -
+good, nothing was overwritten. Removed from git; .gitignore now blocks `F:/` and `*.sqlite`; every test now
+uses a throwaway data folder even without the data fixture; Update Studio.cmd's error points at the message.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

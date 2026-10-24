@@ -16,6 +16,14 @@ import pytest
 from PIL import Image, ImageDraw
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _never_the_real_data_folder(tmp_path_factory):
+    """Every test (even one without the data fixture) uses a throwaway data folder, never F:\\AI\\fof-data."""
+    import os
+    os.environ.setdefault("FOF_DATA", str(tmp_path_factory.mktemp("default-data")))
+    yield
+
+
 @pytest.fixture()
 def data(tmp_path, monkeypatch):
     monkeypatch.setenv("FOF_DATA", str(tmp_path / "data"))

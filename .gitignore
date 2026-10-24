@@ -11,3 +11,7 @@ config/data-dir.txt
 *.onnx
 *.bin
 !brand/*.png
+# a data folder or database must never be committed (Windows paths look like folders named "F:" on Linux)
+F:/
+*.sqlite
+*.sqlite-*

@@ -6,7 +6,8 @@ echo Getting the newest version...
 git pull
 if errorlevel 1 (
   echo.
-  echo Couldn't download the update. Check your internet connection and try again.
+  echo Couldn't get the update: read the message above. If it's about the internet, check the
+  echo connection and try again; otherwise send Claude a screenshot of this window.
   pause
   exit /b 1
 )
