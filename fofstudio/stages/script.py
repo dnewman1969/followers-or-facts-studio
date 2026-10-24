@@ -430,6 +430,13 @@ def run(ctx: Context) -> None:
                                     "ask": t.ask} for t in (techniques.get(k) for k in story.get("techniques", [])) if t]
         story_text = ("\nThe approved story plan (follow it; each beat lists the source_ids and excerpt_ids to "
                       "use):\n" + json.dumps(plan, ensure_ascii=False, indent=1) + "\n")
+    from .. import storytypes
+    stype = storytypes.STORY_TYPES.get((story or {}).get("story_type") or creative.get("story_type", "")) or \
+        storytypes.STORY_TYPES[storytypes.DEFAULT_TYPE]
+    writer = storytypes.writers().get((story or {}).get("writer") or creative.get("writer", "")) or \
+        storytypes.writers()[storytypes.DEFAULT_WRITER]
+    type_text = (f"\n{stype.sheet()}\nFollow this beat sheet in order: each scene's role is its beat's role; a beat "
+                 "with a big share can take two or more scenes.\n" + storytypes.SHARED_RULES + "\n")
     llm = Ollama()
     ids = known_ids(packet)
     scene_schema = with_known_ids(SCENE_SCHEMA, ids)
@@ -443,7 +450,7 @@ def run(ctx: Context) -> None:
             f"Plan exactly {n_scenes} scenes for a {minutes:g}-minute video. For each: its role, what it must do "
             "(purpose), how it links to the one before (open / but / therefore; avoid 'and then'), the claim_ids, "
             "source_ids (S-...) and excerpt_ids (numbers) it uses, whether Owlbert is on camera, and a picture "
-            "idea that fits the style. Include a 'tell' scene and a 'toolkit' scene.\n"
+            "idea that fits the style. Include a 'tell' scene and a 'toolkit' scene.\n" + type_text
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
             + story_text + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
     ], with_known_ids(OUTLINE_SCHEMA, ids, inside_scenes=True), temperature=0.6,
@@ -469,9 +476,10 @@ def run(ctx: Context) -> None:
         prev = scenes[-1]["narration"] if scenes else ""
         pct0, pct1 = 15 + 80 * (n - 1) / len(planned), 15 + 80 * n / len(planned)
         messages = [
-            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT},
+            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT + "\n\n" + storytypes.writer_block(writer)},
             {"role": "user", "content": (
-                f"Video: {title}. Central question: {outline.get('central_question', '')}\n{style_text}\n\n"
+                f"Video: {title}. Central question: {outline.get('central_question', '')}\n{style_text}\n"
+                f"Story type: {stype.name}. Writing style: {writer.name} (keep to it in every scene).\n\n"
                 f"Write scene {n} of {len(planned)}. Role: {plan_sc['role']}. Purpose: {plan_sc['purpose']}. "
                 f"It links to the previous scene with '{plan_sc['link']}'. "
                 f"{'Owlbert is on camera. ' if plan_sc.get('owl_on_camera') else ''}"
@@ -512,7 +520,8 @@ def run(ctx: Context) -> None:
     for sc in scenes:
         sc["est_seconds"] = round(len(sc.get("narration", "").split()) / style.wpm * 60)
     header = {"Episode": ep.project_id, "Arc": (packet.get("arc") or {}).get("arc_id", "-"),
-              "Style": style.name, "Target": f"{minutes:g} min", "Drafted by": model}
+              "Style": style.name, "Story type": stype.name, "Writer": writer.name, "Target": f"{minutes:g} min",
+              "Drafted by": model}
     write_text(ep.path("script.md"), render(title, scenes, header))
     total = sum(len(sc.get("narration", "").split()) for sc in scenes)
     ctx.log(f"Draft written: {len(scenes)} scenes, {total} words (aim {words}). Read and edit, then approve.")

@@ -45,9 +45,12 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
         nxt = video[i + 1] if i + 1 < len(video) else None
         overlap = max(0.0, (c["start"] + c["duration"]) - nxt["start"]) if nxt else 0.0
         if c.get("still") and ep.abs(c["still"]).exists():   # a camera move, redrawn at exactly this length
+            depth = c.get("depth")
             segments.append(Segment(ep.abs(c["still"]), c["duration"], kind="image", camera=c.get("camera", "zoom_in"),
                                     transition="fade" if overlap > 0.05 else "cut",
-                                    transition_seconds=min(overlap, c["duration"] * 0.45), label=c["label"]))
+                                    transition_seconds=min(overlap, c["duration"] * 0.45), label=c["label"],
+                                    depth=None if not depth else Path("estimated") if depth == "estimated"
+                                    else ep.abs(depth)))
             t = c["start"] + c["duration"] - overlap
             continue
         segments.append(Segment(ep.abs(c["src"]), c["duration"], kind="clip", inpoint=c.get("inpoint", 0.0),
@@ -82,11 +85,21 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
                                            height=int(h * float(ocfg["presenter_height"])), fps=fps,
                                            progress=progress)
         ranges = bits.merge([(o["start"], o["start"] + o["duration"]) for o in tl_json["owl"]])
+        # only one Owlbert at a time: the corner one steps aside while a shot shows him
+        ranges = bits.subtract(ranges, production.owl_shot_ranges(tl_json))
         moves = tl_json.get("moves") or []
         if moves and ocfg.get("moves", True):
             tl.moves, tl.moves_ranges = bits.render_track(moves, speech, tl.total, ep.path("render", f"moves-{h}"),
                                                           w, h, fps, progress)
             ranges = bits.subtract(ranges, tl.moves_ranges)   # he can't be in the corner while he's flying
+        # Owlbert big on the painted set, talking: the same puppet at the size of the set (the set stays empty
+        # while a move plays, so there's still only one of him)
+        live = [(a, b, c["owl_live"]) for c in video if c.get("owl_live")
+                for a, b in bits.subtract([(c["start"], c["start"] + c["duration"])], tl.moves_ranges)]
+        if live:
+            tl.stage_owl = owl.presenter_track(speech, tl.total, ep.path("render", f"owl-stage-{h}"),
+                                               height=int(h * 0.66), fps=fps, progress=progress)
+            tl.stage_owl_spots = live
         tl.presenter_ranges = ranges
         tl.presenter_corner = ocfg["presenter_corner"]
     starts = {s["scene_id"]: s["start"] for s in tl_json.get("speech", [])}

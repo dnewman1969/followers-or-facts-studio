@@ -147,8 +147,14 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
             item = {"id": s["shot_id"], "src": s["clip"]["path"], "start": round(t, 3),
                     "duration": round(dur, 3), "inpoint": 0.0, "label": s["shot_id"],
                     "kind": "clip", "ai": bool(s["clip"].get("ai")), "scene_id": sc["scene_id"]}
+            if s.get("kind") == "owl":       # Owlbert is in this shot, so the corner Owlbert steps aside
+                item["owl_shot"] = True
+                if s.get("owl_live"):
+                    item["owl_live"] = s["owl_live"]
             if s["clip"].get("still"):  # camera moves are redrawn at exactly this length when rendering
                 item["still"], item["camera"] = s["clip"]["still"], s["clip"].get("camera", "zoom_in")
+                if s["clip"].get("depth"):          # a 2.5D move: redrawn with its depth at the exact length
+                    item["depth"] = s["clip"]["depth"]
             tl["video"].append(item)
             t += dur - overlap
     outro_len = media.duration(ep.abs(outro))
@@ -292,14 +298,42 @@ def plan_moves(ep: Episode, tl: dict[str, Any], script: dict[str, Any]) -> list[
     scenes = bits.scenes_from_timeline(tl, roles)
     by_id = {sc["scene_id"]: sc for sc in script.get("scenes", [])}
     if not any(sc.get("owlbert") for sc in by_id.values()):
-        return bits.plan(scenes, ep.creative(), tricks, ep.project_id)   # an older script: the planner decides
+        return away_from_owl_shots(tl, bits.plan(scenes, ep.creative(), tricks, ep.project_id))
     words = (read_json(ep.path("captions", "words.json"), {}) or {}).get("scenes", {})
     for sc in scenes:
         src = by_id.get(sc["scene_id"], {})
         sc["directions"] = src.get("owlbert", [])
         sc["source_ids"] = src.get("source_ids", [])
         sc["words"] = (words.get(sc["scene_id"]) or {}).get("words", [])
-    return bits.plan_directed(scenes, ep.creative(), tricks, prop_info(ep, by_id))
+    return away_from_owl_shots(tl, bits.plan_directed(scenes, ep.creative(), tricks, prop_info(ep, by_id)))
+
+
+def owl_shot_ranges(tl: dict[str, Any], painted_only: bool = False) -> list[tuple[float, float]]:
+    """When a shot shows Owlbert. painted_only: just the older shots with him painted into the picture
+    (a live one can simply leave the set empty while a move plays)."""
+    return [(c["start"], c["start"] + c["duration"]) for c in tl.get("video", [])
+            if c.get("owl_shot") and not (painted_only and c.get("owl_live"))]
+
+
+def away_from_owl_shots(tl: dict[str, Any], moves: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Only one Owlbert on screen: a move that would play while a shot has him painted in slides to just
+    after that shot, or is dropped. (On live Owlbert shots the move wins and the set stays empty meanwhile.)"""
+    busy = owl_shot_ranges(tl, painted_only=True)
+    out: list[dict[str, Any]] = []
+    for m in moves:
+        for _ in range(3):
+            hit = next(((a, b) for a, b in busy if m["start"] < b and m["start"] + m["duration"] > a), None)
+            if not hit:
+                break
+            m = {**m, "start": round(hit[1] + 0.2, 3)}
+        else:
+            continue
+        if any(m["start"] < b and m["start"] + m["duration"] > a for a, b in busy):
+            continue
+        if out and m["start"] < out[-1]["start"] + out[-1]["duration"] + 0.3:
+            continue
+        out.append(m)
+    return out
 
 
 def prop_info(ep: Episode, scenes: dict[str, dict[str, Any]]) -> dict[str, dict[str, str]]:

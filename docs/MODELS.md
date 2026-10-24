@@ -16,6 +16,7 @@ Check a model's licence before adding it, and add a line here when you do.
 | Captions | faster-whisper `small.en` | MIT | downloaded on first use | ~0.5 GB | CPU |
 | Music (optional) | ACE-Step v1 3.5B (ACE-Step 1.5, MIT, is the upgrade: export its ComfyUI template in API format with the same placeholders) | Apache-2.0 | `models/checkpoints` | ~7.7 GB | one cue per mood change, 20–180 s each |
 | Sound effects, Owlbert's moves | our own code (`sfx.py`, `rig.py`, `bits.py`) | ours | | | |
+| Depth for 2.5D moves (optional) | Depth Anything V2 **Small** (`depth_anything_v2_vits.pth`) via the comfyui_controlnet_aux nodes | Apache-2.0 (Small only; Base/Large/Giant are non-commercial) | downloaded by the node on first use | ~100 MB | about a second a picture; without it the program estimates depth itself |
 | B-roll from words (optional) | Wan 2.2 TI2V-5B (`wan2.2_ti2v_5B_fp16` + `wan2.2_vae`) | Apache-2.0 | `models/diffusion_models`, `models/vae` | ~10 GB + 1.4 GB | not measured yet; "under 9 min per 5 s 720p" on a consumer GPU per Wan; native 24 fps |
 | Smooth camera moves | OpenCV (`opencv-python-headless`) | Apache-2.0 | pip package | | a 5 s 1080p move in a few seconds on the CPU |
 | Owlbert's mouth timing | Rhubarb Lip Sync 1.14 | MIT | `fof-data/models/rhubarb` | small | seconds per line, CPU |

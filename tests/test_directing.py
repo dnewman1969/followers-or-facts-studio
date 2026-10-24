@@ -159,3 +159,57 @@ def _finish_with_music(ep):
         pipeline.run_now(ep, st)
         pipeline.approve(ep, st)
     pipeline.run_now(ep, "production")
+
+
+def test_new_topic_person_and_group_can_be_researched(data):
+    from fofstudio import newsubject, subjects
+    from fofstudio.util import StageError
+    t = newsubject.add("story", "The Birds Aren't Real Hoax", "A joke movement taken seriously.",
+                       "Birds are government drones", "2017", "Peter McIndoe")
+    assert any(r["id"] == t["id"] for r in subjects.listing("story", "Birds Aren't Real"))
+    assert subjects.claim_ids_for("story", t["id"]) == [t["claim_id"]]
+    p = newsubject.add("person", "Ima Seller", "Sells survival buckets", "The grid will fail next week")
+    assert any(r["id"] == p["id"] for r in subjects.listing("person", "Ima Seller"))
+    g = newsubject.add("org", "Bucket Alliance", "", "Buy buckets now", careful=True)
+    assert subjects.listing("org", "Bucket Alliance")[0]["claims"] == 1
+    c = newsubject.add("conspiracy", "Clouds are painted on", "", year="2024", people="Ima Seller")
+    assert subjects.claim_ids_for("conspiracy", c["id"]) == [c["claim_id"]]
+    with pytest.raises(StageError):
+        newsubject.add("person", "No Claim Given")
+    with pytest.raises(StageError, match="already"):
+        newsubject.add("story", "The Birds Aren't Real Hoax")
+    assert g["claim_id"].startswith("C-NEW-")
+
+
+def test_story_types_and_writers():
+    from fofstudio import storytypes as stt
+    from fofstudio.scriptfmt import ROLES
+    assert len(stt.STORY_TYPES) >= 13 and len(stt.writers()) >= 14
+    for t in stt.STORY_TYPES.values():
+        assert {"claim", "record", "verdict"} <= set(t.roles) and set(t.roles) <= set(ROLES)
+        assert t.roles.count("claim") == 1                          # the myth is stated once
+        assert 90 <= sum(b.share for b in t.beats) <= 110
+        assert all(w in stt.writers() for w in t.writers)
+    for w in stt.writers().values():
+        assert w.prompt and "[F#]" not in w.prompt
+    three = stt.pick_three({"careful": False, "humor": 2, "story_type": "auto", "writer": "auto"}, "x")
+    assert len({t.key for t, _ in three}) == 3 and len({w.key for _, w in three}) == 3
+    careful = stt.pick_three({"careful": True, "humor": 0, "story_type": "trial", "writer": "gentle_satirist"}, "y")
+    assert all(t.careful_ok and not w.light for t, w in careful)  # a careful topic overrides unsuitable choices
+    fixed = stt.pick_three({"careful": False, "humor": 1, "story_type": "lab", "writer": "stargazer"}, "z")
+    assert {(t.key, w.key) for t, w in fixed} == {("lab", "stargazer")}
+    assert "WRITING STYLE" in stt.writer_block(stt.writers()["stargazer"])
+
+
+def test_stories_carry_their_type_and_writer(episode):
+    from fofstudio.stages import stories
+    ep = episode
+    ep.set_creative(story_type="auto", writer="auto")
+    research_and_story(ep)
+    data = read_json(ep.path("stories.json"))
+    assert all(o.get("story_type") and o.get("writer") for o in data["options"])
+    pipeline.run_now(ep, "script")
+    text = ep.path("script.md").read_text(encoding="utf-8")
+    chosen = stories.chosen(ep)
+    from fofstudio import storytypes as stt
+    assert f"**Writer:** {stt.writers()[chosen['writer']].name}" in text

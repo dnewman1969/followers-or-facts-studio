@@ -30,8 +30,56 @@ def account_path() -> Path:
 
 
 def client_file() -> Path | None:
+    """The Google client file: the one chosen in Settings, or one found in the usual places (the data
+    folder, the Studio folder, its fof_data folder - where Google's own uploader looked - Downloads, Desktop)."""
     p = settings()["youtube"]["client_secrets"]
-    return Path(p) if p and Path(p).exists() else None
+    if p and Path(p).exists():
+        return Path(p)
+    found = find_client_file()
+    if found:
+        try:
+            return use_client_file(found)
+        except StageError:
+            return None
+    return None
+
+
+def find_client_file() -> Path | None:
+    from .config import REPO
+    home = Path.home()
+    places = [Paths().root, REPO, REPO / "fof_data", home / "Downloads", home / "Desktop",
+              home / "OneDrive" / "Desktop", home / "OneDrive" / "Downloads"]
+    for folder in places:
+        try:
+            files = sorted(folder.glob("client_secret*.json"), key=lambda f: f.stat().st_mtime, reverse=True) + \
+                sorted(folder.glob("youtube-client.json"))
+        except OSError:
+            continue
+        for f in files:
+            try:
+                if "installed" in json.loads(f.read_text(encoding="utf-8")):
+                    return f
+            except (OSError, ValueError):
+                continue
+    return None
+
+
+def status() -> dict[str, Any]:
+    """What's ready for uploading, in plain words, for the Publish page."""
+    try:
+        _libs()
+        libs = True
+    except StageError:
+        libs = False
+    cf = client_file()
+    acct = account()
+    signed = False
+    if acct and libs:
+        try:
+            signed = credentials(interactive=False) is not None
+        except Exception:  # noqa: BLE001 - a broken token counts as signed out
+            signed = False
+    return {"libs": libs, "client_file": str(cf) if cf else "", "account": acct, "signed_in": signed}
 
 
 def use_client_file(src: str | Path) -> Path:

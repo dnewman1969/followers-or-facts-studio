@@ -13,7 +13,10 @@ from ..widgets import StagePage, click_feedback
 
 METHODS = {"animate": "Animate the picture (Wan 2.2, ~6 min)",
            "text_to_video": "Make from words (Wan 2.2 5B, ~8 min, b-roll only)",
-           "camera_move": "Smooth camera move (seconds)"}
+           "parallax": "2.5D move with depth (seconds)",
+           "camera_move": "Flat camera move (seconds)"}
+LEVEL_NAMES = {"fast": "Animation: Fast (1 in 10 shots by Wan)", "balanced": "Animation: Balanced (1 in 3)",
+               "full": "Animation: Full (every shot, overnight)"}
 
 
 class ShotRow(QFrame):
@@ -98,8 +101,15 @@ class VideoPage(StagePage):
     def __init__(self, window):
         super().__init__(window)
         row = QHBoxLayout()
+        self.level = QComboBox()
+        for k, name in LEVEL_NAMES.items():
+            self.level.addItem(name, k)
+        self.level.setToolTip("How many pictures Wan 2.2 turns into real animation (about 6 minutes each on a 12 GB "
+                              "card). Every other picture moves in 2.5D with depth, so nothing is a flat zoom.")
+        self.level.currentIndexChanged.connect(self._level_changed)
         self.plan_btn = QPushButton("1. Write scene instructions")
-        click_feedback(self.plan_btn, lambda: self.run_stage("video_plan", {}, "Writing scene instructions"))
+        click_feedback(self.plan_btn, lambda: self.run_stage("video_plan", {"level": self.level.currentData()},
+                                                             "Writing scene instructions"))
         self.make_btn = QPushButton("2. Make the clips")
         self.make_btn.setObjectName("primary")
         click_feedback(self.make_btn, self._make)
@@ -107,7 +117,7 @@ class VideoPage(StagePage):
         click_feedback(self.all_btn, self._approve_all, "Approving...")
         self.summary = QLabel("")
         self.summary.setObjectName("muted")
-        for w in (self.plan_btn, self.make_btn, self.all_btn, self.summary):
+        for w in (self.level, self.plan_btn, self.make_btn, self.all_btn, self.summary):
             row.addWidget(w)
         row.addStretch(1)
         self.body.addLayout(row)
@@ -115,6 +125,15 @@ class VideoPage(StagePage):
         self.scroll.setWidgetResizable(True)
         self.body.addWidget(self.scroll, 1)
         self._sig = None
+
+    def _level_changed(self) -> None:
+        if getattr(self, "_loading_level", False):
+            return
+        from ...config import save_settings, settings
+        cfg = settings()
+        cfg["storyboard"]["animation_level"] = self.level.currentData()
+        save_settings(cfg)
+        self.toast("Saved. Press 1. Write scene instructions again to re-plan which shots are animated.")
 
     def _make(self) -> None:
         st = self.stage_status("video_plan")["status"]
@@ -140,11 +159,17 @@ class VideoPage(StagePage):
         self.plan_btn.setEnabled(board_ok and not busy)
         self.make_btn.setEnabled(bool(plan["shots"]) and not busy)
         self.all_btn.setEnabled(bool(plan["shots"]) and not busy)
+        from ...config import settings
+        self._loading_level = True
+        self.level.setCurrentIndex(max(0, self.level.findData(settings()["storyboard"].get("animation_level",
+                                                                                          "balanced"))))
+        self._loading_level = False
         n_anim = sum(1 for s in plan["shots"] if s["method"] == "animate")
         n_t2v = sum(1 for s in plan["shots"] if s["method"] == "text_to_video")
-        self.summary.setText(f"{len(plan['shots'])} shots · {n_anim} animated, {n_t2v} made from words (about "
-                             f"{n_anim * 6 + n_t2v * 8} min of GPU time), the rest smooth camera moves"
-                             if plan["shots"] else "")
+        n_px = sum(1 for s in plan["shots"] if s["method"] == "parallax")
+        gpu = n_anim * vs.MINUTES_PER_CLIP + n_t2v * 8
+        self.summary.setText(f"{len(plan['shots'])} shots · {n_anim} animated by Wan, {n_t2v} from words, {n_px} in "
+                             f"2.5D · about {gpu / 60:.1f} h of GPU time" if plan["shots"] else "")
         sig = (busy, str(plan))
         if sig == self._sig:
             return

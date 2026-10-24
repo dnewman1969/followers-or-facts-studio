@@ -10,6 +10,17 @@ Owlbert narrates every video and appears throughout it:
 - **Moves** (V3 Moves track on the Production page): he flies in, points at the evidence, pulls the
   trick out of his hat, gives the verdict a wing flourish, and flies off. See below.
 
+## Only one Owlbert at a time
+
+- **Owlbert shots** (the storyboard's "Owlbert" shots) are painted as an *empty set*; the program
+  removes any mention of him from the picture idea so the painter can't draw a second owl. When the video
+  renders, the real Owlbert stands on that set, big (two thirds of the frame height), talking with his
+  beak and blinking. The storyboard still shows the picture with him in it, so you can judge it.
+- While an Owlbert shot is on screen, the **corner Owlbert hides**. If one of his moves (a hat trick, say)
+  happens during that shot, the set stays empty while he does it from the corner. Older videos with
+  Owlbert painted into the picture move the move to after the shot instead.
+- While a move plays, the corner Owlbert hides too.
+
 ## His moves
 
 Owlbert is cut into parts (`fofstudio/rig.py`): body, two folded wings, cap, tassel. The program

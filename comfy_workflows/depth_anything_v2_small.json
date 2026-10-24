@@ -1,0 +1,7 @@
+{
+  "_about": "Depth map for 2.5D (parallax) camera moves. Needs the free comfyui_controlnet_aux node pack (Apache-2.0); it downloads depth_anything_v2_vits.pth (Depth Anything V2 SMALL, Apache-2.0) on first use. Only the Small model is licensed for commercial use - don't switch to Base/Large/Giant (CC-BY-NC). Placeholders: IMAGE, FILENAME_PREFIX.",
+  "1": {"class_type": "LoadImage", "inputs": {"image": "{{IMAGE}}"}},
+  "2": {"class_type": "DepthAnythingV2Preprocessor",
+        "inputs": {"image": ["1", 0], "ckpt_name": "depth_anything_v2_vits.pth", "resolution": 768}},
+  "3": {"class_type": "SaveImage", "inputs": {"images": ["2", 0], "filename_prefix": "{{FILENAME_PREFIX}}"}}
+}

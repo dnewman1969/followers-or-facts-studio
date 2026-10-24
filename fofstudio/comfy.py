@@ -85,6 +85,12 @@ class Comfy:
         except Exception as exc:  # noqa: BLE001
             return False, f"ComfyUI not reachable at {self.url}: {exc}"
 
+    def has_node(self, name: str) -> bool:
+        """Is this node type installed in ComfyUI?"""
+        with self._session() as s:
+            r = s.get(self.url + f"/object_info/{name}", timeout=6)
+            return r.status_code == 200 and name in (r.json() or {})
+
     def upload_image(self, path: Path) -> str:
         with self._session() as s, open(path, "rb") as fh:
             r = s.post(self.url + "/upload/image",

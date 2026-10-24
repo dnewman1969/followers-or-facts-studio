@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
@@ -66,6 +68,10 @@ class PublishPage(StagePage):
         self.upload_btn.setMinimumHeight(44)
         click_feedback(self.upload_btn, self._upload)
         rl.addWidget(self.upload_btn)
+        self.yt_state = QLabel("")
+        self.yt_state.setWordWrap(True)
+        self.yt_state.setTextFormat(Qt.RichText)
+        rl.addWidget(self.yt_state)
         self.uploaded = QLabel("")
         self.uploaded.setOpenExternalLinks(True)
         self.uploaded.setWordWrap(True)
@@ -97,15 +103,67 @@ class PublishPage(StagePage):
         self.refresh()
 
     def _upload(self) -> None:
-        if self.stage_status("package")["status"] != "approved":
-            pipeline.approve(self.ep, "package")
-        meta = read_json(self.ep.path("publish", "metadata.json")) or {}
+        """Upload: signs in first if needed (a browser tab), writes it up if that hasn't been done, then
+        uploads PRIVATE. Each step that can't go ahead says exactly why."""
+        from ... import youtube
+        st = youtube.status()
+        if not st["libs"]:
+            QMessageBox.warning(self, "Upload to YouTube", "The YouTube packages aren't installed. Close the Studio "
+                                "and run Update Studio.cmd, then try again.")
+            return
+        if not st["client_file"]:
+            QMessageBox.warning(self, "Upload to YouTube", "First make your free Google client file and choose it in "
+                                "Settings → YouTube → Choose client file (docs/YOUTUBE.md, about 10 minutes). If you "
+                                "already downloaded it, put client_secret....json in your Downloads folder and the "
+                                "Studio will find it.")
+            return
+        if not st["signed_in"]:
+            self._sign_in_then_upload()
+            return
+        meta = read_json(self.ep.path("publish", "metadata.json"))
         privacy = settings()["youtube"]["privacy"]
+        title = (meta or {}).get("title") or self.ep.title
         if QMessageBox.question(self, "Upload to YouTube",
-                                f"Upload \"{meta.get('title')}\" to your channel as {privacy.upper()}?") \
+                                f"Upload \"{title}\" to {st['account']['title']} as {privacy.upper()}?") \
                 != QMessageBox.Yes:
             return
+        if not meta:   # not written up yet: write it up and upload in one go
+            self.run_stage("autopublish", {}, "Writing it up and uploading to YouTube (private)")
+            return
+        if self.stage_status("package")["status"] != "approved":
+            pipeline.approve(self.ep, "package")
         self.run_stage("upload", {}, "Uploading to YouTube")
+
+    def _sign_in_then_upload(self) -> None:
+        import threading
+
+        from PySide6.QtCore import QTimer
+
+        from ... import youtube
+        self.yt_state.setText(f"<span style='color:{GOLD}'>A browser tab opened: pick the Google account that owns "
+                              "the channel and allow access. The upload starts when you're back.</span>")
+        self._signin: dict | None = None
+
+        def work() -> None:
+            try:
+                self._signin = {"ok": youtube.sign_in()}
+            except Exception as exc:  # noqa: BLE001 - shown on the page
+                self._signin = {"error": str(exc)}
+        threading.Thread(target=work, daemon=True).start()
+        self._signin_timer = QTimer(self)
+
+        def done() -> None:
+            if self._signin is None:
+                return
+            self._signin_timer.stop()
+            if "error" in self._signin:
+                QMessageBox.warning(self, "Signing in to YouTube", f"Signing in didn't work:\n{self._signin['error']}")
+                self.refresh()
+                return
+            self.refresh()
+            self._upload()
+        self._signin_timer.timeout.connect(done)
+        self._signin_timer.start(500)
 
     def refresh(self) -> None:
         super().refresh()
@@ -116,8 +174,8 @@ class PublishPage(StagePage):
         self.make_btn.setEnabled(rendered and not busy)
         meta = read_json(self.ep.path("publish", "metadata.json"))
         self.save_btn.setEnabled(bool(meta) and not busy)
-        self.upload_btn.setEnabled(bool(meta) and not busy and
-                                   self.stage_status("package")["status"] in ("approved", "awaiting_approval"))
+        self.upload_btn.setEnabled((bool(meta) or rendered) and not busy and not self.busy("autopublish"))
+        self._show_youtube_state()
         sig = str(meta.get("made_at") if meta else None) + str(self.ep.path("publish", "thumbnail.png").exists())
         if sig != self._sig:
             self._sig = sig
@@ -147,5 +205,20 @@ class PublishPage(StagePage):
         else:
             self.uploaded.setText("")
 
+    def _show_youtube_state(self) -> None:
+        from ... import youtube
+        if getattr(self, "_yt_checked", 0) and time.time() - self._yt_checked < 20:
+            return
+        self._yt_checked = time.time()
+        st = youtube.status()
+        ok, no = f"<span style='color:{GREEN}'>✔</span>", f"<span style='color:#e06c5a'>✖</span>"
+        acct = st["account"]
+        self.yt_state.setText(
+            f"{ok if st['libs'] else no} YouTube packages &nbsp; "
+            f"{ok if st['client_file'] else no} Google client file &nbsp; "
+            f"{ok if st['signed_in'] else no} "
+            + (f"Signed in as <b>{acct['title']}</b>" if st["signed_in"] and acct else
+               "Not signed in (Upload signs you in)"))
+
     def watched(self) -> list[str]:
-        return ["package", "upload", "render"]
+        return ["package", "upload", "render", "autopublish"]

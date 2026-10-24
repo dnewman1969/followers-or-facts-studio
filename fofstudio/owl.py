@@ -203,9 +203,22 @@ def loudness_cues(wav: Path, fps: int = 30) -> list[tuple[float, str]]:
     return cues
 
 
+_CUES: dict[tuple, tuple[list[tuple[float, str]], str]] = {}
+
+
 def cues_for(wav: Path, text: str | None = None) -> tuple[list[tuple[float, str]], str]:
+    """Mouth shapes for one line (remembered, since the corner, on-set and move tracks all need them)."""
+    try:
+        key = (str(wav), Path(wav).stat().st_mtime, text)
+    except OSError:
+        key = None
+    if key in _CUES:
+        return _CUES[key]
     cues = rhubarb_cues(wav, text)
-    return (cues, "rhubarb") if cues else (loudness_cues(wav), "loudness")
+    out = (cues, "rhubarb") if cues else (loudness_cues(wav), "loudness")
+    if key:
+        _CUES[key] = out
+    return out
 
 
 # ---------------------------------------------------------------- presenter video

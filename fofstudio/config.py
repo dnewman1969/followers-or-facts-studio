@@ -61,6 +61,7 @@ DEFAULTS: dict[str, Any] = {
         "t2v_frames": 121,
         "t2v_fps": 24,
         "music_workflow": "comfy_workflows/acestep_music.json",
+        "depth_workflow": "comfy_workflows/depth_anything_v2_small.json",
         "music_model_name": "ACE-Step",
         "timeout_seconds": 3600,
     },
@@ -97,7 +98,9 @@ DEFAULTS: dict[str, Any] = {
         "max_shots_per_scene": 5,       # (old setting, no longer used)
         "shot_limit_per_scene": 24,
         "candidates_per_shot": 2,       # versions painted of each shot (1-3); the first is used unless you pick another
-        "animate_shots_per_scene": 1,   # Wan 2.2 image-to-video clips per scene (Owlbert and caricatures first)
+        "animate_shots_per_scene": 1,   # (old setting; animation_level decides now)
+        "animation_level": "balanced",  # fast (1 in 10 shots animated by Wan) | balanced (1 in 3) | full (every shot)
+        "parallax": True,               # every other picture moves in 2.5D (depth) instead of a flat zoom
         "t2v_shots_per_scene": 0,       # Wan 2.2 text-to-video b-roll clips per scene (needs the TI2V-5B model)
     },
     "youtube": {

@@ -48,6 +48,7 @@ class Segment:
     label: str = ""
     inpoint: float = 0.0           # start this many seconds into a clip
     start: float = 0.0             # filled in by layout()
+    depth: Path | None = None      # a depth map: the camera move becomes a 2.5D parallax move
 
 
 @dataclass
@@ -97,6 +98,9 @@ class Timeline:
     presenter: Path | None = None
     presenter_ranges: list[tuple[float, float]] = field(default_factory=list)
     presenter_corner: str = "bottom_right"
+    # Owlbert big inside a shot (talking on the painted set), and where: [(start, end, "left"|"right")]
+    stage_owl: Path | None = None
+    stage_owl_spots: list[tuple[float, float, str]] = field(default_factory=list)
     # Owlbert's moves (flying, hat trick...): full-size transparent drawings and when they play
     moves: Path | None = None
     moves_ranges: list[tuple[float, float]] = field(default_factory=list)
@@ -199,6 +203,75 @@ def kenburns_frames(path: Path, move: str, w: int, h: int, frames: int):
         yield out   # numpy frame; .tobytes() works the same as for a picture
 
 
+def estimate_depth(img) -> "np.ndarray":
+    """A rough depth map (1 = near) when no depth model is available: lower in the frame and busier
+    (more detail, more contrast) counts as nearer. Smooth, so the parallax never tears."""
+    import cv2
+    import numpy as np
+    a = np.asarray(img.convert("L"), dtype=np.float32) / 255.0
+    h, w = a.shape
+    vertical = np.linspace(0.15, 1.0, h, dtype=np.float32)[:, None].repeat(w, axis=1)
+    detail = cv2.GaussianBlur(np.abs(cv2.Laplacian(a, cv2.CV_32F, ksize=3)), (0, 0), max(h, w) / 40)
+    detail = detail / (detail.max() + 1e-6)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    centre = 1 - np.hypot((xx - w / 2) / w, (yy - h / 2) / h) * 1.2
+    d = 0.55 * vertical + 0.3 * detail + 0.15 * np.clip(centre, 0, 1)
+    d = cv2.GaussianBlur(d, (0, 0), max(h, w) / 60)
+    return (d - d.min()) / (d.max() - d.min() + 1e-6)
+
+
+def parallax_frames(path: Path, depth_path: Path | None, move: str, w: int, h: int, frames: int):
+    """Frames of a 2.5D camera move: the picture is split by depth, so near things slide past far things
+    (like a real camera) instead of the whole picture zooming as one flat card."""
+    import cv2
+    import numpy as np
+    from PIL import Image
+    img = Image.open(path).convert("RGB")
+    target = w / h
+    if img.width / img.height > target:
+        nw = round(img.height * target)
+        box = ((img.width - nw) // 2, 0, (img.width - nw) // 2 + nw, img.height)
+    else:
+        nh = round(img.width / target)
+        box = (0, (img.height - nh) // 2, img.width, (img.height - nh) // 2 + nh)
+    img = img.crop(box)
+    if depth_path and Path(depth_path).is_file():
+        dimg = Image.open(depth_path).convert("L")
+        full = Image.open(path)
+        if dimg.size != full.size:
+            dimg = dimg.resize(full.size, Image.BILINEAR)
+        d = np.asarray(dimg.crop(box), dtype=np.float32) / 255.0
+        d = cv2.GaussianBlur(d, (0, 0), max(d.shape) / 150)
+        d = (d - d.min()) / (d.max() - d.min() + 1e-6)
+    else:
+        d = estimate_depth(img)
+    src = np.asarray(img)
+    bw, bh = img.width, img.height
+    depth = cv2.resize(d, (bw, bh), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+    uu, vv = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+    # a gentle zoom so the edges never show while things slide
+    base = kenburns_boxes(move if move in ("zoom_in", "zoom_out", "dolly_in") else move, bw, bh, frames)
+    for i, (x0, y0, x1, y1) in enumerate(base):
+        p = _ease(i / max(1, frames - 1)) - 0.5           # -0.5 .. 0.5, centred so both ends stay inside
+        mx = x0 + uu * (x1 - x0) / w
+        my = y0 + vv * (y1 - y0) / h
+        dd = cv2.remap(depth, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        if move in ("pan_left", "pan_right"):
+            sx = (1 if move == "pan_right" else -1) * p * 0.035 * bw
+            mx = mx + dd * sx
+        elif move in ("pan_up", "pan_down"):
+            sy = (1 if move == "pan_down" else -1) * p * 0.035 * bh
+            my = my + dd * sy
+        else:   # zooms: near things grow faster than far things
+            k = (0.05 if move != "zoom_out" else -0.05) * (p + 0.5)
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            mx = mx - (mx - cx) * dd * k
+            my = my - (my - cy) * dd * k
+        out = cv2.remap(src, mx.astype(np.float32), my.astype(np.float32), cv2.INTER_CUBIC,
+                        borderMode=cv2.BORDER_REFLECT)
+        yield out
+
+
 def _cover(w: int, h: int) -> str:
     return f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
 
@@ -239,7 +312,8 @@ def _render_segment(tl: Timeline, seg: Segment, out: Path, enc: dict) -> None:
     else:
         args += ["-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}", "-r", str(fps), "-i", "-"]
         chain = f"[0:v]{TO_YUV}"
-        piped = kenburns_frames(seg.path, seg.camera, w, h, frames)
+        piped = parallax_frames(seg.path, seg.depth, seg.camera, w, h, frames) if seg.depth is not None \
+            else kenburns_frames(seg.path, seg.camera, w, h, frames)
     if seg.overlay:
         args += ["-i", str(seg.overlay)]
         chain += f"[base];[1:v]scale={w}:{h}[ov];[base][ov]overlay=0:0:format=auto,{TO_YUV}"
@@ -302,9 +376,14 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
         if tl.presenter and tl.presenter_ranges:
             owl_in = n + len(tl.narration) + (1 if tl.music else 0) + extra_audio
             args += ["-f", "concat", "-safe", "0", "-i", str(tl.presenter)]
+        stage_in = None
+        if tl.stage_owl and tl.stage_owl_spots:
+            stage_in = n + len(tl.narration) + (1 if tl.music else 0) + extra_audio + (1 if owl_in is not None else 0)
+            args += ["-f", "concat", "-safe", "0", "-i", str(tl.stage_owl)]
         moves_in = None
         if tl.moves and tl.moves_ranges:
-            moves_in = n + len(tl.narration) + (1 if tl.music else 0) + extra_audio + (1 if owl_in is not None else 0)
+            moves_in = n + len(tl.narration) + (1 if tl.music else 0) + extra_audio + (1 if owl_in is not None else 0) \
+                + (1 if stage_in is not None else 0)
             args += ["-f", "concat", "-safe", "0", "-i", str(tl.moves)]
 
         steps: list[str] = []
@@ -324,6 +403,16 @@ def render(tl: Timeline, out: Path, srt: Path | None = None, burn_subs: bool = F
             steps.append(f"[{v}][owl]overlay=x={x}:y={y}:enable='{when}':eof_action=pass:format=auto,"
                          f"format=yuv420p[vowl]")
             v = "vowl"
+        if stage_in is not None:
+            sides = sorted({side for _, _, side in tl.stage_owl_spots})
+            steps.append(f"[{stage_in}:v]fps={tl.fps},format=rgba" + (f",split={len(sides)}" if len(sides) > 1 else "")
+                         + "".join(f"[stage{k}]" for k in range(len(sides))))
+            for k, side in enumerate(sides):
+                when = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b, sd in tl.stage_owl_spots if sd == side)
+                x = "W*0.08" if side == "left" else "W-w-W*0.08"
+                steps.append(f"[{v}][stage{k}]overlay=x={x}:y=H-h-H*0.04:enable='{when}':eof_action=pass:"
+                             f"format=auto,format=yuv420p[vstage{k}]")
+                v = f"vstage{k}"
         if moves_in is not None:
             when = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in tl.moves_ranges)
             steps.append(f"[{moves_in}:v]fps={tl.fps},format=rgba[moves]")

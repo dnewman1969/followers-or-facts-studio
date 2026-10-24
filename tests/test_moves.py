@@ -139,3 +139,44 @@ def test_assembled_timeline_has_moves(episode):
     assert ep.path("render", "moves-480.txt").exists()
     assert read_json(ep.path("production.json"))["moves"] == tl["moves"]
 
+
+
+def test_only_one_owlbert_on_screen(episode):
+    """Owl shots are painted empty and Owlbert is laid on top live; the corner Owlbert and his moves stay out."""
+    from fofstudio import pipeline
+    from fofstudio.stages import storyboard, video
+    from tests.test_pipeline import research_and_story
+    ep = episode
+    research_and_story(ep)
+    for st in ("script",):
+        pipeline.run_now(ep, st)
+        pipeline.approve(ep, st)
+    pipeline.run_now(ep, "storyboard")
+    owl_shots = [s for s in storyboard.shots(ep) if s.get("kind") == "owl"]
+    assert owl_shots and all(s.get("owl_live") in ("left", "right") for s in owl_shots)
+    assert all(s["image"]["path"].endswith("-set.png") for s in owl_shots)
+    assert "owl" not in storyboard.set_only("Owlbert leans on his desk, his wings spread, beside an owl clock").lower()
+    pipeline.approve(ep, "storyboard")
+    pipeline.run_now(ep, "video_plan", {"level": "fast"})
+    plan = video.load_plan(ep)["shots"]
+    assert {s["method"] for s in plan} >= {"parallax"}
+    assert not any(s["method"] == "animate" and s.get("owl_live") for s in plan)
+    pipeline.approve(ep, "video_plan")
+    pipeline.run_now(ep, "video")
+    for s in video.load_plan(ep)["shots"]:
+        video.update_shot(ep, s["shot_id"], approved=True)
+    pipeline.approve(ep, "video")
+    for st in ("narration", "captions"):
+        pipeline.run_now(ep, st)
+        pipeline.approve(ep, st)
+    pipeline.skip(ep, "music")
+    pipeline.run_now(ep, "production")
+    tl = production.load(ep)
+    assert production.owl_shot_ranges(tl) and any(c.get("owl_live") for c in tl["video"])
+    assert any(c.get("depth") for c in tl["video"])
+    for m in tl["moves"]:   # painted-in Owlbert shots never share the screen with a move
+        assert not any(m["start"] < b and m["start"] + m["duration"] > a
+                       for a, b in production.owl_shot_ranges(tl, painted_only=True))
+    pipeline.approve(ep, "production")
+    pipeline.run_now(ep, "render", {"draft": True})
+    assert ep.path("render", "owl-stage-480.txt").exists() and ep.path("render", "preview.mp4").exists()

@@ -317,7 +317,9 @@ def run_job(job: dict[str, Any]) -> None:
         if stage.gpu and settings()["rendermode"]["auto_for_gpu_stages"]:
             from . import rendermode
             suspended = rendermode.suspend(rendermode.suggested_names())
-        pipeline.run_now(ep, stage.name, options, log=log.info, progress=progress, cancelled=cancelled)
+        from .gpucheck import Sampler
+        with Sampler(job_id, stage.name, job["project_id"]):   # GPU use while it runs -> logs/gpu-usage.csv
+            pipeline.run_now(ep, stage.name, options, log=log.info, progress=progress, cancelled=cancelled)
         db.execute("UPDATE job SET status='done', finished_at=?, progress=?, progress_pct=100 WHERE job_id=?",
                    (utc_now(), "Finished - waiting for your approval", job_id))
         _after(job, ep, options)

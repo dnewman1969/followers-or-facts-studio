@@ -16,6 +16,7 @@ so quotes are always exact.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 from PIL import Image, ImageFilter
@@ -33,7 +34,16 @@ GUARD = ("no text, no letters, no words, no watermark, no logos, "
          "no recognizable real people, faces turned away or in silhouette")
 CARICATURE_GUARD = ("clearly a cartoon caricature drawing, not a photograph, no text, no letters, no logos, "
                     "no speech bubbles")
-OWL_SET = "an empty set with no people and no animals, room on one side for a character"
+OWL_SET = ("an EMPTY set, nobody in it: no people, no owls, no birds, no animals, no characters, "
+           "an empty space on one side")
+OWL_WORDS = re.compile(r"\b(?:professor\s+)?owlbert(?:'s)?\b|\bowls?\b|\bthe professor\b|\bbirds?\b|\bhe\b|\bhis\b|\bhim\b|\bbeaks?\b|\bwings?\b|\bfeathers?\b|\bspectacles\b|\bglasses\b|\bgraduation cap\b",
+                       re.IGNORECASE)
+
+
+def set_only(idea: str) -> str:
+    """The picture idea for an Owlbert shot with Owlbert taken out: the painter makes the empty set, and the
+    real Owlbert is added on top (otherwise it paints its own owl and there are two)."""
+    return re.sub(r"\s{2,}", " ", OWL_WORDS.sub("", idea)).strip(" ,.")
 CAMERA_MOVES = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down", "dolly_in", "static"]
 CARD_SECONDS = {"title_card": 3.0, "quote_card": 6.0, "technique_card": 6.0}
 VERSION = 2
@@ -117,8 +127,9 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
             "follow the narration in order, so the pictures change as Owlbert talks and never repeat. Each idea is "
             "one or two sentences: the subject, the setting, the framing (wide, medium, close-up, overhead...), the "
             "light and mood, in this style. Vary the framing from shot to shot. Kinds: 'broll' = places, objects, "
-            "documents, crowds seen from behind, visual metaphors; 'owl' = Owlbert the owl professor appears (just "
-            "describe the set and what he's doing, he's added from his artwork); 'caricature' = a cartoon "
+            "documents, crowds seen from behind, visual metaphors; 'owl' = a shot where Owlbert talks to camera: "
+            "describe ONLY the empty place he'll stand in (a desk, a study, a set that fits the scene) and never "
+            "describe him, he's added live from his artwork; 'caricature' = a cartoon "
             "caricature of one of the cast doing the documented thing the narration describes. Never name a real "
             "person. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
             "Keep each idea short.")},
@@ -181,20 +192,27 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         person = people[shot["person_id"]]
         full = f"{shot['idea']}. The character: {person['design']}. {style.look}. {CARICATURE_GUARD}"
     elif shot["kind"] == "owl":
-        full = f"{shot['idea']}. {OWL_SET}. {style.look}. {GUARD}"
+        full = f"{set_only(shot['idea'])}. {OWL_SET}. {style.look}. {GUARD}"
     else:
         full = f"{shot['idea']}. {style.look}. {GUARD}"
     full += f". Avoid: {style.negative}, washed out, low contrast"
     raw, meta, seed = _comfy_image(ep, name, full)
     picture = raw
+    extra: dict[str, Any] = {}
     if shot["kind"] == "owl":
+        # the clip is made from the empty set; Owlbert himself is added live (talking) when the video renders,
+        # so he's never drawn twice. The picture with him in it is only the storyboard preview.
+        side = k % 2
         picture = ep.path("images", "raw", f"{name}-{seed}-owl.png")
-        _place_owlbert(raw, picture, side=k % 2)
+        _place_owlbert(raw, picture, side=side)
+        set_pic = cards.ai_label(raw, ep.path("images", f"{name}-set.png"))
+        extra = {"set": ep.rel(set_pic), "set_raw": ep.rel(raw), "side": side}
     labeled = cards.ai_label(picture, ep.path("images", f"{name}.png"))
     if shot["kind"] == "caricature":
         labeled = cards.name_caption(labeled, labeled, people[shot["person_id"]]["name"])
     return {"path": ep.rel(labeled), "raw": ep.rel(picture), "prompt": shot["idea"], "full_prompt": full,
-            "seed": seed, "model": cfg["image_model_name"], "workflow": meta["workflow"], "made_at": utc_now()}
+            "seed": seed, "model": cfg["image_model_name"], "workflow": meta["workflow"], "made_at": utc_now(),
+            **extra}
 
 
 def _cards(ep: Episode, scene: dict[str, Any], excerpts: dict[int, dict[str, Any]],
@@ -355,10 +373,14 @@ def shots(ep: Episode) -> list[dict[str, Any]]:
                 c = shot["candidates"][pick] if 0 <= pick < len(shot["candidates"]) else None
                 c = c or next((x for x in shot["candidates"] if x), None)
                 if c:
-                    out.append({"shot_id": shot["shot_id"], "scene_id": s["scene_id"], "type": "ai_image",
-                                "kind": shot["kind"], "image": c, "prompt": c["prompt"],
-                                "seconds": styles.get(s.get("style")).shot_seconds,
-                                "person_id": shot.get("person_id", "")})
+                    item = {"shot_id": shot["shot_id"], "scene_id": s["scene_id"], "type": "ai_image",
+                            "kind": shot["kind"], "image": c, "prompt": c["prompt"],
+                            "seconds": styles.get(s.get("style")).shot_seconds,
+                            "person_id": shot.get("person_id", "")}
+                    if shot["kind"] == "owl" and c.get("set"):    # the empty set; Owlbert is added live
+                        item["image"] = {**c, "path": c["set"], "raw": c["set_raw"]}
+                        item["owl_live"] = "left" if c.get("side", 0) == 0 else "right"
+                    out.append(item)
         else:
             for k in s.get("picked", []):
                 c = s["candidates"][k]

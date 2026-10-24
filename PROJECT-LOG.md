@@ -274,6 +274,31 @@ made a folder literally named "F:"). On Dave's PC git saw it as his real databas
 good, nothing was overwritten. Removed from git; .gitignore now blocks `F:/` and `*.sqlite`; every test now
 uses a throwaway data folder even without the data fixture; Update Studio.cmd's error points at the message.
 
+## 2026-10-24 — v0.5.0: one Owlbert, story types and writers, more motion, GPU log, add to database
+
+- **Upload**: the Publish page shows what's ready (packages, client file, signed in); Upload signs in first
+  if needed (browser) and writes it up if needed (autopublish), always private. The Google client file is
+  found automatically in Downloads/Desktop/data folder (where Google's own uploader expected it). Still
+  waiting for Dave's actual error message to confirm the root cause.
+- **Only one Owlbert**: owl shots are painted as empty sets (Owlbert words scrubbed from the prompt);
+  the render lays the live talking rig Owlbert on the set at 66% height; the corner presenter and moves
+  stay out of owl shots (`production.away_from_owl_shots`, render subtracts ranges).
+- **Add to database** (`newsubject.py`, Database → "+ Add new"): topic, conspiracy, person or group, each
+  with a seed claim (unverified, no sources) ready for Research; careful flag adds courts_only.
+- **GPU check** (`gpucheck.py`, Queue → "GPU check"): logs/gpu-report-*.txt (nvidia-smi, Ollama % on GPU,
+  live writer test with tokens/s and GPU busy, ComfyUI device, encoder, per-step summary) and
+  logs/gpu-usage.csv sampled every 5 s during every job.
+- **Story types and writers** (`storytypes.py`, `data/writers.json`, research "Story types writer voices
+  animation"): 13 beat-sheet story types and 15 writing styles, picked on the Stories page or "AI picks"
+  three different ones; careful topics get sober types and no light writers; the script outline follows
+  the beat sheet and every scene carries the writer's style block.
+- **More motion**: Video page "Animation: Fast / Balanced / Full" (1 in 10 / 1 in 3 / every shot by Wan,
+  with a GPU-hours estimate); every other picture is a 2.5D parallax move (Depth Anything V2 Small in
+  ComfyUI if comfyui_controlnet_aux is installed, else estimated depth). Owl sets and careful-topic harm
+  scenes are never Wan-animated.
+
+92 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

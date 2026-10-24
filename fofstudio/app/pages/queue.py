@@ -23,6 +23,7 @@ class QueuePage(QWidget):
         lay.addWidget(row(self.pause_btn, button("Start worker", lambda: (jobs.start_worker(force=True), self.refresh())),
                           button("Run jobs inside the Studio", lambda: (jobs.start_thread_worker(), self.refresh())),
                           button("Test the worker", self._selftest),
+                          button("GPU check (make a log file)", self._gpu_check),
                           button("Cancel selected", self._cancel), button("Move up", lambda: self._move(-1)),
                           button("Move down", lambda: self._move(1))))
         self.table = table(["Job", "Episode", "Stage", "Status", "Progress / error", "Queued", "Finished"])
@@ -63,6 +64,39 @@ class QueuePage(QWidget):
             if text != self.log.toPlainText():
                 self.log.setPlainText(text)
                 self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
+
+    def _gpu_check(self) -> None:
+        """Write logs/gpu-report-<date>.txt (card, Ollama on the GPU, ComfyUI, a live writer test) and show it."""
+        import threading
+
+        from PySide6.QtCore import QTimer
+
+        from ... import gpucheck
+        self.state.setText("GPU check running: the writer does a short live test while the GPU is watched "
+                           "(about 30 seconds)...")
+        result: dict = {}
+
+        def work() -> None:
+            try:
+                result["path"] = gpucheck.report()
+            except Exception as exc:  # noqa: BLE001 - shown on the page
+                result["error"] = str(exc)
+        threading.Thread(target=work, daemon=True).start()
+        timer = QTimer(self)
+
+        def done() -> None:
+            if not result:
+                return
+            timer.stop()
+            if "error" in result:
+                info(self, f"The GPU check couldn't finish: {result['error']}")
+                return
+            gpucheck.open_folder(result["path"])
+            info(self, f"Saved {result['path'].name} in the logs folder (it's opened for you). Send that file to "
+                       "Claude. While jobs run, GPU use is also written to gpu-usage.csv in the same folder.")
+        timer.timeout.connect(done)
+        timer.start(500)
+        self._gpu_timer = timer
 
     def _selftest(self) -> None:
         """Queue a tiny job; it should say 'done' within a few seconds."""

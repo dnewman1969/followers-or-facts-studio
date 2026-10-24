@@ -7,18 +7,77 @@ from __future__ import annotations
 import re
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QButtonGroup, QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSplitter,
-                               QTextBrowser, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
+                               QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSplitter, QTextBrowser,
+                               QVBoxLayout, QWidget)
 
-from ... import db, researched, subjects
+from ... import db, newsubject, researched, subjects
 from ...episode import Episode, next_id
-from ..common import GOLD, GREEN, MUTED, RED, color_item, error, fill, table
+from ...util import StageError
+from ..common import GOLD, GREEN, MUTED, RED, color_item, error, fill, info, table
 from ..widgets import Chip
 
 
 TAB_NAMES = {**subjects.KINDS, "researched": "Researched ★"}
 # which step to open for each button on the Researched tab
 OPEN_RESEARCH, OPEN_STORIES = 1, 2
+
+
+class AddDialog(QDialog):
+    """Add a new topic, conspiracy, person or group."""
+
+    def __init__(self, parent, kind: str):
+        super().__init__(parent)
+        self.setWindowTitle("Add something new to research")
+        self.setMinimumWidth(560)
+        form = QFormLayout(self)
+        self.kind = QComboBox()
+        for k, name in newsubject.KINDS.items():
+            self.kind.addItem(name, k)
+        self.kind.setCurrentIndex(max(0, self.kind.findData(kind)))
+        self.name = QLineEdit()
+        self.about = QPlainTextEdit()
+        self.about.setFixedHeight(70)
+        self.claim = QLineEdit()
+        self.year = QLineEdit()
+        self.year.setMaximumWidth(120)
+        self.people = QLineEdit()
+        self.people.setPlaceholderText("Names, separated by commas (optional)")
+        self.careful = QCheckBox("Careful topic: real victims or deaths (courts and documents only, no jokes)")
+        form.addRow("What is it", self.kind)
+        form.addRow("Name", self.name)
+        form.addRow("What it's about", self.about)
+        form.addRow("The claim", self.claim)
+        form.addRow("First seen (year)", self.year)
+        form.addRow("Who said or sold it", self.people)
+        form.addRow("", self.careful)
+        self.hint = QLabel("")
+        self.hint.setObjectName("muted")
+        self.hint.setWordWrap(True)
+        form.addRow(self.hint)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        form.addRow(btns)
+        self.kind.currentIndexChanged.connect(self._hint)
+        self._hint()
+
+    def _hint(self) -> None:
+        k = self.kind.currentData()
+        self.name.setPlaceholderText({"story": "e.g. The Moon Landing Hoax", "conspiracy": "e.g. Chemtrails control the weather",
+                                      "person": "Their full name", "org": "The group's name"}[k])
+        self.claim.setPlaceholderText({"story": "The main thing people claimed (optional)",
+                                       "conspiracy": "(the name above is the claim)",
+                                       "person": "What did they claim or sell? (needed)",
+                                       "org": "What did they claim or sell? (needed)"}[k])
+        self.claim.setEnabled(k != "conspiracy")
+        self.hint.setText("It starts with no evidence and the verdict 'unverified'. Research finds the sources; you "
+                          "tick what holds up. Nothing is called false until the evidence says so.")
+
+    def values(self) -> dict:
+        return {"kind": self.kind.currentData(), "name": self.name.text(), "about": self.about.toPlainText(),
+                "claim": self.claim.text(), "year": self.year.text(), "people": self.people.text(),
+                "careful": self.careful.isChecked()}
 
 
 class DatabasePage(QWidget):
@@ -57,6 +116,11 @@ class DatabasePage(QWidget):
         self.search.setMinimumWidth(280)
         self.search.textChanged.connect(self.refresh)
         tabs.addWidget(self.search)
+        add_btn = QPushButton("+ Add new")
+        add_btn.setToolTip("Add a new topic, conspiracy, person or group to research")
+        add_btn.setMinimumHeight(38)
+        add_btn.clicked.connect(self._add_new)
+        tabs.addWidget(add_btn)
         lay.addLayout(tabs)
 
         split = QSplitter(Qt.Horizontal)
@@ -205,6 +269,24 @@ class DatabasePage(QWidget):
             self.ok.setText("OK — research this  →")
             self.ok.setEnabled(True)
         self.chosen.emit(ep.project_id, OPEN_RESEARCH)
+
+    def _add_new(self) -> None:
+        dlg = AddDialog(self, self.kind if self.kind in subjects.KINDS else "story")
+        if dlg.exec() != QDialog.Accepted:
+            return
+        try:
+            res = newsubject.add(**dlg.values())
+        except StageError as exc:
+            error(self, str(exc))
+            return
+        self.set_kind(res["kind"])
+        self.search.setText(dlg.values()["name"])
+        for r, row in enumerate(self._rows):
+            if row["id"] == res["id"]:
+                self.table.selectRow(r)
+                break
+        info(self, "Added. It has no evidence yet: press OK to send it to Research, which searches the web, court "
+                   "records and news archives for sources you can tick.")
 
     # ------------------------------------------------------------ Researched tab
     def _res_buttons(self) -> None:

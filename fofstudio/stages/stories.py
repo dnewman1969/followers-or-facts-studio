@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .. import styles, techniques
+from .. import storytypes, styles, techniques
+from ..scriptfmt import ROLES
 from ..episode import Episode
 from ..llm import Ollama
 from ..util import StageError, read_json, utc_now, write_json
@@ -19,7 +20,7 @@ from .base import BLOCK, OK, WARN, Check, Context
 BEAT_SCHEMA = {
     "type": "object",
     "properties": {
-        "role": {"type": "string", "enum": ["intro", "claim", "record", "benefit", "harm", "tell", "verdict"]},
+        "role": {"type": "string", "enum": list(ROLES[:-1])},
         "beat": {"type": "string"},
         "evidence_ids": {"type": "array", "items": {"type": "string"}},
     },
@@ -145,23 +146,31 @@ def run(ctx: Context) -> None:
                                         f"from the producer: {rewrite['notes']}"},
         ], STORY_SCHEMA, temperature=0.6, on_text=ctx.writing(f"Rewriting story {i + 1}", 20, 95, 450))
         new = _clean(new, valid)
+        for key in ("story_type", "writer", "angle_hint"):
+            if old.get(key):
+                new[key] = old[key]
         new["revision"] = old.get("revision", 1) + 1
         new["notes_applied"] = rewrite["notes"]
         data["options"][i] = new
         data.pop("chosen", None)
     else:
         options = []
-        for n, angle in enumerate(ANGLES):
+        picks = storytypes.pick_three(ep.creative(), f"{ep.project_id}-{utc_now()}")
+        for n, (stype, writer) in enumerate(picks):
             ctx.check_cancel()
-            ctx.progress(f"Writing story option {n + 1} of 3: {angle.split(':')[0]}", 10 + n * 30)
+            ctx.progress(f"Writing story option {n + 1} of 3: {stype.name}, written as {writer.name}", 10 + n * 30)
             story = llm.chat_json([
-                {"role": "system", "content": RULES},
-                {"role": "user", "content": f"{style_note(ep)}Evidence:\n{evidence_for_prompt(ep)}\n\nPlan ONE "
-                                            f"story with this angle: {angle}\n7 to 11 beats."},
+                {"role": "system", "content": RULES + "\n" + storytypes.SHARED_RULES},
+                {"role": "user", "content": f"{style_note(ep)}Evidence:\n{evidence_for_prompt(ep)}\n\nPlan ONE story "
+                                            f"as this story type. Its beats follow the beat sheet in order (one beat each; "
+                                            f"use the beat sheet's roles):\n{stype.sheet()}\n\nThe script will be "
+                                            f"written by {writer.name}: {writer.sounds_like} Write the logline and "
+                                            "the opening hook with that flavor."},
             ], STORY_SCHEMA, temperature=0.8,
                 on_text=ctx.writing(f"Writing story {n + 1} of 3", 10 + n * 30, 38 + n * 30, 450))
             story = _clean(story, valid)
-            story["angle_hint"] = angle
+            story["angle_hint"] = f"{stype.name}: {stype.blurb}"
+            story["story_type"], story["writer"] = stype.key, writer.key
             story["revision"] = 1
             options.append(story)
         data = {"options": options, "made_at": utc_now(), "set_id": f"{ep.project_id}-{utc_now()}"}

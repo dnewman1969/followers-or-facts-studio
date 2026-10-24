@@ -13,6 +13,7 @@ You can edit any of it. Step 2, "Make the clips" (video), makes every clip.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from ..comfy import Comfy, new_seed, run_template
@@ -59,8 +60,8 @@ def plan(ctx: Context) -> None:
         raise StageError("Approve the Storyboard first (pick at least one picture per scene).")
     old = {s["shot_id"]: s for s in load_plan(ep)["shots"]}
     sb = settings()["storyboard"]
-    per_scene = int(sb["animate_shots_per_scene"])
     t2v_per_scene = int(sb.get("t2v_shots_per_scene", 0))
+    animate_ids = choose_animated(ep, shots, ctx.options.get("level") or sb.get("animation_level", "balanced"))
     from .. import styles
     style = styles.get(ep.creative()["style"])
     animated: dict[str, int] = {}
@@ -87,16 +88,14 @@ def plan(ctx: Context) -> None:
             ], PLAN_SCHEMA, temperature=0.5)
             kind = shot.get("kind", "broll")
             sid = shot["scene_id"]
-            # characters get the animation first (the picture fixes how they look); b-roll can be text-to-video
-            if kind in ("owl", "caricature") and animated.get(sid, 0) < per_scene:
+            # the animation level picks which shots Wan animates; b-roll can be text-to-video; everything
+            # else moves in 2.5D (parallax) so nothing is a flat zoom on a still
+            if shot["shot_id"] in animate_ids:
                 method = "animate"
             elif kind == "broll" and t2v.get(sid, 0) < t2v_per_scene:
                 method = "text_to_video"
-            elif animated.get(sid, 0) < per_scene and kind == "broll" and \
-                    not any(x.get("kind") in ("owl", "caricature") for x in shots if x["scene_id"] == sid):
-                method = "animate"
             else:
-                method = "camera_move"
+                method = "parallax" if sb.get("parallax", True) else "camera_move"
             animated[sid] = animated.get(sid, 0) + (method == "animate")
             t2v[sid] = t2v.get(sid, 0) + (method == "text_to_video")
             entry = {"how_it_plays": p["how_it_plays"], "motion_prompt": p["motion_prompt"],
@@ -106,11 +105,52 @@ def plan(ctx: Context) -> None:
             entry = {"how_it_plays": f"{shot['type'].replace('_', ' ')} holds on screen: \"{shot.get('text', '')[:80]}\"",
                      "motion_prompt": "", "camera": "zoom_in" if shot["type"] != "title_card" else "static",
                      "seconds": seconds, "method": "camera_move", "kind": "card"}
+        if shot.get("owl_live"):   # the empty set moves; Owlbert is laid on top, talking, when rendering
+            from .storyboard import set_only
+            entry["motion_prompt"] = set_only(entry["motion_prompt"]) + ". The set stays empty."
+            entry["owl_live"] = shot["owl_live"]
         out.append({"shot_id": shot["shot_id"], "scene_id": shot["scene_id"], "type": shot["type"],
                     "image": shot["image"]["path"], "raw": shot["image"].get("raw"),
                     "prompt": shot.get("prompt", ""), **entry, "clip": None, "approved": False})
     save_plan(ep, {"shots": out, "made_at": utc_now()})
     ctx.progress("Scene instructions written. Read them, change anything, then make the clips.", 100)
+
+
+LEVELS = {"fast": 0.1, "balanced": 0.34, "full": 1.0}
+MINUTES_PER_CLIP = 6.0     # Wan 2.2 14B + Lightning, ~5 s at 480p, on an RTX 3060 12 GB
+
+
+def choose_animated(ep: Episode, shots: list[dict[str, Any]], level: str) -> set[str]:
+    """Which pictures Wan animates, for the chosen level: spread evenly through the video, illustrative
+    shots first. Never evidence cards, never Owlbert's empty sets (he's animated live on top already),
+    and not harm scenes in a careful topic (no vivid recreations of what happened to real people)."""
+    share = LEVELS.get(level, LEVELS["balanced"])
+    script_roles = {}
+    try:
+        from .script import load as load_script
+        script_roles = {sc["scene_id"]: sc.get("role", "") for sc in load_script(ep)["scenes"]}
+    except Exception:  # noqa: BLE001 - no script: every scene is fine
+        pass
+    careful = ep.creative().get("careful")
+    pool = [s for s in shots if s["type"] == "ai_image" and not s.get("owl_live")
+            and not (careful and script_roles.get(s["scene_id"]) == "harm")]
+    want = len(pool) if share >= 1 else max(1 if pool else 0, round(share * len(pool)))
+    if want >= len(pool):
+        return {s["shot_id"] for s in pool}
+    # caricatures first (they need motion to read as cartoons), then every k-th shot so they're spread out
+    chosen = [s["shot_id"] for s in pool if s.get("kind") == "caricature"][:want]
+    step = len(pool) / max(1, want - len(chosen)) if want > len(chosen) else 0
+    k = step / 2
+    while len(chosen) < want and step:
+        sid = pool[min(len(pool) - 1, int(k))]["shot_id"]
+        if sid not in chosen:
+            chosen.append(sid)
+        k += step
+        if k >= len(pool):
+            k = (k % len(pool)) + 0.5
+            if all(s["shot_id"] in chosen for s in pool):
+                break
+    return set(chosen)
 
 
 def update_shot(ep: Episode, shot_id: str, **fields: Any) -> None:
@@ -132,8 +172,11 @@ def check_plan(ep: Episode) -> list[Check]:
         return [Check(BLOCK, "The picked pictures changed. Write scene instructions again.")]
     n = sum(1 for s in p["shots"] if s["method"] == "animate")
     t = sum(1 for s in p["shots"] if s["method"] == "text_to_video")
-    return [Check(OK, f"{len(p['shots'])} shots planned: {n} animated from their picture (about {n * 6} minutes), "
-                      f"{t} made from words (about {t * 8} minutes), the rest with smooth camera moves.")]
+    px = sum(1 for s in p["shots"] if s["method"] == "parallax")
+    gpu = n * MINUTES_PER_CLIP + t * 8
+    return [Check(OK, f"{len(p['shots'])} shots planned: {n} animated by Wan, {t} made from words, {px} moving in 2.5D "
+                      f"(depth), the rest cards. About {gpu / 60:.1f} hours of GPU time"
+                      + (" - good for an overnight run." if gpu > 180 else "."))]
 
 
 def run(ctx: Context) -> None:
@@ -187,6 +230,18 @@ def run(ctx: Context) -> None:
             clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
             s["clip"] = {"path": ep.rel(clip), "kind": "animated", "seed": seed, "model": cfg["video_model_name"],
                          "workflow": meta["workflow"], "digest": digest, "made_at": utc_now(), "ai": True}
+        elif s["method"] == "parallax":
+            ctx.progress(f"Making a 2.5D move for {s['shot_id']} ({n + 1}/{total})", 100 * n / total)
+            depth = depth_map(ep, s, ctx)
+            out = ep.path("video", f"{s['shot_id']}-parallax.mp4")
+            tl = Timeline([], width=int(vid["width"]), height=int(vid["height"]), fps=int(vid["fps"]))
+            seg = Segment(ep.abs(s["image"]), float(s["seconds"]), camera=s["camera"], label=s["shot_id"],
+                          depth=ep.abs(depth) if depth else Path("estimated"))
+            from .. import media
+            _render_segment(tl, seg, out, media.encoder("libx264"))
+            s["clip"] = {"path": ep.rel(out), "kind": "parallax", "digest": digest, "made_at": utc_now(),
+                         "ai": False, "ai_image": True, "still": s["image"], "camera": s["camera"],
+                         "depth": depth or "estimated"}
         else:
             ctx.progress(f"Making camera move for {s['shot_id']} ({n + 1}/{total})", 100 * n / total)
             out = ep.path("video", f"{s['shot_id']}-move.mp4")
@@ -201,6 +256,39 @@ def run(ctx: Context) -> None:
         s["approved"] = False
         save_plan(ep, p)
     ctx.progress("All clips made. Watch each one and approve or redo.", 100)
+
+
+_DEPTH_NODE: dict[str, bool] = {}
+
+
+def depth_map(ep: Episode, s: dict[str, Any], ctx: Context) -> str | None:
+    """A depth picture for the 2.5D move, made in ComfyUI by Depth Anything V2 Small (Apache-2.0) if the
+    comfyui_controlnet_aux nodes are installed; otherwise None and the render estimates depth itself."""
+    out = ep.path("video", f"{s['shot_id']}-depth.png")
+    if out.exists():
+        return ep.rel(out)
+    url = settings()["comfyui"]["url"]
+    if url not in _DEPTH_NODE:
+        try:
+            _DEPTH_NODE[url] = Comfy().has_node("DepthAnythingV2Preprocessor")
+        except Exception:  # noqa: BLE001 - ComfyUI not running: estimate instead
+            _DEPTH_NODE[url] = False
+        if not _DEPTH_NODE[url]:
+            ctx.log("2.5D moves use estimated depth. For better depth, install the free comfyui_controlnet_aux nodes "
+                    "in ComfyUI (Manager → search 'controlnet aux'); docs/MODELS.md.")
+    if not _DEPTH_NODE[url] or not s.get("raw"):
+        return None
+    try:
+        client = Comfy()
+        uploaded = client.upload_image(ep.abs(s["raw"]))
+        saved, _ = run_template("depth_workflow", {"IMAGE": uploaded, "FILENAME_PREFIX": f"fof/{ep.project_id}/depth"},
+                                ep.path("video", f"{s['shot_id']}-depth-raw"), cancelled=ctx.cancelled)
+        from PIL import Image
+        Image.open(saved[0]).convert("L").save(out)
+        return ep.rel(out)
+    except Exception as exc:  # noqa: BLE001 - fall back to estimated depth rather than fail the shot
+        ctx.log(f"{s['shot_id']}: depth model failed ({exc}); using estimated depth.")
+        return None
 
 
 def check(ep: Episode) -> list[Check]:

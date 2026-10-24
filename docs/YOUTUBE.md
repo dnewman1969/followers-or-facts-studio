@@ -15,7 +15,9 @@ you use, download its sign-in file, and sign in once from the Studio. No billing
 5. **Clients → Create client → Desktop app** → **Create** → **Download JSON**.
 6. **Audience → Publish app** → confirm. This moves it to **In production**. Without this step Google
    signs you out every 7 days. Google doesn't need to review an app only you use (under 100 users).
-7. In the Studio: **Settings → YouTube → Choose client file...** and pick the JSON you downloaded.
+7. In the Studio: **Settings → YouTube → Choose client file...** and pick the JSON you downloaded. (If you
+   just leave the downloaded `client_secret_....json` in your Downloads folder, on the Desktop or in
+   `F:\AI\fof-data`, the Studio finds it by itself.)
 8. **Sign in to YouTube.** A browser tab opens. Pick the Google account that owns the channel (or its
    Brand Account). Google warns "Google hasn't verified this app": that's expected for your own app.
    Click **Advanced → Go to FoF Studio (unsafe)**, allow access, and close the tab.
@@ -28,6 +30,13 @@ Studio and try switching it to **Unlisted**. If YouTube says **"Locked as privat
 applying an old rule to new, unaudited projects; you can still publish by uploading from YouTube Studio
 yourself, or fill in Google's free API audit form. Google's own pages disagree about whether the lock
 still applies in 2026, so this test is the way to find out.
+
+## Uploading from the Publish page
+
+Press **Upload to YouTube (private)**. The line under the button shows what's ready: the YouTube packages,
+your client file, and whether you're signed in. If you're not signed in, a browser tab opens to sign in
+and the upload starts when you come back. If the video hasn't been written up yet, it's written up and
+uploaded in one go.
 
 ## Automatic upload after the final render
 

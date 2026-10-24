@@ -6,7 +6,7 @@ import html
 
 from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QPushButton, QTextBrowser, QVBoxLayout, QWidget)
 
-from ... import techniques
+from ... import storytypes, techniques
 from ...stages import stories
 from ...util import read_json
 from ..common import GOLD, GREEN, MUTED
@@ -15,7 +15,7 @@ from ..widgets import StagePage, click_feedback
 
 ROLE_NAMES = {"intro": "Opening", "claim": "The claim", "record": "What the record shows",
               "benefit": "Who cashed in", "harm": "Who got hurt", "tell": "Owlbert names the trick",
-              "verdict": "Verdict"}
+              "toolkit": "The question to ask", "verdict": "Verdict", "outro": "Sign-off"}
 
 
 class StoriesPage(StagePage):
@@ -100,6 +100,11 @@ class StoriesPage(StagePage):
             mark += (f"<p style='color:{GOLD}'><b>Already made as {', '.join(used)}.</b> Pick another one for a "
                      "different video, or use it again if you like.</p>")
         rev = f" <span style='color:{MUTED}'>(rewrite {s['revision'] - 1})</span>" if s.get("revision", 1) > 1 else ""
+        st = storytypes.STORY_TYPES.get(s.get("story_type", ""))
+        wr = storytypes.writers().get(s.get("writer", ""))
+        if st or wr:
+            mark += (f"<p style='color:{GOLD}'>" + (f"<b>{e(st.name)}</b>" if st else "")
+                     + (" · written as " if st and wr else "") + (f"<b>{e(wr.name)}</b>" if wr else "") + "</p>")
         return (f"{mark}<h2>{e(s['title'])}{rev}</h2><p><i>{e(s['logline'])}</i></p>"
                 f"<p><b>Angle:</b> {e(s['angle'])}</p><p><b>Opening:</b> {e(s['opening_hook'])}</p>"
                 + (f"<p><b>Thumbnail:</b> <span style='background:#c0392b; color:white; padding:2px 6px;'>"
