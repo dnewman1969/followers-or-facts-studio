@@ -198,7 +198,8 @@ Hard rules (breaking any of them makes the script unusable):
    are the "source_id" values in the packet (they start with "S-"), only ones listed under that
    claim. Quote numbers like E14 are NOT source IDs: put the number (14) in excerpt_ids instead.
 3. Direct quotes: only copy text from a verified quote (by its excerpt_id) word for word,
-   inside double quotes, and list that excerpt_id. Otherwise paraphrase with no quote marks.
+   inside double quotes, and list that excerpt_id. Otherwise paraphrase with no quote marks (single quote
+   marks count as quote marks too).
 4. Plain 6th-grade English: short sentences, everyday words, explain any jargon.
 5. Never mock the people who believed the claim. Aim criticism at the people who sold it.
 6. If a claim's verdict is "unverified" or "contested", say so plainly. Don't call it false.
@@ -283,6 +284,78 @@ def _packet_for_prompt(packet: dict[str, Any]) -> str:
 
 def _scene_count(minutes: float) -> int:
     return max(6, min(16, round(minutes * 1.2) + 2))
+
+
+def scene_slots(stype, n: int) -> list:
+    """The beat sheet spread over n scenes (at least one per beat; big beats get more), in order."""
+    from ..storytypes import Beat
+    beats = list(stype.beats)
+    must = {"claim": ("The claim", "Warning, then the claim once, attributed to who sold it."),
+            "record": ("The record", "What the documents and records really show, with their sources."),
+            "benefit": ("Who gained", "Who made money or gained power from it, documented."),
+            "harm": ("The cost", "What it did to real people, documented and respectful.")}
+    for role, (name, how) in must.items():      # every video answers all four, whatever the story type
+        if role not in {b.role for b in beats}:
+            at = next((i for i, b in enumerate(beats) if b.role in ("tell", "toolkit", "verdict")), len(beats))
+            beats.insert(at, Beat(name, role, 8, how))
+    n = max(n, len(beats))
+    total = sum(b.share for b in beats) or 1
+    exact = [n * b.share / total for b in beats]
+    count = [max(1, int(x)) for x in exact]
+    while sum(count) > n:
+        k = max((i for i in range(len(beats)) if count[i] > 1), key=lambda i: count[i] - exact[i])
+        count[k] -= 1
+    while sum(count) < n:
+        k = max(range(len(beats)), key=lambda i: exact[i] - count[i])
+        count[k] += 1
+    return [b for b, c in zip(beats, count) for _ in range(c)]
+
+
+def outline_problems(planned: list[dict[str, Any]], n: int) -> list[str]:
+    out = []
+    if len(planned) < n:
+        out.append(f"you planned {len(planned)} scenes but the video needs {n}")
+    missing = [r for r in FACT_ROLES if r not in {p.get("role") for p in planned}]
+    if missing:
+        out.append(f"no scene has the role {', '.join(missing)} (every video says what was claimed, what the record "
+                   "says, who benefited and what it did to people)")
+    return out
+
+
+def fill_outline(planned: list[dict[str, Any]], slots: list, packet: dict[str, Any],
+                 claim_order: list[str]) -> list[dict[str, Any]]:
+    """Put the AI's scenes into the beat sheet's slots in order; empty slots get a scene from their beat."""
+    claims = {c["claim_id"]: c for c in packet["claims"]}
+    order = [c for c in claim_order if c in claims] or list(claims)
+    left = list(planned)
+    out, k = [], 0
+    for slot in slots:
+        mine = next((p for p in left if p.get("role") == slot.role), None)
+        if mine:
+            left.remove(mine)
+            out.append(mine)
+            continue
+        sc = {"role": slot.role, "purpose": f"{slot.name}: {slot.how}", "link": "therefore" if out else "open",
+              "claim_ids": [], "source_ids": [], "excerpt_ids": [],
+              "owl_on_camera": slot.role in ("intro", "tell", "toolkit", "verdict"), "visual_idea": ""}
+        if slot.role in FACT_ROLES and order:
+            cid = order[k % len(order)]
+            k += 1
+            sc["claim_ids"] = [cid]
+            sc["source_ids"] = [s["source_id"] for s in claims[cid]["sources"]][:2]
+        out.append(sc)
+    return out
+
+
+def _claims_of(beat: dict[str, Any], packet: dict[str, Any]) -> list[str]:
+    """The claims a story beat's evidence IDs belong to."""
+    want = set(beat.get("evidence_ids", []))
+    out = []
+    for c in packet["claims"]:
+        srcs = {s["source_id"] for s in c["sources"]} | {f"E{e['excerpt_id']}" for e in c["excerpts"]}
+        if want & srcs:
+            out.append(c["claim_id"])
+    return out
 
 
 def _words_for(role: str, base: int) -> int:
@@ -445,21 +518,43 @@ def run(ctx: Context) -> None:
     scene_schema = with_known_ids(SCENE_SCHEMA, ids)
 
     # 1. outline
+    slots = scene_slots(stype, n_scenes)
+    n_scenes = len(slots)
+    outline_schema = with_known_ids(OUTLINE_SCHEMA, ids, inside_scenes=True)
+    outline_schema["properties"]["scenes"].update(minItems=n_scenes, maxItems=16)
     ctx.progress(f"Planning {n_scenes} scenes in the {style.name} style with {model}", 3)
-    outline = llm.chat_json([
+    outline_msgs = [
         {"role": "system", "content": VOICE_RULES},
         {"role": "user", "content": (
             f"Plan the scenes for: {story['title'] if story else ep.title}\n{style_text}\n"
             f"Plan exactly {n_scenes} scenes for a {minutes:g}-minute video. For each: its role, what it must do "
             "(purpose), how it links to the one before (open / but / therefore; avoid 'and then'), the claim_ids, "
             "source_ids (S-...) and excerpt_ids (numbers) it uses, whether Owlbert is on camera, and a picture "
-            "idea that fits the style. Include a 'tell' scene and a 'toolkit' scene.\n" + type_text
+            "idea that fits the style. Include a 'tell' scene and a 'toolkit' scene.\n"
+            f"The {n_scenes} roles in order: {', '.join(s.role for s in slots)}.\n" + type_text
             + (f"\n{film_text}\n" if film_text else "")
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
             + story_text + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
-    ], with_known_ids(OUTLINE_SCHEMA, ids, inside_scenes=True), temperature=0.6,
-        on_text=ctx.writing("Planning the scenes", 3, 15, 60 * n_scenes))
+    ]
+    outline = llm.chat_json(outline_msgs, outline_schema, temperature=0.6,
+                            on_text=ctx.writing("Planning the scenes", 3, 12, 60 * n_scenes))
     planned = (outline.get("scenes") or [])[:16]
+    problems = outline_problems(planned, n_scenes)
+    if problems:   # the plan is too short or skips a part every video needs: one more try, then fill it in
+        ctx.progress(f"The scene plan came back short ({'; '.join(problems)}); asking again", 12)
+        again = llm.chat_json(outline_msgs + [
+            {"role": "assistant", "content": json.dumps(outline, ensure_ascii=False)},
+            {"role": "user", "content": f"Problem: {'; '.join(problems)}. Plan all {n_scenes} scenes again, with "
+                                        f"these roles in this order: {', '.join(s.role for s in slots)}."}],
+            outline_schema, temperature=0.5, on_text=ctx.writing("Planning the scenes again", 12, 15, 60 * n_scenes))
+        if len(again.get("scenes") or []) >= len(planned):
+            outline, planned = again, (again.get("scenes") or [])[:16]
+        problems = outline_problems(planned, n_scenes)
+        if problems:
+            used = [cid for b in (story or {}).get("beats", []) for cid in _claims_of(b, packet)]
+            planned = fill_outline(planned, slots, packet, list(dict.fromkeys(used)))
+            ctx.log(f"The scene plan was still short ({'; '.join(problems)}), so the program filled the gaps from "
+                    f"the {stype.name} beat sheet ({len(planned)} scenes).")
     for i, plan_sc in enumerate(planned):
         drop_unknown(plan_sc, ids)
         if plan_sc.get("role") in FACT_ROLES and not plan_sc.get("source_ids") and ids["claim_ids"]:
@@ -471,6 +566,7 @@ def run(ctx: Context) -> None:
     if len(planned) < 3:
         raise StageError("The outline came back with fewer than 3 scenes. Press Write it again.")
     title = outline.get("title") or (story or {}).get("title") or ep.title
+    base = int(words / max(1.0, sum(_words_for(p["role"], 1000) / 1000 for p in planned) - 0.6))
 
     # 2. one scene at a time
     scenes: list[dict[str, Any]] = []

@@ -213,7 +213,6 @@ def cited_text(mat: Material, block: dict[str, Any], cites: list[str]) -> str:
 
 # ---------------------------------------------------------------- the checks
 NUMBER = re.compile(r"(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)")
-QUOTED = re.compile(r"[\"“]([^\"“”]{6,}?)[\"”]")
 NAME = re.compile(r"\b[A-Z][a-zA-Z'’\-]+(?:\s+[A-Z][a-zA-Z'’\-]+)+")
 
 
@@ -239,7 +238,8 @@ def check_paragraph(p: dict[str, Any], mat: Material, block: dict[str, Any], kno
     if missing:
         hard.append(f"the number(s) {', '.join(missing)} aren't in the material it cites")
     everything = support + "\n" + "\n".join(e.get("quote", "") for e in block["evidence"])
-    for q in QUOTED.findall(text):
+    from ..scriptfmt import quotes_in
+    for q in quotes_in(text):
         if len(q.split()) >= 3 and not srcmod.quote_in_text(q, everything):
             hard.append(f"it puts words in quotation marks that aren't in the sources: \"{q[:80]}\"")
     low = normalize_for_match(support + " " + " ".join(known_names))

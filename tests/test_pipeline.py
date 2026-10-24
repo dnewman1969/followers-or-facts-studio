@@ -227,7 +227,8 @@ def test_full_episode(episode):
     pipeline.run_now(ep, "production")
     tl = production.load(ep)
     assert tl["video"][0]["kind"] == "bumper" and tl["video"][-1]["kind"] == "bumper"
-    assert len(tl["speech"]) == 8 and len(tl["owl"]) == 8 and tl["music"]
+    n = len(script_stage.load(ep)["scenes"])
+    assert n >= 8 and len(tl["speech"]) == n and len(tl["owl"]) == n and tl["music"]
     srcs = [c["src"] for c in tl["video"]]
     assert len(srcs) == len(set(srcs)), "no clip is used twice"
     assert any(c.get("still") for c in tl["video"]), "camera moves are redrawn at their exact length"

@@ -18,6 +18,7 @@ mid-roll ads start at 8:00) - but never picks it for you, and never pads.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 from .. import storytypes
@@ -70,9 +71,10 @@ def estimate(counts: dict[str, Any]) -> dict[str, Any]:
     rec = max(180, min(1200, _round30(honest)))
     fmt = "short" if honest <= 180 else "series" if honest > 1200 or len(counts["claims"]) > 6 or \
         counts.get("split_risk") == "high" else "long"
-    out = {"honest_seconds": round(honest), "recommended_seconds": rec,
-           "min_seconds": max(60, _round30(honest * 0.8)), "max_seconds": min(1500, _round30(honest * 1.2)),
-           "format": fmt, "midroll_option_seconds": None,
+    lo = max(60, min(rec, _round30(honest * 0.8)))          # the range always holds the recommendation
+    hi = max(rec, min(1500, _round30(honest * 1.2)))
+    out = {"honest_seconds": round(honest), "recommended_seconds": rec, "min_seconds": lo, "max_seconds": hi,
+           "format": fmt, "midroll_option_seconds": None, "series_parts": max(2, math.ceil(honest / 900)),
            "parts": {"fixed": fixed, "context": round(context), "claims": round(claims),
                      "tricks": 60 * counts["tricks"], "overhead": round(raw * 0.10)}}
     if 420 <= honest < 480 and counts.get("if_longer"):
@@ -94,10 +96,27 @@ def primary_counts(packet: dict[str, Any]) -> dict[str, int]:
     return primary
 
 
+def story_claims(story: dict[str, Any], packet: dict[str, Any]) -> set[str]:
+    """The claims the chosen story's beats lean on (their evidence IDs belong to them)."""
+    want = {e for b in story.get("beats", []) for e in b.get("evidence_ids", [])}
+    out = set()
+    for c in packet.get("claims", []):
+        ids = {s["source_id"] for s in c.get("sources", [])} | {f"E{x['excerpt_id']}" for x in c.get("excerpts", [])}
+        if want & ids:
+            out.add(c["claim_id"])
+    for e in packet.get("evidence", []):
+        if e["id"] in want:
+            out.add(e["claim_id"])
+    return out
+
+
 def counts_from(ep: Episode, story: dict[str, Any], judged: dict[str, Any]) -> dict[str, Any]:
     from .research import selected
     packet = selected(read_json(ep.path("research.json")) or {})
     primary = primary_counts(packet)
+    focus = story_claims(story, packet)
+    if focus:      # the video tells the chosen story, not everything that was ticked
+        packet = {**packet, "claims": [c for c in packet["claims"] if c["claim_id"] in focus]}
     judged_c = {c["claim_id"]: COMPLEXITY.get(c["complexity"], 1.25) for c in judged.get("claims", [])}
     claims = [{"claim_id": c["claim_id"], "primary_sources": primary.get(c["claim_id"], 0),
                "complexity": judged_c.get(c["claim_id"], 1.25)} for c in packet.get("claims", [])]
@@ -125,7 +144,8 @@ def run(ctx: Context) -> None:
             "timeline events that must be explained or just mentioned, and the people who must be introduced; say "
             "whether the believers' best case should be shown; say if the story is thin (pad risk) or too big for "
             "one video (split risk); list what to cut if it must be shorter and what real material could be added "
-            "if longer. Use only the material given.")},
+            "if longer. Judge only what THIS story tells (its beats), not everything in the evidence. Use only the "
+            "material given.")},
         {"role": "user", "content": f"Story ({stype.name}):\n{json.dumps(story, ensure_ascii=False)[:6000]}\n\n"
                                     f"Evidence:\n{evidence_for_prompt(ep)[:14000]}"},
     ], SCAN_SCHEMA, temperature=0.3, on_text=ctx.writing("Scanning the story", 10, 85, 400))
@@ -163,11 +183,17 @@ def summary_html(s: dict[str, Any]) -> str:
     import html
     e = html.escape
     rec, lo, hi = s["recommended_seconds"] / 60, s["min_seconds"] / 60, s["max_seconds"] / 60
+    full = s.get("honest_seconds", 0) / 60
     parts = [f"<b>Best length for this story: about {rec:.1f} minutes</b> (anything from {lo:.1f} to {hi:.1f} works)."]
     if s["format"] == "short":
         parts.append("It's thin enough to work as a YouTube Short (3 minutes or less).")
+    elif s["format"] == "series" and full > rec + 0.5:
+        parts.append(f"Telling all of it properly would take about {full:.0f} minutes, and 20 is the most for one "
+                     f"video: think about {s.get('series_parts', 2)} parts, each with its own verdict, or keep this one "
+                     "to the main thread (see what to cut below).")
     elif s["format"] == "series":
-        parts.append("It's a lot for one video: think about splitting it into parts, each with its own verdict.")
+        parts.append("It has a lot of claims for one video: think about splitting it into parts, each with its own "
+                     "verdict.")
     if s.get("midroll_option_seconds"):
         parts.append("There's real material to reach 8:00, where YouTube allows mid-video ads - only if you want it.")
     j = s.get("judged", {})

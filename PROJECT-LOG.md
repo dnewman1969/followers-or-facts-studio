@@ -327,6 +327,21 @@ uses a throwaway data folder even without the data fixture; Update Studio.cmd's 
   chapter. Stories page: Write the book / Finish / Write again / Open the PDF / What to check / Approve.
   102 tests pass.
 
+## 2026-10-24 — v0.5.3: the script keeps its length and its four must-have parts
+
+Dave's S01E02 (Patient Zero, Investigator, Animated Family Film, Archive Pan, 20 min) came out at 3.5
+minutes with no record, benefit or harm scene. The AI planned only ~3 of the 16 scenes and nothing made
+it plan more. Now (`stages/script.py`): the beat sheet is spread over the scenes (`scene_slots`, at least
+one scene per beat, big beats get more, and the four must-have parts are added to any story type that
+lacks them - "The Turn" had no benefit beat, "ABT" no benefit or harm); the outline schema asks for that
+many scenes and the roles in order; a short or incomplete plan gets one more try, then the program fills
+the empty slots from the beat sheet (`fill_outline`); word budgets come from the scenes actually planned.
+Scan (`lengthscan.py`): the range always contains the recommendation (it said "46 to 25 minutes"), it
+counts only the claims the chosen story uses, and a story longer than 20 minutes says how long and in how
+many parts. Quotes in 'single quote marks' (3+ words) are now checked like double-quoted ones
+(`scriptfmt.quotes_in`; the narration had an unchecked single-quoted quote), in scripts and the book.
+107 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

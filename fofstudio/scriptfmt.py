@@ -170,7 +170,12 @@ def render(title: str, scenes: list[dict[str, Any]], header: dict[str, str] | No
     return "\n".join(lines)
 
 
+SINGLE_QUOTED = re.compile(r"(?<![\w'’])['‘](?!\d)([^\"“”\n]{1,300}?)['’](?!\w)")
+
+
 def quotes_in(narration: str) -> list[str]:
-    """Text inside double quotes in the narration (straight or curly)."""
-    found = re.findall(r"[\"“]([^\"”]{12,})[\"”]", narration)
-    return [q.strip() for q in found]
+    """Text inside double quotes (straight or curly), and inside single quotes when it's 3 words or more
+    (so "didn't" and "'90s" aren't quotes, but 'the worst time for humanity' is)."""
+    found = [q.strip() for q in re.findall(r"[\"“]([^\"”]{12,})[\"”]", narration)]
+    found += [q.strip() for q in SINGLE_QUOTED.findall(narration) if len(q.split()) >= 3]
+    return [q.rstrip(" .,;:!?") for q in found]
