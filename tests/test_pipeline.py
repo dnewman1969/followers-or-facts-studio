@@ -21,14 +21,16 @@ def fake_llm(get_packet):
             return {"summary": "A court ruling. It says the defendant sold survival supplies."}
         if "queries" in props:
             return {"queries": ["survival supplies court ruling", "y2k radio fear"]}
-        if "excerpts" in props:
+        if "picks" in props:   # research quotes: sentence numbers only; the program copies the words
+            import re as _re
             text = messages[-1]["content"]
-            if "survival supplies" in text:
-                return {"excerpts": [{"quote": "The court finds that the defendant sold survival supplies "
-                                               "while telling listeners the grid would fail.",
-                                      "supports": "who profited"},
-                                     {"quote": "The court found he was a great man.", "supports": "made up"}]}
-            return {"excerpts": []}
+            hit = _re.search(r"\[(\d+)\] The court finds that the defendant sold survival supplies", text)
+            if hit:
+                n = int(hit.group(1))
+                top = max(props["picks"]["items"]["properties"]["sentence"]["enum"])
+                return {"picks": [{"sentence": n, "through": n, "shows": "who profited"},
+                                  {"sentence": top + 5, "through": top + 5, "shows": "made up"}]}
+            return {"picks": []}
         if "beats" in props:
             ev = [e["id"] for e in get_packet()["evidence"]][:2]
             return {"title": "The Y2K Fear Machine", "logline": "A real bug, sold as doom.", "angle": "money",

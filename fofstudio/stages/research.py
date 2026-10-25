@@ -22,22 +22,71 @@ after more on the items you ticked.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from .. import db, sources
 from ..agents import search, web
 from ..config import settings
 from ..episode import Episode
-from ..llm import Ollama
+from ..llm import Ollama, model_for
 from ..util import StageError, read_json, utc_now, write_json, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 
-EXCERPT_SCHEMA = {
-    "type": "object",
-    "properties": {"excerpts": {"type": "array", "items": {"type": "object", "properties": {
-        "quote": {"type": "string"}, "supports": {"type": "string"}}, "required": ["quote", "supports"]}}},
-    "required": ["excerpts"],
-}
+def picks_schema(n: int) -> dict[str, Any]:
+    """The AI answers with sentence NUMBERS (only real ones are allowed); the program copies the words."""
+    nums = list(range(1, n + 1))
+    return {"type": "object", "properties": {"picks": {"type": "array", "maxItems": 2, "items": {
+        "type": "object", "properties": {
+            "sentence": {"type": "integer", "enum": nums},
+            "through": {"type": "integer", "enum": nums},
+            "shows": {"type": "string"}},
+        "required": ["sentence", "through", "shows"]}}}, "required": ["picks"]}
+
+
+SENTENCE_END = re.compile(r"(?<=[.!?])([\"”’')\]]*)\s+(?=[\"“‘(\[]?[A-Z0-9])")
+ABBREVIATIONS = {"dr", "mr", "mrs", "ms", "st", "jr", "sr", "vs", "no", "gen", "sen", "rep", "gov", "lt", "col",
+                 "inc", "co", "corp", "ltd", "prof", "rev", "hon", "u.s", "u.k", "jan", "feb", "mar", "apr", "aug",
+                 "sept", "sep", "oct", "nov", "dec", "e.g", "i.e", "etc", "v", "fig", "p", "pp", "approx"}
+
+
+def numbered_sentences(passages: str, limit: int = 160) -> list[dict[str, Any]]:
+    """Split the passages into sentences, remembering where each sits in its paragraph, so a run of
+    sentences can be copied out exactly as written."""
+    out: list[dict[str, Any]] = []
+    for p_no, para in enumerate(x for x in passages.split("\n\n") if x.strip()):
+        cuts = []
+        for m in SENTENCE_END.finditer(para):
+            word = re.search(r"([\w.]+)\.$", para[:m.start()])
+            w = (word.group(1) if word else "").lower()
+            if w in ("no", "p") and not para[m.end():m.end() + 1].isdigit():
+                w = ""                        # "said no. Then..." ends a sentence; "No. 5" doesn't
+            if w in ABBREVIATIONS or (len(w) == 1 and w.isalpha()):
+                continue                      # "Dr. Smith", "U.S. officials", "John Q. Public"
+            cuts.append((m.start() + len(m.group(1)), m.end()))
+        cuts.append((len(para), len(para)))
+        start = 0
+        for seg_end, nxt in cuts:
+            raw = para[start:seg_end]
+            text = raw.strip()
+            if text:
+                s0 = start + len(raw) - len(raw.lstrip())
+                out.append({"n": len(out) + 1, "para": p_no, "start": s0, "end": s0 + len(text), "text": text,
+                            "source": para})
+                if len(out) >= limit:
+                    return out
+            start = nxt
+    return out
+
+
+def copy_sentences(sents: list[dict[str, Any]], first: int, last: int) -> str:
+    """The exact words of sentences first..last (up to 3, in one paragraph)."""
+    a = sents[first - 1]
+    last = max(first, min(last, first + 2, len(sents)))
+    b = sents[last - 1]
+    if b["para"] != a["para"]:
+        b = a
+    return a["source"][a["start"]:b["end"]]
 SUMMARY_SCHEMA = {
     "type": "object",
     "properties": {"summary": {"type": "string"}},
@@ -208,17 +257,34 @@ def _quotes(llm: Ollama, claim: dict[str, Any], title: str, text: str) -> list[d
     passages = sources.relevant_passages(text, query)
     if not passages:
         return []
+    sents = [s for s in numbered_sentences(passages) if len(s["text"]) >= 12]
+    if not sents:
+        return []
+    for k, s in enumerate(sents, 1):
+        s["n"] = k
+    listing = "\n".join(f"[{s['n']}] {s['text'][:700]}" for s in sents)
     answer = llm.chat_json([
         {"role": "system", "content": (
-            "You copy sentences out of a document for a fact-checker. Copy them EXACTLY, character for "
-            "character. Never paraphrase, never fix typos, never join sentences from different places. "
-            "Only copy sentences that state facts about the claim (dates, court findings, what really "
-            "happened, who made money, who was harmed). If nothing is relevant, return an empty list.")},
+            "You pick sentences out of a document for a fact-checker. The document is split into numbered "
+            "sentences. Answer with sentence NUMBERS only: the program copies the exact words, so never write "
+            "the sentence yourself. Pick only sentences that state facts about the claim (dates, court findings, "
+            "what really happened, who made money, who was harmed). 'through' is the last sentence of a run "
+            "(the same number for one sentence; at most 2 more in a row). If nothing is relevant, return an "
+            "empty list.")},
         {"role": "user", "content": f"Claim being checked: {claim['short_title']}\n"
-                                    f"Summary: {claim.get('claim_summary') or ''}\n\nDocument ({title}):\n<<<\n"
-                                    f"{passages}\n>>>\n\nCopy up to 2 sentences, and say in a few words what each shows."},
-    ], EXCERPT_SCHEMA, temperature=0.1)
-    return [x for x in answer.get("excerpts", [])[:2] if len((x.get("quote") or "").strip()) >= 20]
+                                    f"Summary: {claim.get('claim_summary') or ''}\n\nDocument ({title}), "
+                                    f"numbered sentences:\n{listing}\n\nPick up to 2, and say in a few words "
+                                    "what each shows."},
+    ], picks_schema(len(sents)), model=model_for("research_quotes"), temperature=0.1)
+    out = []
+    for p in answer.get("picks", [])[:2]:
+        first = int(p.get("sentence") or 0)
+        if not 1 <= first <= len(sents):
+            continue
+        quote = copy_sentences(sents, first, int(p.get("through") or first))
+        if len(quote.strip()) >= 20:
+            out.append({"quote": quote, "supports": p.get("shows", "")})
+    return out
 
 
 def _read(url: str) -> dict[str, Any]:
@@ -264,7 +330,7 @@ def _summarize(llm: Ollama, claim: dict[str, Any], title: str, text: str) -> str
             "No opinions, no guesses, no outside facts.")},
         {"role": "user", "content": f"Claim being checked: {claim['short_title']}\n"
                                     f"Document title: {title}\n<<<\n{passages[:6000]}\n>>>"},
-    ], SUMMARY_SCHEMA, temperature=0.2)
+    ], SUMMARY_SCHEMA, model=model_for("research_summary"), temperature=0.2)
     return (answer.get("summary") or "").strip()
 
 
@@ -281,7 +347,7 @@ def _hunt(ctx: Context, llm: Ollama, claim: dict[str, Any], about: str, n_querie
             "happened, who promoted the claim and profited, and what harm it caused. No questions, "
             "no quotation marks.")},
         {"role": "user", "content": f"{about}\nWrite {n_queries} queries."},
-    ], QUERY_SCHEMA, temperature=0.4)
+    ], QUERY_SCHEMA, model=model_for("research_plan"), temperature=0.4)
     queries = [q.strip() for q in plan.get("queries", []) if q.strip()][:n_queries]
     have = {s.get("url") for s in claim["sources"]}
     candidates: list[tuple[dict[str, Any], str]] = []

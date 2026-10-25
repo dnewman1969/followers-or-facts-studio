@@ -52,3 +52,18 @@ def test_html_to_text_drops_scripts():
     html = "<html><head><title>T</title><script>var x=1</script></head><body><p>Hello</p><p>World</p></body></html>"
     text = sources.html_to_text(html)
     assert "var x" not in text and "Hello" in text and "World" in text
+
+
+def test_quotes_are_copied_by_sentence_number():
+    """The AI picks sentence numbers; the program copies the exact words, so a quote can't come out wrong."""
+    from fofstudio.stages.research import copy_sentences, numbered_sentences
+    text = ('The court finds that the defendant sold survival supplies. He told listeners "the grid would fail." '
+            'Sales rose 40% in 1999!\n\nDr. Smith (an expert) disagreed. U.S. officials said no. See No. 5 on p. 12.')
+    s = numbered_sentences(text)
+    assert [x["text"] for x in s] == ["The court finds that the defendant sold survival supplies.",
+                                      'He told listeners "the grid would fail."', "Sales rose 40% in 1999!",
+                                      "Dr. Smith (an expert) disagreed.", "U.S. officials said no.",
+                                      "See No. 5 on p. 12."]
+    assert copy_sentences(s, 1, 3) in text and copy_sentences(s, 1, 3).endswith("1999!")
+    assert copy_sentences(s, 3, 5) == "Sales rose 40% in 1999!"      # never across paragraphs
+    assert copy_sentences(s, 1, 9) == copy_sentences(s, 1, 3)       # at most 3 in a row

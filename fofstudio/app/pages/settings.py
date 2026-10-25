@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog
 from ... import youtube
 from ...comfy import Comfy
 from ...config import REPO, save_settings, settings, settings_path
-from ...llm import Ollama
+from ...llm import JOBS, Ollama
 from ...util import StageError
 from .. import sound
 from ..common import GOLD, GREEN, MUTED, RED, button, error, info, label, row
@@ -24,6 +24,8 @@ HELP = {
     "truth_vlog_research": "Folder with truth-vlog's research CSVs (claims/, sources/...)",
     "writer_model": "Writes scripts and storyboards",
     "checker_model": "A different model, for checks",
+    "format_check": "Test once per model whether Ollama obeys the answer format (some versions don't)",
+    **{k: f"{v}. Empty = the writer model. Install it first: ollama pull <name>" for k, v in JOBS.items()},
     "image_workflow": "ComfyUI API-format workflow with {{PROMPT}} etc.",
     "video_workflow": "Wan 2.2 image-to-video workflow",
     "voice": "Kokoro voice id, e.g. bm_george, bm_fable, am_michael",

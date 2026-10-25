@@ -136,7 +136,7 @@ def run(ctx: Context) -> None:
         raise StageError("Pick a story on the Stories page first.")
     stype = storytypes.STORY_TYPES.get(story.get("story_type") or "") or storytypes.STORY_TYPES[storytypes.DEFAULT_TYPE]
     ctx.progress("Reading the story and the ticked evidence", 5)
-    judged = Ollama().chat_json([
+    judged = Ollama(job="script_plan").chat_json([
         {"role": "system", "content": (
             "You are a documentary producer judging how much screen time a fact-check video needs. Don't pad: every "
             "second must be earned by a claim, a source, an event, a person or a trick in the material. Judge each "

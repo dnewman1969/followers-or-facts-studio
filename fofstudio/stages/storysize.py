@@ -101,7 +101,7 @@ def assess(ep: Episode, packet: dict[str, Any], evidence_text: str, llm: Ollama 
            on_text=None) -> dict[str, Any]:
     """Read everything once and say how big it is. Saved to size.json (and shown on the Stories page)."""
     m = material(packet)
-    llm = llm or Ollama()
+    llm = llm or Ollama(job="stories")
     judged = llm.chat_json([
         {"role": "system", "content": (
             "You are the head writer of a fact-check channel deciding how big a story is before anyone writes it. "

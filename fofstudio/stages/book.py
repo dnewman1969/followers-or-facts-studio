@@ -331,7 +331,7 @@ def make_outline(ctx: Context, llm: Ollama, mat: Material, title: str) -> dict[s
             "mock believers; aim at the people who sold it. Follow the careful-topic rules.")},
         {"role": "user", "content": f"About {want} chapters.\n\nMaterial:\n"
                                     f"{json.dumps(overview, ensure_ascii=False, indent=1)[:40000]}"},
-    ], outline_schema(sorted(mat.claims), sorted(mat.evidence), min(20, want + 4)), temperature=0.4,
+    ], outline_schema(sorted(mat.claims), sorted(mat.evidence), min(20, want + 4)), lenient=True, temperature=0.4,
         on_text=ctx.writing("Planning the chapters", 2, 9, 60 * want))
     return {"title": (raw.get("title") or title).strip(), "subtitle": (raw.get("subtitle") or "").strip(),
             "chapters": tidy_outline(raw, mat)}
@@ -359,7 +359,7 @@ def write_chapter(ctx: Context, llm: Ollama, mat: Material, book: dict[str, Any]
             f"Material for this chapter (use nothing else):\n{json.dumps(block, ensure_ascii=False, indent=1)}")},
     ]
     schema = chapter_schema(cite_ids, quote_ids)
-    answer = llm.chat_json(messages, schema, temperature=0.5,
+    answer = llm.chat_json(messages, schema, lenient=True, temperature=0.5,
                            on_text=ctx.writing(label, start, start + (end - start) * 0.6, words))
     paras, problems = _checked(answer, mat, block, names, techniques_ok)
     if problems:
@@ -371,7 +371,7 @@ def write_chapter(ctx: Context, llm: Ollama, mat: Material, book: dict[str, Any]
             {"role": "user", "content": "A program checked this chapter against the material and found problems:\n"
                                         f"{fix}\nWrite the whole chapter again. Fix those paragraphs using only the "
                                         "material (cut a detail rather than guess it). Keep the good paragraphs."}],
-            schema, temperature=0.3, on_text=ctx.writing(f"Fixing chapter {ch['number']}", start + (end - start) * 0.6,
+            schema, lenient=True, temperature=0.3, on_text=ctx.writing(f"Fixing chapter {ch['number']}", start + (end - start) * 0.6,
                                                          end, words))
         paras, problems = _checked(answer, mat, block, names, techniques_ok)
     dropped = []
@@ -423,7 +423,7 @@ def run(ctx: Context) -> None:
     mat = Material(_packet(ep))
     if not mat.evidence:
         raise StageError("No evidence is ticked on the Research page. Tick everything the book should use.")
-    llm = Ollama()
+    llm = Ollama(job="book")
     book = {} if ctx.options.get("fresh") else load(ep)
     if book and book.get("evidence_key") != mat.key():
         ctx.progress("The ticked evidence changed since the last book: starting it again.", 1)

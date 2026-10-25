@@ -359,6 +359,26 @@ many parts. Quotes in 'single quote marks' (3+ words) are now checked like doubl
 - Research "iPhone alerts and control for Studio" (in progress / project docs).
 111 tests pass.
 
+## 2026-10-24 — v0.5.5: a model per job, answer-format check, quotes by sentence number
+
+From the research "Best local AI models per job" (project docs):
+
+- **Answer-format check** (`llm.py`): Ollama issue #14645 (schema ignored on /api/chat with thinking off,
+  Qwen3 from 0.30.0) explains the 3-scene outlines. The first time each model is used with a format, a tiny
+  test (ask for 2 colors while the format demands exactly 4 from red/green/blue) shows whether /api/chat or
+  /api/generate enforces it; answers then go through the one that works (`_as_generate`). Results per
+  model@version in `<data>/logs/ollama-format-check.json`; `[ollama] format_check`. Every JSON answer is
+  checked in Python (`schema_problems`: required, types, enums, min/max, min/maxItems), code fences
+  stripped, and sent back up to twice with the problems; `lenient=True` for callers that repair answers
+  themselves (script outline and scenes, storyboard shots, book), else a StageError naming the model.
+  Queue → GPU check now lists the result for every model the jobs use.
+- **A model per job** (`llm.JOBS`, `model_for`, Settings → models): research_plan, research_quotes,
+  research_summary, stories, script_plan, script_write, storyboard, book, checks. Empty = writer model, so
+  nothing changes until Dave picks one. Suggestions in docs/MODELS.md.
+- **Quotes by sentence number** (`research.numbered_sentences`, `copy_sentences`, `picks_schema`): the AI
+  answers with sentence numbers (only real ones allowed); the program copies the exact words (up to 3
+  sentences in a row in one paragraph; abbreviations like Dr., U.S., No. 5 don't split sentences).
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

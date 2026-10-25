@@ -135,7 +135,7 @@ def run(ctx: Context) -> None:
         raise StageError("No evidence is ticked on the Research page. Tick what this video should use.")
     data = read_json(ep.path("stories.json"), {}) or {}
     valid = _valid_ids(ep)
-    llm = Ollama()
+    llm = Ollama(job="stories")
     rewrite = ctx.options.get("rewrite")  # {"index": 1, "notes": "..."}
     if rewrite:
         i = int(rewrite["index"])

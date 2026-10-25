@@ -70,7 +70,7 @@ def save(person_id: str, design: str, ok: bool) -> None:
 def propose(person: dict[str, Any]) -> str:
     """Ask the local AI for a cartoon design from well-known public traits (you edit and approve it)."""
     from .llm import Ollama
-    ans = Ollama().chat_json([
+    ans = Ollama(job="storyboard").chat_json([
         {"role": "system", "content": (
             "You design editorial-cartoon caricatures of public figures for a satire segment. Describe the "
             "cartoon in one or two sentences using only widely known, public visual traits: hair, facial hair, "

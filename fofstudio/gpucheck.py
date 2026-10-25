@@ -190,6 +190,10 @@ def report(progress=lambda t: None, live_test: bool = True) -> Path:
         add("== Live test: the writer writes ~150 words while the GPU is watched ==")
         progress("Live test: the writer is writing while the GPU is watched")
         add(_live_test(url, cfg["ollama"]["writer_model"], int(cfg["ollama"]["num_ctx"])))
+        add("")
+        add("== Answer format: does Ollama obey it for each model? ==")
+        progress("Checking that Ollama obeys the answer format for each model")
+        add(format_report())
     add("")
     add("== ComfyUI (pictures, video, music) ==")
     progress("Asking ComfyUI what it sees")
@@ -288,3 +292,26 @@ def open_folder(path: Path) -> None:
 
 def as_json(path: Path) -> str:
     return json.dumps({"report": str(path)})
+
+
+def format_report() -> str:
+    """Test every model the jobs use (Settings → models): does Ollama enforce the JSON answer format?
+    Some Ollama versions ignore it (issue #14645), which made the script planner return 3 scenes for 16."""
+    from .llm import JOBS, Ollama, _load_routes, forget_format_checks, model_for
+    forget_format_checks()
+    llm = Ollama()
+    lines = []
+    for model in sorted({model_for(j) for j in JOBS}):
+        try:
+            llm.format_route(model)          # tests it and remembers the result for the jobs
+            r = _load_routes()[f"{model}@{llm.version()}"]
+        except Exception as exc:  # noqa: BLE001 - shown in the report
+            lines.append(f"  {model}: couldn't test ({exc})")
+            continue
+        verdict = {"chat": "OK (chat endpoint obeys the format)",
+                   "generate": "chat endpoint IGNORES the format; the Studio uses the generate endpoint instead (works)",
+                   "none": "Ollama IGNORES the format for this model: update Ollama, or pick another model; the "
+                           "Studio still checks every answer and asks again"}[r["route"]]
+        lines.append(f"  {model} (Ollama {r['ollama']}): {verdict}")
+    jobs = ", ".join(f"{j}={model_for(j)}" for j in JOBS)
+    return "\n".join(lines + [f"  Models per job: {jobs}"])

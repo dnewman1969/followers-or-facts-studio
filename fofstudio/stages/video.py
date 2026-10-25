@@ -67,7 +67,7 @@ def plan(ctx: Context) -> None:
     animated: dict[str, int] = {}
     t2v: dict[str, int] = {}
     out = []
-    llm = Ollama()
+    llm = Ollama(job="storyboard")
     for n, shot in enumerate(shots):
         ctx.check_cancel()
         prev = old.get(shot["shot_id"])

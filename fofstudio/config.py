@@ -41,6 +41,21 @@ DEFAULTS: dict[str, Any] = {
         "top_p": 0.8,               # Qwen 3's recommended settings with thinking off
         "top_k": 20,
         "presence_penalty": 0.5,    # discourages repeating itself in long scripts
+        "format_check": True,       # test once per model whether Ollama obeys the answer format (llm.py)
+    },
+    # The model for each job (empty = [ollama] writer_model; checks = checker_model). Install a model with
+    # "ollama pull <name>" first. Suggestions from the research "Best local AI models per job":
+    # research_plan qwen3.5:9b, script_write gemma4:12b (test it against qwen3:14b first).
+    "models": {
+        "research_plan": "",
+        "research_quotes": "",
+        "research_summary": "",
+        "stories": "",
+        "script_plan": "",
+        "script_write": "",
+        "storyboard": "",
+        "book": "",
+        "checks": "",
     },
     "comfyui": {
         "url": "http://127.0.0.1:8188",

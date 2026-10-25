@@ -32,6 +32,31 @@ RIFE frame interpolation (MIT), FILM (Apache-2.0), Wan 2.2 S2V and InfiniteTalk 
 probably too heavy for 12 GB). LTX-2.3 is free under $10M revenue but needs every video to say it's AI and
 about 16 GB of VRAM. HunyuanVideo 1.5's licence excludes the EU, UK and South Korea.
 
+## A model for each job (Settings → models)
+
+Each AI job can use its own Ollama model; empty means the writer model (`qwen3:14b`). Install a model with
+`ollama pull <name>` before choosing it. From the research "Best local AI models per job" (Oct 2026):
+
+| Job (setting) | Suggested | Why |
+|---------------|-----------|-----|
+| research_quotes, research_summary, checks | keep `qwen3:14b` / `qwen3:8b` | the most faithful that fit 12 GB (Vectara: 5.4% / 4.8% made-up content; the newer Qwen 3.5 models are 10.5-12.1%) |
+| research_plan, script_plan | try `qwen3.5:9b` (Apache-2.0, ~50 tokens/s on a 3060) | stronger reasoning for planning searches and scenes |
+| script_write, stories | try `gemma4:12b` (Apache-2.0, fits fully at 16K context) | recommended for prose; no published writing scores yet, so compare it with qwen3:14b on one episode first |
+
+Ollama settings that help on 12 GB: `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0` (Windows
+environment variables, then restart Ollama).
+
+**Answer format check.** Some Ollama versions ignore the JSON answer format the Studio sends (Ollama issue
+#14645: with thinking off, /api/chat ignored it for Qwen3 from 0.30.0, and for Qwen3.5/3.6 and Gemma 4;
+reported fixed in 0.31.2). That is the likely reason the script planner once returned 3 scenes for 16. Now
+the first time a model is used, the Studio tests whether Ollama obeys the format; if only /api/generate
+does, it uses that; and every answer is checked in Python and sent back (up to twice) with the problems
+listed. Results: `<data>/logs/ollama-format-check.json`, and in Queue → GPU check.
+
+**Quotes by sentence number.** Research quotes are picked by sentence number: the AI never writes the
+quote, the program copies the exact sentences (up to 3 in a row, one paragraph), so they always match the
+saved source.
+
 ## Ruled out
 
 | Model | Why |

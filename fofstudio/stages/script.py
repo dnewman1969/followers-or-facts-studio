@@ -18,7 +18,6 @@ import re
 from typing import Any
 
 from .. import db
-from ..config import settings
 from ..episode import Episode
 from ..llm import Ollama
 from ..scriptfmt import CHANGES, MOODS, MOVES, PROPS, ROLES, parse, quotes_in, render
@@ -552,7 +551,9 @@ def run(ctx: Context) -> None:
     words = int(minutes * style.wpm * 0.92)   # a little room for music stings and quote cards
     n_scenes = _scene_count(minutes)
     base = int(words / max(1, n_scenes - 0.9))
-    model = settings()["ollama"]["writer_model"]
+    from ..llm import model_for
+    model = model_for("script_write")
+    planner = model_for("script_plan")
     humor = ["No jokes.", "A light touch of warmth.", "Some gentle humor aimed at the trick or the sellers.",
              "Plenty of satire, punching up at the sellers only, never at believers or victims."][creative["humor"]]
     style_text = (f"Video style: {style.name}. {style.tone}\nHumor: {humor}\n"
@@ -589,7 +590,7 @@ def run(ctx: Context) -> None:
     film_text = filmstyles.script_block(genre, director) if (genre or director) else ""
     type_text = (f"\n{stype.sheet()}\nFollow this beat sheet in order: each scene's role is its beat's role; a beat "
                  "with a big share can take two or more scenes.\n" + storytypes.SHARED_RULES + "\n")
-    llm = Ollama()
+    llm = Ollama(job="script_write")
     ids = known_ids(packet)
     scene_schema = with_known_ids(SCENE_SCHEMA, ids)
 
@@ -598,7 +599,7 @@ def run(ctx: Context) -> None:
     n_scenes = len(slots)
     outline_schema = with_known_ids(OUTLINE_SCHEMA, ids, inside_scenes=True)
     outline_schema["properties"]["scenes"].update(minItems=n_scenes, maxItems=16)
-    ctx.progress(f"Planning {n_scenes} scenes in the {style.name} style with {model}", 3)
+    ctx.progress(f"Planning {n_scenes} scenes in the {style.name} style with {planner}", 3)
     outline_msgs = [
         {"role": "system", "content": VOICE_RULES},
         {"role": "user", "content": (
@@ -612,7 +613,7 @@ def run(ctx: Context) -> None:
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
             + story_text + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
     ]
-    outline = llm.chat_json(outline_msgs, outline_schema, temperature=0.6,
+    outline = llm.chat_json(outline_msgs, outline_schema, model=planner, lenient=True, temperature=0.6,
                             on_text=ctx.writing("Planning the scenes", 3, 12, 60 * n_scenes))
     planned = (outline.get("scenes") or [])[:16]
     problems = outline_problems(planned, n_scenes)
@@ -622,7 +623,7 @@ def run(ctx: Context) -> None:
             {"role": "assistant", "content": json.dumps(outline, ensure_ascii=False)},
             {"role": "user", "content": f"Problem: {'; '.join(problems)}. Plan all {n_scenes} scenes again, with "
                                         f"these roles in this order: {', '.join(s.role for s in slots)}."}],
-            outline_schema, temperature=0.5, on_text=ctx.writing("Planning the scenes again", 12, 15, 60 * n_scenes))
+            outline_schema, model=planner, lenient=True, temperature=0.5, on_text=ctx.writing("Planning the scenes again", 12, 15, 60 * n_scenes))
         if len(again.get("scenes") or []) >= len(planned):
             outline, planned = again, (again.get("scenes") or [])[:16]
         problems = outline_problems(planned, n_scenes)
@@ -670,7 +671,7 @@ def run(ctx: Context) -> None:
                 + ("This is a careful topic: no playful music or moves.\n" if creative.get("careful") else "")
                 + f"\nFacts for this scene:\n{_facts_for(plan_sc, packet)}\n\n{DIRECTING}")},
         ]
-        sc = llm.chat_json(messages, scene_schema, temperature=0.75,
+        sc = llm.chat_json(messages, scene_schema, lenient=True, temperature=0.75,
                            on_text=ctx.writing(f"Writing scene {n} of {len(planned)}", pct0, pct1 - 2, target + 60))
         # 3. one fix-up if it's short or full of stock phrases
         fix_refs(sc, packet, fill=False)
@@ -680,7 +681,7 @@ def run(ctx: Context) -> None:
             sc = llm.chat_json(messages + [
                 {"role": "assistant", "content": json.dumps(sc, ensure_ascii=False)},
                 {"role": "user", "content": "Rewrite this scene. " + " ".join(issues) + " Keep every fact sourced."},
-            ], scene_schema, temperature=0.7, on_text=ctx.writing(f"Polishing scene {n}", pct1 - 2, pct1, target + 60))
+            ], scene_schema, lenient=True, temperature=0.7, on_text=ctx.writing(f"Polishing scene {n}", pct1 - 2, pct1, target + 60))
         sc["role"] = plan_sc["role"]
         sc["scene_id"] = f"SCENE_{n:03d}"
         for note in tidy_directions(sc, creative, scenes):
@@ -720,7 +721,7 @@ def _expand(ctx: Context, packet: dict[str, Any]) -> None:
     scenes = script["scenes"]
     words = int(minutes * style.wpm * 0.92)
     base = int(words / max(1, len(scenes) - 0.9))
-    llm = Ollama()
+    llm = Ollama(job="script_write")
     ids = known_ids(packet)
     scene_schema = with_known_ids(SCENE_SCHEMA, ids)
     short = [sc for sc in scenes if len(sc["narration"].split()) < _words_for(sc["role"], base) * 0.9]
@@ -738,7 +739,7 @@ def _expand(ctx: Context, packet: dict[str, Any]) -> None:
                 "numbers, what the documents say, what it meant for people), not padding. Keep its sources.\n"
                 f"Scene: {json.dumps({k: sc[k] for k in ('role', 'narration', 'visual', 'on_screen_text', 'claim_ids', 'source_ids', 'excerpt_ids')}, ensure_ascii=False)}\n"
                 f"Facts:\n{_facts_for(sc, packet)}")},
-        ], scene_schema, temperature=0.7,
+        ], scene_schema, lenient=True, temperature=0.7,
             on_text=ctx.writing(f"Lengthening {sc['scene_id']} ({n}/{len(short)})",
                                 100 * (n - 1) / len(short), 100 * n / len(short), target + 60))
         drop_unknown(new, ids)

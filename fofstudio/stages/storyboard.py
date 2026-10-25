@@ -123,7 +123,7 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
             + (f" (the narration is split into {n} equal parts; these cover parts {start + 1}-{start + k})." if n > k else ".")
             + ("\nShots already planned (don't repeat them): " + " | ".join(x["idea"][:90] for x in so_far)
                if so_far else ""))
-    answer = Ollama().chat_json([
+    answer = Ollama(job="storyboard").chat_json([
         {"role": "system", "content": (
             f"You are the art director for a {style.name} video. Plan a sequence of different shots that "
             "follow the narration in order, so the pictures change as Owlbert talks and never repeat. Each idea is "
@@ -139,7 +139,7 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
         {"role": "user", "content": f"Style: {style.look}\nOwlbert's scenes look like: {style.owl_look}\n"
                                     f"Scene visual note: {sc['visual']}\nNarration: {sc['narration']}\n"
                                     f"Careful-topic rules: {restrictions or 'none'}{who}\n\n{part}"},
-    ], schema, temperature=0.7, on_text=on_text)
+    ], schema, lenient=True, temperature=0.7, on_text=on_text)
     allowed = {p["person_id"] for p in people}
     out = []
     for x in (answer.get("shots") or [])[:k]:
