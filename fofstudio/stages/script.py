@@ -194,12 +194,16 @@ The narrator is Professor Owlbert McFinnegan, a warm, curious owl professor.
 
 Hard rules (breaking any of them makes the script unusable):
 1. Use ONLY facts from the research packet. Never invent a date, number, name, quote or source.
+   Never invent people or characters (no made-up kids, neighbors, experts or "a man named..."): the only
+   character is Owlbert; everyone else is a real person or group from the packet.
 2. Every scene that states a fact lists the claim_ids and source_ids it relies on. source_ids
    are the "source_id" values in the packet (they start with "S-"), only ones listed under that
    claim. Quote numbers like E14 are NOT source IDs: put the number (14) in excerpt_ids instead.
 3. Direct quotes: only copy text from a verified quote (by its excerpt_id) word for word,
    inside double quotes, and list that excerpt_id. Otherwise paraphrase with no quote marks (single quote
-   marks count as quote marks too).
+   marks count as quote marks too). Never put quote marks around a summary of a source, a shortened quote,
+   or a made-up example line (what an ad, a seller or a rumor might say, or a question to ask yourself):
+   write those as plain speech, e.g.  An ad yells: only ten minutes left!
 4. Plain 6th-grade English: short sentences, everyday words, explain any jargon.
 5. Never mock the people who believed the claim. Aim criticism at the people who sold it.
 6. If a claim's verdict is "unverified" or "contested", say so plainly. Don't call it false.
@@ -358,6 +362,72 @@ def _claims_of(beat: dict[str, Any], packet: dict[str, Any]) -> list[str]:
     return out
 
 
+ELLIPSIS = re.compile(r"\s*(?:\.\.\.|…)\s*")
+
+
+def quote_matches(quote: str, text: str) -> bool:
+    """Word for word, allowing "..." where words were left out (each piece must be there, in order)."""
+    hay = normalize_for_match(text)
+    pos = 0
+    pieces = [normalize_for_match(p).strip(" .,;:!?\"'") for p in ELLIPSIS.split(quote)]
+    pieces = [p for p in pieces if p]
+    if not pieces or sum(len(p) for p in pieces) < 8:
+        return False
+    for p in pieces:
+        k = hay.find(p, pos)
+        if k < 0:
+            return False
+        pos = k + len(p)
+    return True
+
+
+def quote_report(sc: dict[str, Any], packet: dict[str, Any]) -> tuple[dict[str, int], list[str]]:
+    """Quoted words in a scene: {quote: excerpt it really comes from} and the quotes that match nothing."""
+    excerpts = {int(k): v for k, v in _excerpt_map(packet).items()}
+    listed = [int(e) for e in sc.get("excerpt_ids", []) if str(e).isdigit()]
+    found, bad = {}, []
+    for q in quotes_in((sc.get("narration") or "") + " " + (sc.get("on_screen_text") or "")):
+        hit = next((e for e in listed if e in excerpts and quote_matches(q, excerpts[e]["text"])), None)
+        if hit is None:
+            hit = next((e for e, x in excerpts.items() if quote_matches(q, x["text"])), None)
+        if hit is None:
+            bad.append(q)
+        else:
+            found[q] = hit
+    return found, bad
+
+
+def _unquote(text: str, quote: str) -> str:
+    """Take the quote marks off one quoted passage (the words stay)."""
+    for a, b in (('"', '"'), ("“", "”"), ("'", "'"), ("‘", "’"), ("'", "’"), ("‘", "'")):
+        for tail in ("", ".", ",", "!", "?", "...", "…", "?!", "!?"):
+            span = f"{a}{quote}{tail}{b}"
+            if span in text:
+                return text.replace(span, quote + tail, 1)
+    return text
+
+
+def fix_quotes(sc: dict[str, Any], packet: dict[str, Any]) -> list[str]:
+    """A quote that is a real verified quote gets its E-number listed (and its source); quote marks around
+    anything else come off, so it's said as a paraphrase. Returns notes."""
+    found, bad = quote_report(sc, packet)
+    notes = []
+    excerpts = _excerpt_map(packet)
+    for q, e in found.items():
+        if e not in [int(x) for x in sc.get("excerpt_ids", []) if str(x).isdigit()]:
+            sc.setdefault("excerpt_ids", []).append(e)
+            src = excerpts[str(e)]["source_id"]
+            if src not in sc.setdefault("source_ids", []):
+                sc["source_ids"].append(src)
+            notes.append(f"{sc.get('scene_id')}: the quote \"{q[:50]}...\" is verified quote E{e}; listed it")
+    for q in bad:
+        for key in ("narration", "on_screen_text"):
+            sc[key] = _unquote(sc.get(key) or "", q)
+        notes.append(f"{sc.get('scene_id')}: \"{q[:50]}...\" isn't a word-for-word verified quote, so its quote "
+                     "marks were taken off (it's now said as a paraphrase; check it reads right)")
+    return notes
+
+
 def _words_for(role: str, base: int) -> int:
     return int(base * {"intro": 0.7, "verdict": 0.8, "toolkit": 0.6, "outro": 0.4}.get(role, 1.0))
 
@@ -444,7 +514,7 @@ def tidy_directions(sc: dict[str, Any], creative: dict[str, Any], before: list[d
     return notes
 
 
-def _problems(sc: dict[str, Any], target: int) -> list[str]:
+def _problems(sc: dict[str, Any], target: int, packet: dict[str, Any] | None = None) -> list[str]:
     words = len(sc.get("narration", "").split())
     low = sc.get("narration", "").lower()
     out = []
@@ -454,6 +524,12 @@ def _problems(sc: dict[str, Any], target: int) -> list[str]:
     stock = [p for p in STOCK_PHRASES if p in low]
     if stock:
         out.append(f"Remove these stock phrases: {', '.join(stock)}.")
+    if packet is not None:
+        _, bad = quote_report(sc, packet)
+        if bad:
+            out.append("These words are in quote marks but aren't a verified quote word for word: "
+                       + "; ".join(f'"{q[:80]}"' for q in bad) + ". Say them without quote marks (as a paraphrase "
+                       "or plain speech), or copy a verified quote exactly and list its excerpt_id.")
     return out
 
 
@@ -499,7 +575,7 @@ def run(ctx: Context) -> None:
                           "excerpt_ids": quotes})
         plan = {k: story.get(k) for k in ("title", "logline", "angle", "opening_hook")}
         plan["beats"] = beats
-        plan["tricks_to_teach"] = [{"name": t.name, "meaning": t.meaning, "everyday_example": t.everyday,
+        plan["tricks_to_teach"] = [{"name": t.name, "meaning": t.meaning, "everyday_example": t.everyday.replace('"', "").replace("'", ""),
                                     "ask": t.ask} for t in (techniques.get(k) for k in story.get("techniques", [])) if t]
         story_text = ("\nThe approved story plan (follow it; each beat lists the source_ids and excerpt_ids to "
                       "use):\n" + json.dumps(plan, ensure_ascii=False, indent=1) + "\n")
@@ -597,7 +673,8 @@ def run(ctx: Context) -> None:
         sc = llm.chat_json(messages, scene_schema, temperature=0.75,
                            on_text=ctx.writing(f"Writing scene {n} of {len(planned)}", pct0, pct1 - 2, target + 60))
         # 3. one fix-up if it's short or full of stock phrases
-        issues = _problems(sc, target)
+        fix_refs(sc, packet, fill=False)
+        issues = _problems(sc, target, packet)
         if issues:
             ctx.progress(f"Polishing scene {n} of {len(planned)}: " + issues[0].split(":")[0], pct1 - 2)
             sc = llm.chat_json(messages + [
@@ -616,6 +693,8 @@ def run(ctx: Context) -> None:
         if not sc.get("source_ids") and plan_sc.get("source_ids"):
             sc["source_ids"] = list(plan_sc["source_ids"])
         for note in fix_refs(sc, packet):
+            ctx.log(note)
+        for note in fix_quotes(sc, packet):
             ctx.log(note)
         scenes.append(sc)
     for sc in scenes:
@@ -668,6 +747,7 @@ def _expand(ctx: Context, packet: dict[str, Any]) -> None:
                 sc[k] = new[k]
         drop_unknown(sc, ids)
         fix_refs(sc, packet)
+        fix_quotes(sc, packet)
         sc["est_seconds"] = round(len(sc["narration"].split()) / style.wpm * 60)
     text = ep.path("script.md").read_text(encoding="utf-8")
     header_line = next((ln for ln in text.splitlines() if ln.startswith("**Episode:**")), "")
@@ -724,9 +804,7 @@ def check(ep: Episode) -> list[Check]:
             out.append(Check(BLOCK, f"{sid}: states facts about {', '.join(sc['claim_ids'])} "
                                     "but lists no source IDs."))
         for quote in quotes_in(sc["narration"] + " " + sc["on_screen_text"]):
-            nq = normalize_for_match(quote)
-            if not any(nq in normalize_for_match(excerpts[e]["text"])
-                       for e in sc["excerpt_ids"] if e in excerpts):
+            if not any(quote_matches(quote, excerpts[e]["text"]) for e in sc["excerpt_ids"] if e in excerpts):
                 out.append(Check(BLOCK, f"{sid}: the quote \"{quote[:60]}...\" doesn't match any "
                                         "verified quote listed for the scene. Paraphrase it or "
                                         "list the right quote (E-number)."))
@@ -763,8 +841,8 @@ def check(ep: Episode) -> list[Check]:
 
 
 def repair(ep: Episode) -> list[str]:
-    """Take made-up IDs out of script.md and fill each fact scene's sources from the ticked evidence
-    for its claims. Returns notes about what changed."""
+    """Take made-up IDs out of script.md, fill each fact scene's sources from the ticked evidence for its
+    claims, and fix quotes (list real ones, take quote marks off the rest). Returns notes about what changed."""
     path = ep.path("script.md")
     text = path.read_text(encoding="utf-8")
     script = parse(text)
@@ -776,6 +854,7 @@ def repair(ep: Episode) -> list[str]:
         if dropped:
             notes.append(f"{sc['scene_id']}: removed {', '.join(dropped)}")
         notes += fix_refs(sc, packet)
+        notes += fix_quotes(sc, packet)
         if sc.get("role") in FACT_ROLES and not sc["claim_ids"] and ids["claim_ids"]:
             notes.append(f"{sc['scene_id']}: no claim left; add one by hand or write the scene again")
     header_line = next((ln for ln in text.splitlines() if ln.startswith("**Episode:**")), "")

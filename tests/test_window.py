@@ -217,3 +217,15 @@ def test_long_progress_text_never_pushes_the_bar_off_the_window(app, episode):
     for t in w.findChildren(QTimer):   # nothing may poll the test database after it's gone
         t.stop()
     w.close()
+
+
+def test_caricature_box_offers_the_satire_style(app, episode):
+    from fofstudio.app.creative import CreativePanel
+    episode.set_creative(style="cartoon")
+    p = CreativePanel()
+    p.set_episode(episode)
+    assert p.caric.isEnabled() and not p.caric.isChecked()
+    p.caric.setChecked(True)          # the test's message boxes answer Yes
+    c = episode.creative()
+    assert c["style"] == "satire" and c["caricatures"] and p.caric.isChecked()
+    assert not app.problems, app.problems

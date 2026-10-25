@@ -96,9 +96,11 @@ class ScriptPage(StagePage):
         want.addWidget(self.want_show)
         want.addWidget(self.want_tick)
         self.body.addLayout(want)
-        self.repair_btn = QPushButton("Remove made-up IDs")
+        self.repair_btn = QPushButton("Fix made-up IDs and quotes")
         self.repair_btn.setObjectName("primary")
-        self.repair_btn.setToolTip("Take out claim/source IDs the AI invented and use the ticked evidence instead")
+        self.repair_btn.setToolTip("Take out claim/source IDs the AI invented and use the ticked evidence instead. "
+                                   "Words in quote marks that are a verified quote get it listed; quote marks "
+                                   "around anything else come off (it becomes a paraphrase).")
         self.repair_btn.clicked.connect(self._repair)
         self.repair_btn.hide()
         want.addWidget(self.repair_btn)
@@ -192,7 +194,7 @@ class ScriptPage(StagePage):
 
     def _repair(self) -> None:
         notes = script_stage.repair(self.ep)
-        self.ep.record("script", "awaiting_approval", "made-up IDs removed")
+        self.ep.record("script", "awaiting_approval", "made-up IDs and quotes fixed")
         self.editor.document().setModified(False)
         self.toast("Fixed: " + ("; ".join(notes[:4]) if notes else "nothing needed changing") + ". Read those scenes "
                    "and approve.")
@@ -242,7 +244,8 @@ class ScriptPage(StagePage):
         if self.ep and self.ep.path("script.md").exists():
             self.write_btn.setText("Write it again")
         self._show_wanted()
-        invented = any("may have invented" in self.checks.item(i).text() for i in range(self.checks.count()))
+        invented = any(("may have invented" in t or "doesn't match any verified quote" in t) for t in
+                       (self.checks.item(i).text() for i in range(self.checks.count())))
         self.repair_btn.setVisible(bool(self.ep) and invented and not busy)
 
     def watched(self) -> list[str]:

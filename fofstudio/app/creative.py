@@ -69,7 +69,7 @@ class CreativePanel(QFrame):
         self.style.currentIndexChanged.connect(self._style_changed)
         self.minutes.valueChanged.connect(self._save)
         self.humor.currentIndexChanged.connect(self._save)
-        self.caric.toggled.connect(self._save)
+        self.caric.toggled.connect(self._caric_toggled)
         self.story_type.currentIndexChanged.connect(self._save)
         self.writer.currentIndexChanged.connect(self._save)
 
@@ -113,6 +113,30 @@ class CreativePanel(QFrame):
         self.set_episode(self.ep)
         self.changed.emit()
 
+    def _caric_toggled(self, on: bool) -> None:
+        """Caricatures are only drawn in the cartoon satire style: ticking the box in another style offers to
+        switch to it (it used to just be greyed out, which looked broken)."""
+        if self._loading or not self.ep:
+            return
+        st = styles.get(self.style.currentData())
+        if on and not st.caricature:
+            satire = next((s for s in styles.STYLES.values() if s.caricature), None)
+            from PySide6.QtWidgets import QMessageBox
+            if satire and QMessageBox.question(
+                    self, "Caricatures",
+                    f"Caricatures of the people who sold the lie are only drawn in the {satire.name} style "
+                    f"(clearly cartoon, so nobody mistakes them for real pictures). This video is {st.name}.\n\n"
+                    f"Switch this video to {satire.name} and turn caricatures on?") == QMessageBox.StandardButton.Yes:
+                self.ep.set_creative(style=satire.key, humor=satire.humor, caricatures=True)
+                self.set_episode(self.ep)
+                self.changed.emit()
+                return
+            self._loading = True
+            self.caric.setChecked(False)
+            self._loading = False
+            return
+        self._save()
+
     def _save(self) -> None:
         if self._loading or not self.ep:
             return
@@ -127,7 +151,11 @@ class CreativePanel(QFrame):
         c = self.ep.creative()
         st = styles.get(c["style"])
         allowed = st.caricature and not c["careful"]
-        self.caric.setEnabled(allowed)
+        self.caric.setEnabled(not c["careful"])
+        self.caric.setToolTip("Never on careful topics (real victims)." if c["careful"] else
+                              "Draw the public figures who sold this lie as clearly-cartoon caricatures."
+                              + ("" if st.caricature else " Only in a cartoon satire style: ticking it offers to "
+                                                           "switch."))
         self.cast_btn.setEnabled(allowed and c["caricatures"])
         self.humor.setEnabled(not c["careful"])
         notes = [f"<b>{st.name}:</b> {st.blurb} About {st.shot_seconds:g} s per picture, so a "
@@ -136,7 +164,7 @@ class CreativePanel(QFrame):
             notes.append(f"<span style='color:{GOLD}'>Careful topic (victims: courts and documents only): no humor and "
                          "no caricatures.</span>")
         elif not st.caricature:
-            notes.append("Caricatures are only offered in cartoon satire styles.")
+            notes.append("Caricatures are only drawn in the Political-cartoon satire style: tick the box to switch.")
         elif c["caricatures"]:
             n_ok = len(cast.approved(self.ep))
             notes.append(f"Caricatures on: {n_ok} approved in the Cast." if n_ok else

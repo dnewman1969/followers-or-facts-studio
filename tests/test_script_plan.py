@@ -45,7 +45,7 @@ def test_a_short_scene_plan_is_filled_in(episode, monkeypatch):
     roles = [sc["role"] for sc in s["scenes"]]
     assert len(asked) == 2 and asked[0] >= 9                 # asked once more before filling in
     assert len(roles) >= asked[0] and {"claim", "record", "benefit", "harm"} <= set(roles)
-    assert roles[0] == "intro" and roles[-1] == "verdict"
+    assert roles[0] == "intro" and roles[-1] in ("verdict", "toolkit", "outro")
     blocks = [c.message for c in script.check(episode) if c.level == "block"]
     assert not any("No scene answers" in b for b in blocks), blocks
 
@@ -71,3 +71,50 @@ def test_scan_counts_only_the_story_s_claims(episode):
     story = {**story, "beats": [{"role": "record", "beat": "x", "evidence_ids": [first]}]}
     counts = lengthscan.counts_from(episode, story, {"claims": []})
     assert [c["claim_id"] for c in counts["claims"]] == [one["claim_id"]]
+
+
+def test_quotes_with_left_out_words_still_count():
+    text = "In late October, Don Bolduc, the Republican nominee, repeated a claim about the furries subculture."
+    assert script.quote_matches("In late October, Don Bolduc ... the furries subculture", text)
+    assert script.quote_matches("In late October, Don Bolduc…repeated a claim", text)
+    assert not script.quote_matches("the furries subculture ... In late October", text)     # wrong order
+    assert not script.quote_matches("Only 10 minutes left", text)
+
+
+def test_writer_quotes_are_fixed_while_writing(episode, monkeypatch):
+    research_and_story(episode)
+    base = fake_llm(lambda: read_json(episode.path("research.json")))
+    packet = read_json(episode.path("research.json"))
+    real = next(e["quote"] for e in packet["evidence"] if e.get("kind") == "quote")
+    calls = {"rewrites": 0}
+
+    def quoting(self, messages, schema, model=None, **kw):
+        out = base(self, messages, schema, model, **kw)
+        if "narration" in schema["properties"] and "visual" in schema["properties"]:
+            if "aren't a verified quote" in messages[-1]["content"]:
+                calls["rewrites"] += 1
+            out["narration"] += (f' An ad yells "Only 10 minutes left, buy now!" and the record says "{real}"')
+        return out
+
+    monkeypatch.setattr(Ollama, "chat_json", quoting)
+    pipeline.run_now(episode, "script")
+    assert calls["rewrites"] >= 1                      # the writer was asked to fix it first
+    s = script.load(episode)
+    for sc in s["scenes"]:
+        assert '"Only 10 minutes left' not in sc["narration"] and "Only 10 minutes left" in sc["narration"]
+        assert real[:30] in sc["narration"]           # the real quote keeps its quote marks...
+    blocks = [c.message for c in script.check(episode) if c.level == "block"]
+    assert not any("verified quote" in b for b in blocks), blocks   # ...and its E-number got listed
+
+
+def test_fix_button_repairs_an_existing_script(episode):
+    research_and_story(episode)
+    pipeline.run_now(episode, "script")
+    path = episode.path("script.md")
+    text = path.read_text(encoding="utf-8")
+    first = text.index("### NARRATION\n") + len("### NARRATION\n")
+    path.write_text(text[:first] + "Officials said \"This was never ever true at all.\" " + text[first:], encoding="utf-8")
+    assert any("verified quote" in c.message for c in script.check(episode) if c.level == "block")
+    notes = script.repair(episode)
+    assert any("quote marks were taken off" in n for n in notes)
+    assert not any("verified quote" in c.message for c in script.check(episode) if c.level == "block")

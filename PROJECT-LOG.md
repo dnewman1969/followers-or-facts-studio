@@ -342,6 +342,23 @@ many parts. Quotes in 'single quote marks' (3+ words) are now checked like doubl
 (`scriptfmt.quotes_in`; the narration had an unchecked single-quoted quote), in scripts and the book.
 107 tests pass.
 
+## 2026-10-24 — v0.5.4: made-up quotes fixed while writing; caricatures box
+
+- Dave's S01E03 script was blocked by four "quote doesn't match any verified quote" errors: words the writer
+  put in quote marks that weren't verified quotes (a source summary with "..." in it, a denial, and made-up
+  example lines like "Only 10 minutes left" in the tell scene), and a made-up boy named Sam. Now
+  (`stages/script.py`): quotes may leave words out with "..." if every piece is word for word in order
+  (`quote_matches`); after each scene is written, a quote that is a real verified quote gets its E-number
+  listed, other quoted words go back to the writer once, and if still unverified their quote marks come off
+  so they're said as a paraphrase (`fix_quotes`, logged). The writer and story writer are told: no invented
+  people or characters, no quote marks around summaries, shortened quotes or example lines; technique
+  examples reach the writer without quote marks. "Fix made-up IDs and quotes" on the Script page fixes an
+  existing script (`repair`). The check itself is unchanged in strictness.
+- Caricatures box (Stories): it was greyed out in every style but Political-cartoon satire, which looked
+  broken. Now it's clickable; ticking it in another style offers to switch the video to that style.
+- Research "iPhone alerts and control for Studio" (in progress / project docs).
+111 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.
