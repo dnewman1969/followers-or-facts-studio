@@ -24,6 +24,7 @@ class QueuePage(QWidget):
                           button("Run jobs inside the Studio", lambda: (jobs.start_thread_worker(), self.refresh())),
                           button("Test the worker", self._selftest),
                           button("GPU check (make a log file)", self._gpu_check),
+                          button("Speed test", self._speed_test),
                           button("Cancel selected", self._cancel), button("Move up", lambda: self._move(-1)),
                           button("Move down", lambda: self._move(1))))
         self.table = table(["Job", "Episode", "Stage", "Status", "Progress / error", "Queued", "Finished"])
@@ -97,6 +98,30 @@ class QueuePage(QWidget):
         timer.timeout.connect(done)
         timer.start(500)
         self._gpu_timer = timer
+
+    def _speed_test(self) -> None:
+        """Queue the speed test: times every kind of work on this PC (report in the logs folder)."""
+        from PySide6.QtWidgets import QMessageBox
+
+        from ...episode import list_episodes
+        from ...util import StageError
+        eps = list_episodes()
+        if not eps:
+            info(self, "Make an episode on the Database page first; the test job needs one to belong to.")
+            return
+        video = QMessageBox.question(
+            self, "Speed test", "Time one Wan animated clip too? It adds about 10 minutes but gives the real time per "
+            "clip for the Video page's estimates.") == QMessageBox.StandardButton.Yes
+        try:
+            jobs.enqueue(eps[0]["project_id"], "speedtest", {"video": video})
+        except StageError as exc:
+            info(self, str(exc))
+            return
+        jobs.start_worker(force=True)
+        info(self, "Speed test queued. It times each AI model, a picture" + (", a Wan clip" if video else "")
+             + ", a 2.5D move and Owlbert's voice, then writes speed-test-<date>.txt in the logs folder. "
+             "Send that file to Claude.")
+        self.refresh()
 
     def _selftest(self) -> None:
         """Queue a tiny job; it should say 'done' within a few seconds."""

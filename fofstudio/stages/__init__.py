@@ -68,4 +68,12 @@ STAGES.append(Stage("scan", "Story scan", "ollama", (), lengthscan.run, lambda e
 STAGES.append(Stage("book", "Book", "ollama", (), book.run, book.check, hidden=True,
                     description="The whole story with references, as a PDF, written only from the ticked research."))
 
+def _speedtest(ctx):
+    from .. import speedtest
+    speedtest.run(ctx)
+
+
+STAGES.append(Stage("speedtest", "Speed test", "cpu", (), _speedtest, lambda ep: [], hidden=True,
+                    description="Times the AI models, a picture, a Wan clip, a 2.5D move and the voice on this PC."))
+
 BY_NAME = {s.name: s for s in STAGES}

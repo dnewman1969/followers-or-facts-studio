@@ -34,6 +34,7 @@ def fake_llm(get_packet):
         if "beats" in props:
             ev = [e["id"] for e in get_packet()["evidence"]][:2]
             return {"title": "The Y2K Fear Machine", "logline": "A real bug, sold as doom.", "angle": "money",
+                    "length_seconds": 90, "length_why": "two claims and one trick",
                     "opening_hook": "Midnight, 1999.", "owl_moments": ["opens at his desk"],
                     "techniques": ["fear", "not-a-real-trick"], "thumbnail_words": "fear for sale, folks",
                     "beats": [{"role": r, "beat": f"The {r} beat.", "evidence_ids": ev + ["E-MADE-UP"]}

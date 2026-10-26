@@ -286,7 +286,8 @@ def _packet_for_prompt(packet: dict[str, Any]) -> str:
 
 
 def _scene_count(minutes: float) -> int:
-    return max(6, min(16, round(minutes * 1.2) + 2))
+    """About one scene a minute (more for short videos); a long documentary (the movie) gets up to 90."""
+    return max(6, min(16 if minutes <= 20 else 90, round(minutes * 1.2) + 2))
 
 
 def scene_slots(stype, n: int) -> list:
@@ -588,17 +589,28 @@ def run(ctx: Context) -> None:
     from .. import filmstyles
     genre, director = filmstyles.chosen(creative)
     film_text = filmstyles.script_block(genre, director) if (genre or director) else ""
-    type_text = (f"\n{stype.sheet()}\nFollow this beat sheet in order: each scene's role is its beat's role; a beat "
+    movie = (story or {}).get("format") == "movie"
+    if movie:
+        from types import SimpleNamespace
+
+        from ..storytypes import Beat
+        sheet = SimpleNamespace(beats=tuple(Beat(b["beat"][:60], b["role"], max(1, len(b.get("evidence_ids", []))),
+                                                 b["beat"]) for b in story["beats"]))
+    else:
+        sheet = stype
+    type_text = ("\nThis is the long documentary made from the book: follow the movie plan's beats in order "
+                 "(one or more scenes per chapter, more for chapters with more evidence).\n" + storytypes.SHARED_RULES
+                 + "\n") if movie else (f"\n{stype.sheet()}\nFollow this beat sheet in order: each scene's role is its beat's role; a beat "
                  "with a big share can take two or more scenes.\n" + storytypes.SHARED_RULES + "\n")
     llm = Ollama(job="script_write")
     ids = known_ids(packet)
     scene_schema = with_known_ids(SCENE_SCHEMA, ids)
 
     # 1. outline
-    slots = scene_slots(stype, n_scenes)
+    slots = scene_slots(sheet, n_scenes)
     n_scenes = len(slots)
     outline_schema = with_known_ids(OUTLINE_SCHEMA, ids, inside_scenes=True)
-    outline_schema["properties"]["scenes"].update(minItems=n_scenes, maxItems=16)
+    outline_schema["properties"]["scenes"].update(minItems=n_scenes, maxItems=max(16, n_scenes))
     ctx.progress(f"Planning {n_scenes} scenes in the {style.name} style with {planner}", 3)
     outline_msgs = [
         {"role": "system", "content": VOICE_RULES},
@@ -615,7 +627,7 @@ def run(ctx: Context) -> None:
     ]
     outline = llm.chat_json(outline_msgs, outline_schema, model=planner, lenient=True, temperature=0.6,
                             on_text=ctx.writing("Planning the scenes", 3, 12, 60 * n_scenes))
-    planned = (outline.get("scenes") or [])[:16]
+    planned = (outline.get("scenes") or [])[:max(16, n_scenes)]
     problems = outline_problems(planned, n_scenes)
     if problems:   # the plan is too short or skips a part every video needs: one more try, then fill it in
         ctx.progress(f"The scene plan came back short ({'; '.join(problems)}); asking again", 12)
@@ -625,7 +637,7 @@ def run(ctx: Context) -> None:
                                         f"these roles in this order: {', '.join(s.role for s in slots)}."}],
             outline_schema, model=planner, lenient=True, temperature=0.5, on_text=ctx.writing("Planning the scenes again", 12, 15, 60 * n_scenes))
         if len(again.get("scenes") or []) >= len(planned):
-            outline, planned = again, (again.get("scenes") or [])[:16]
+            outline, planned = again, (again.get("scenes") or [])[:max(16, n_scenes)]
         problems = outline_problems(planned, n_scenes)
         if problems:
             used = [cid for b in (story or {}).get("beats", []) for cid in _claims_of(b, packet)]

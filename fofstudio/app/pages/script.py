@@ -12,6 +12,7 @@ from ...stages import research as rs
 from ...stages import script as script_stage
 from ...util import read_json, write_text
 from ..common import GOLD, tint
+from ..creative import CreativePanel
 from ..widgets import StagePage, click_feedback
 
 
@@ -19,12 +20,15 @@ class ScriptPage(StagePage):
     TITLE = "Script"
     HELP = ("Step 4. Choose the kind of video (genre) and the director's style, press Scan to work out how long the "
             "story needs, set your length, then Produce script: Owlbert's narration scene by scene, with the music "
-            "and his moves. Every scene lists its proof. Change any words you like, press Save, and the checks run again.")
+            "and his moves. Every scene lists its proof. Change any words you like, press Save, and the checks run again. "
+            "The video style (the look of the pictures) and caricatures are chosen here too.")
     APPROVE_STAGE = "script"
     CLEAR_STAGE = "script"
 
     def __init__(self, window):
         super().__init__(window)
+        self.creative = CreativePanel(show=("style", "caricatures"))
+        self.body.addWidget(self.creative)
         film = QHBoxLayout()
         self.genre = QComboBox()
         self.genre.setMinimumWidth(260)
@@ -59,7 +63,7 @@ class ScriptPage(StagePage):
         self._loading_film = False
         row = QHBoxLayout()
         self.minutes = QDoubleSpinBox()
-        self.minutes.setRange(1, 30)
+        self.minutes.setRange(0.5, 150)
         self.minutes.setValue(8)
         self.minutes.setSuffix(" minutes")
         self.minutes.setToolTip("How long the video should be. Changing it updates the length check straight away.")
@@ -160,6 +164,7 @@ class ScriptPage(StagePage):
             self.minutes.blockSignals(True)
             self.minutes.setValue(float(ep.creative().get("minutes", 8)))
             self.minutes.blockSignals(False)
+        self.creative.set_episode(ep)
         super().set_episode(ep)
         if ep:
             self._fill_film()
@@ -214,6 +219,8 @@ class ScriptPage(StagePage):
 
     def refresh(self) -> None:
         super().refresh()
+        if self.ep and not self.creative.isAncestorOf(self.focusWidget() or self):
+            self.creative.set_episode(self.ep)
         if self.ep and not self.minutes.hasFocus():
             self.minutes.blockSignals(True)
             self.minutes.setValue(float(self.ep.creative().get("minutes", 8)))

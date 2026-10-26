@@ -84,8 +84,10 @@ def test_every_page_opens_and_reacts(app, episode):
 
     sp = pages["StoriesPage"]
     w.nav.setCurrentRow(2)
-    sp.creative.style.setCurrentIndex(sp.creative.style.findData("cartoon"))
-    assert ep.creative()["style"] == "cartoon"
+    assert not sp.creative.style.isVisibleTo(sp) and sp.creative.writer.isVisibleTo(sp)   # style moved to Script
+    scp = pages["ScriptPage"]
+    scp.creative.style.setCurrentIndex(scp.creative.style.findData("cartoon"))
+    assert ep.creative()["style"] == "cartoon" and scp.creative.style.isVisibleTo(scp)
     sp._use(1)
     assert sp.size_text.isVisible() and "work with" in sp.size_text.text()
     assert sp.book_btn.isEnabled() and not sp.book_open.isVisible()

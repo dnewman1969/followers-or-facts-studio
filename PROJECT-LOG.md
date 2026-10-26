@@ -379,6 +379,25 @@ From the research "Best local AI models per job" (project docs):
   answers with sentence numbers (only real ones allowed); the program copies the exact words (up to 3
   sentences in a row in one paragraph; abbreviations like Dr., U.S., No. 5 don't split sentences).
 
+## 2026-10-26 — v0.5.6: speed test, two short-video stories, the book as a movie, style on Script
+
+- **Speed test** (`speedtest.py`, Queue → Speed test, hidden stage `speedtest`): times each job's AI model,
+  a storyboard picture, optionally one Wan clip, a 2.5D move and Owlbert's voice; writes
+  logs/speed-test-<date>.txt and logs/speed-test.json with an estimate for a 10-minute video. The Video page's
+  GPU-hours estimate uses the measured Wan time once there is one. Steps that can't run say why.
+- **Stories** (`stages/stories.py`): two stories (STORY_COUNT) instead of three, the second told to differ
+  from the first; each has the AI's length estimate (`length_seconds`, 30-600, up to 180 = a YouTube Short)
+  and choosing a story sets the video length.
+- **The movie** (`make_movie_story`, `movie_minutes`): a book-sized subject's book becomes a long documentary
+  story (30-120 minutes: ~40% of the book's words at 150 a minute, or the full-telling estimate), its beats
+  the book's chapters plus any of claim/record/benefit/harm it lacks. The script follows those beats with up
+  to 90 scenes (`_scene_count`), Script length up to 150 minutes. Stories page: "Make the book into a movie".
+- **Video style and caricatures moved to the Script page** (`CreativePanel(show=...)`); Stories keeps story
+  type, writer and humor; the story writer no longer gets the style.
+- Research reports "Video quality 3D Owlbert and variety" and "Bestseller book craft for nonfiction"
+  (project docs). `repeats.py` added (used in the next step).
+119 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

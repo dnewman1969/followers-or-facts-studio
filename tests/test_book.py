@@ -101,3 +101,29 @@ def test_number_and_quote_checks():
     assert any("13000" in h for h in hard) and any("quotation marks" in h for h in hard)
     none = {"text": "Something happened.", "cites": []}
     assert book.check_paragraph(none, mat, block, mat.names())[0]
+
+
+def test_two_stories_with_lengths_and_the_book_as_a_movie(episode):
+    from fofstudio.stages import stories
+    research_and_story(episode)
+    data = read_json(episode.path("stories.json"))
+    assert len(data["options"]) == stories.STORY_COUNT == 2
+    assert all(30 <= o["length_seconds"] <= 600 for o in data["options"])
+    stories.choose(episode, 0)
+    assert episode.creative()["minutes"] == 1.5            # the fake writer said 90 seconds
+    with pytest.raises(StageError, match="Write the book first"):
+        stories.make_movie_story(episode)
+    pipeline.run_now(episode, "book")
+    i = stories.make_movie_story(episode)
+    movie = stories.chosen(episode)
+    assert movie["format"] == "movie" and i == len(read_json(episode.path("stories.json"))["options"]) - 1
+    assert 30 <= stories.movie_minutes(episode) <= 120
+    assert episode.creative()["minutes"] == stories.movie_minutes(episode)
+    assert {"claim", "record", "benefit", "harm", "verdict"} <= {b["role"] for b in movie["beats"]}
+    stories.make_movie_story(episode)                      # making it again replaces it, no duplicates
+    assert sum(o.get("format") == "movie" for o in read_json(episode.path("stories.json"))["options"]) == 1
+
+
+def test_movie_script_has_many_scenes():
+    from fofstudio.stages import script
+    assert script._scene_count(60) > 16 and script._scene_count(10) <= 16

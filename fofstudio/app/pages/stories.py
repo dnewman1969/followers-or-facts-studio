@@ -1,4 +1,5 @@
-"""Stories: three ways to tell it. Read each breakdown, pick one, or ask for a rewrite."""
+"""Stories: two ways to tell it as a short video, each with the AI's length estimate. Pick one, or ask for a
+rewrite. Book-sized subjects: write the book, and make it into a long video (the movie)."""
 
 from __future__ import annotations
 
@@ -24,9 +25,10 @@ ROLE_NAMES = {"intro": "Opening", "claim": "The claim", "record": "What the reco
 
 class StoriesPage(StagePage):
     TITLE = "Stories"
-    HELP = ("Step 3. First choose how the video is told: the style, length and humor. Then the local AI writes three "
+    HELP = ("Step 3. Choose the story type, writer and humor. Then the local AI writes two "
             "ways to tell how the lie was built and take it apart, using only the evidence you ticked, and names the "
-            "trick Owlbert will teach. Pick one, or Rewrite with notes. All three are kept: to make another later, go "
+            "trick Owlbert will teach, each with how long its short video should be. Pick one (the length follows it), or "
+            "Rewrite with notes. Both are kept: to make another later, go "
             "to Database → Researched ★. Before writing, it sizes the story up: a Short, one video, a series, or "
             "big enough for a book. Write the book makes a PDF with references, from the ticked research only.")
     APPROVE_STAGE = "stories"
@@ -34,12 +36,12 @@ class StoriesPage(StagePage):
 
     def __init__(self, window):
         super().__init__(window)
-        self.creative = CreativePanel()
+        self.creative = CreativePanel(show=("humor", "story"))
         self.body.addWidget(self.creative)
         top = QHBoxLayout()
-        self.make_btn = QPushButton("Create 3 stories")
+        self.make_btn = QPushButton("Create 2 stories")
         self.make_btn.setObjectName("primary")
-        click_feedback(self.make_btn, lambda: self.run_stage("stories", {}, "Writing 3 stories"))
+        click_feedback(self.make_btn, lambda: self.run_stage("stories", {}, "Writing 2 stories"))
         top.addWidget(self.make_btn)
         top.addStretch(1)
         self.body.addLayout(top)
@@ -64,7 +66,11 @@ class StoriesPage(StagePage):
         self.book_ok = QPushButton("Approve the book")
         self.book_ok.setToolTip("You've read every page: make the final PDF without the DRAFT marks.")
         click_feedback(self.book_ok, self._book_approve)
-        for b in (self.book_btn, self.book_again, self.book_open, self.book_notes, self.book_ok):
+        self.movie_btn = QPushButton("🎬 Make the book into a movie")
+        self.movie_btn.setToolTip("A long documentary video that follows the book chapter by chapter. It becomes the "
+                                  "chosen story and sets the length; then go to Script.")
+        click_feedback(self.movie_btn, self._movie)
+        for b in (self.book_btn, self.book_again, self.book_open, self.book_notes, self.book_ok, self.movie_btn):
             shelf.addWidget(b)
         self.book_state = QLabel("")
         self.book_state.setWordWrap(True)
@@ -72,16 +78,16 @@ class StoriesPage(StagePage):
         self.body.addLayout(shelf)
         cols = QHBoxLayout()
         self.cards: list[tuple[QTextBrowser, QPushButton, QPushButton]] = []
-        for i in range(3):
+        for i in range(stories.STORY_COUNT):
             box = QWidget()
             v = QVBoxLayout(box)
             v.setContentsMargins(0, 0, 0, 0)
             view = QTextBrowser()
             view.document().setDefaultStyleSheet(f"h2 {{ color: {GOLD}; }}")
             use = QPushButton("Use this story")
-            use.clicked.connect(lambda _=False, k=i: self._use(k))
+            use.clicked.connect(lambda _=False, k=i: self._use_card(k))
             redo = QPushButton("Rewrite with notes...")
-            redo.clicked.connect(lambda _=False, k=i: self._rewrite(k))
+            redo.clicked.connect(lambda _=False, k=i: self._rewrite_card(k))
             v.addWidget(view, 1)
             v.addWidget(use)
             v.addWidget(redo)
@@ -101,12 +107,15 @@ class StoriesPage(StagePage):
         self.make_btn.setEnabled(bool(self.ep) and not busy and
                                  self.stage_status("research")["status"] == "approved")
         data = read_json(self.ep.path("stories.json")) if self.ep else None
-        self.make_btn.setText("Create 3 new stories" if data else "Create 3 stories")
+        self.make_btn.setText(f"Create {stories.STORY_COUNT} new stories" if data else
+                              f"Create {stories.STORY_COUNT} stories")
         used = stories.used_by(self.ep) if data else {}
         self._refresh_book()
         for i, (view, use, redo) in enumerate(self.cards):
-            opt = (data or {}).get("options", [None] * 3)[i] if data and i < len(data.get("options", [])) else None
-            picked = data and data.get("chosen") == i
+            opts = [o for o in (data or {}).get("options", []) if o.get("format") != "movie"]
+            opt = opts[i] if i < len(opts) else None
+            picked = bool(data and opt is not None and data.get("chosen") is not None
+                          and data["options"][data["chosen"]] is opt)
             if busy:
                 view.setHtml(f"<p style='color:{MUTED}'>Writing... (watch the progress line above)</p>")
             elif not opt:
@@ -135,6 +144,12 @@ class StoriesPage(StagePage):
         rev = f" <span style='color:{MUTED}'>(rewrite {s['revision'] - 1})</span>" if s.get("revision", 1) > 1 else ""
         st = storytypes.STORY_TYPES.get(s.get("story_type", ""))
         wr = storytypes.writers().get(s.get("writer", ""))
+        if s.get("length_seconds"):
+            secs = int(s["length_seconds"])
+            kind = "a YouTube Short" if secs <= stories.SHORT_MAX else "a short video"
+            mark += (f"<p><b>Video length: about {secs // 60}:{secs % 60:02d}</b> ({kind})"
+                     + (f" <span style='color:{MUTED}'>{e(s.get('length_why', ''))}</span>" if s.get("length_why") else "")
+                     + "</p>")
         if st or wr:
             mark += (f"<p style='color:{GOLD}'>" + (f"<b>{e(st.name)}</b>" if st else "")
                      + (" · written as " if st and wr else "") + (f"<b>{e(wr.name)}</b>" if wr else "") + "</p>")
@@ -161,6 +176,10 @@ class StoriesPage(StagePage):
         self.book_btn.setStyleSheet("")
         self.book_btn.setEnabled(research_ok and not busy)
         self.book_again.setVisible(bool(b.get("chapters")))
+        self.movie_btn.setVisible(bool(b.get("chapters")) or size.get("format") == "book")
+        self.movie_btn.setEnabled(bool(b.get("chapters")) and not busy)
+        if size.get("format") == "book" or b.get("chapters"):
+            self.movie_btn.setText(f"🎬 Make the book into a movie (~{stories.movie_minutes(self.ep)} min)")
         self.book_again.setEnabled(research_ok and not busy)
         for w in (self.book_open, self.book_notes, self.book_ok):
             w.setVisible(written)
@@ -194,6 +213,25 @@ class StoriesPage(StagePage):
         book.approve(self.ep)
         self.toast("Book approved: the final PDF (no DRAFT marks) is in the book folder.")
         self.refresh()
+
+    def _index_of_card(self, k: int) -> int:
+        data = read_json(self.ep.path("stories.json")) or {}
+        cards = [n for n, o in enumerate(data.get("options", [])) if o.get("format") != "movie"]
+        return cards[k]
+
+    def _use_card(self, k: int) -> None:
+        self._use(self._index_of_card(k))
+
+    def _rewrite_card(self, k: int) -> None:
+        self._rewrite(self._index_of_card(k))
+
+    def _movie(self) -> None:
+        i = stories.make_movie_story(self.ep)
+        self.ep.record("stories", "awaiting_approval", "the movie chosen")
+        self.toast(f"The movie is the chosen story (about {stories.movie_minutes(self.ep)} minutes). Approve, then "
+                   "go to Script.")
+        self.refresh()
+        return i
 
     def _use(self, i: int) -> None:
         stories.choose(self.ep, i)

@@ -269,8 +269,12 @@ def allowed_writers(careful: bool, humor: int) -> list[Writer]:
 
 
 def pick_three(creative: dict, seed: str = "") -> list[tuple[StoryType, Writer]]:
-    """The type and writer for each of the three story options. A fixed choice is used for all three;
-    "auto" gives three different types (each with a writer that suits it)."""
+    return pick(creative, seed, 3)
+
+
+def pick(creative: dict, seed: str = "", n: int = 2) -> list[tuple[StoryType, Writer]]:
+    """The type and writer for each of the n story options. A fixed choice is used for all of them;
+    "auto" gives n different types (each with a writer that suits it)."""
     import random
     rnd = random.Random(seed)
     careful, humor = bool(creative.get("careful")), int(creative.get("humor", 1))
@@ -278,10 +282,10 @@ def pick_three(creative: dict, seed: str = "") -> list[tuple[StoryType, Writer]]
     ok_writers = {w.key: w for w in allowed_writers(careful, humor)}
     want_type, want_writer = creative.get("story_type", "auto"), creative.get("writer", "auto")
     if want_type in STORY_TYPES and STORY_TYPES[want_type] in ok_types:
-        types = [STORY_TYPES[want_type]] * 3
+        types = [STORY_TYPES[want_type]] * n
     else:
-        types = rnd.sample(ok_types, k=min(3, len(ok_types)))
-        while len(types) < 3:
+        types = rnd.sample(ok_types, k=min(n, len(ok_types)))
+        while len(types) < n:
             types.append(STORY_TYPES[DEFAULT_TYPE])
     out = []
     used: set[str] = set()

@@ -173,9 +173,12 @@ def check_plan(ep: Episode) -> list[Check]:
     n = sum(1 for s in p["shots"] if s["method"] == "animate")
     t = sum(1 for s in p["shots"] if s["method"] == "text_to_video")
     px = sum(1 for s in p["shots"] if s["method"] == "parallax")
-    gpu = n * MINUTES_PER_CLIP + t * 8
+    from ..speedtest import minutes_per_clip
+    per = minutes_per_clip(MINUTES_PER_CLIP)       # measured on this PC by Queue → Speed test, if run
+    gpu = n * per + t * 8
     return [Check(OK, f"{len(p['shots'])} shots planned: {n} animated by Wan, {t} made from words, {px} moving in 2.5D "
                       f"(depth), the rest cards. About {gpu / 60:.1f} hours of GPU time"
+                      + (" (from your speed test)" if per != MINUTES_PER_CLIP else " (estimate: run Queue → Speed test)")
                       + (" - good for an overnight run." if gpu > 180 else "."))]
 
 

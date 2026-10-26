@@ -1,4 +1,5 @@
-"""How the video is told: style, length, humor and caricatures (shown on the Stories and Script pages),
+"""How the video is told. The Stories page shows story type, writer and humor; the Script page shows the video
+style and caricatures (CreativePanel(show=...)),
 plus the Cast window where you approve how each caricatured public figure is drawn."""
 
 from __future__ import annotations
@@ -18,26 +19,32 @@ class CreativePanel(QFrame):
 
     changed = Signal()
 
-    def __init__(self, parent=None):
+    ALL = ("style", "minutes", "humor", "caricatures", "story")
+
+    def __init__(self, parent=None, show: tuple[str, ...] = ALL):
         super().__init__(parent)
         self.ep = None
+        self.show = set(show)
         self.setObjectName("creative")
         self.setStyleSheet(f"QFrame#creative {{ background:{PANEL}; border-radius:8px; }}")
         v = QVBoxLayout(self)
         row = QHBoxLayout()
-        row.addWidget(QLabel("<b>Video style</b>"))
+        style_label = QLabel("<b>Video style</b>")
+        row.addWidget(style_label)
         self.style = QComboBox()
         for key, name in styles.choices():
             self.style.addItem(name, key)
         self.style.setMinimumWidth(240)
         row.addWidget(self.style)
-        row.addWidget(QLabel("Length"))
+        minutes_label = QLabel("Length")
+        row.addWidget(minutes_label)
         self.minutes = QDoubleSpinBox()
         self.minutes.setRange(1, 30)
         self.minutes.setDecimals(1)
         self.minutes.setSuffix(" min")
         row.addWidget(self.minutes)
-        row.addWidget(QLabel("Humor"))
+        humor_label = QLabel("Humor")
+        row.addWidget(humor_label)
         self.humor = QComboBox()
         for i, h in enumerate(HUMOR):
             self.humor.addItem(h, i)
@@ -51,16 +58,24 @@ class CreativePanel(QFrame):
         row.addStretch(1)
         v.addLayout(row)
         row2 = QHBoxLayout()
-        row2.addWidget(QLabel("<b>Story type</b>"))
+        type_label = QLabel("<b>Story type</b>")
+        row2.addWidget(type_label)
         self.story_type = QComboBox()
         self.story_type.setMinimumWidth(260)
         row2.addWidget(self.story_type)
-        row2.addWidget(QLabel("<b>Writer</b>"))
+        writer_label = QLabel("<b>Writer</b>")
+        row2.addWidget(writer_label)
         self.writer = QComboBox()
         self.writer.setMinimumWidth(240)
         row2.addWidget(self.writer)
         row2.addStretch(1)
         v.addLayout(row2)
+        parts = {"style": (style_label, self.style), "minutes": (minutes_label, self.minutes),
+                 "humor": (humor_label, self.humor), "caricatures": (self.caric, self.cast_btn),
+                 "story": (type_label, self.story_type, writer_label, self.writer)}
+        for name, widgets in parts.items():
+            for w in widgets:
+                w.setVisible(name in self.show)
         self.blurb = QLabel("")
         self.blurb.setWordWrap(True)
         self.blurb.setObjectName("muted")
@@ -159,10 +174,13 @@ class CreativePanel(QFrame):
         self.cast_btn.setEnabled(allowed and c["caricatures"])
         self.humor.setEnabled(not c["careful"])
         notes = [f"<b>{st.name}:</b> {st.blurb} About {st.shot_seconds:g} s per picture, so a "
-                 f"{c['minutes']:g}-minute video needs about {round(c['minutes'] * 60 / st.shot_seconds)} pictures."]
+                 f"{c['minutes']:g}-minute video needs about {round(c['minutes'] * 60 / st.shot_seconds)} pictures."] \
+            if "style" in self.show else []
         if c["careful"]:
             notes.append(f"<span style='color:{GOLD}'>Careful topic (victims: courts and documents only): no humor and "
                          "no caricatures.</span>")
+        elif "caricatures" not in self.show:
+            pass
         elif not st.caricature:
             notes.append("Caricatures are only drawn in the Political-cartoon satire style: tick the box to switch.")
         elif c["caricatures"]:
@@ -171,9 +189,9 @@ class CreativePanel(QFrame):
                          f"<span style='color:{GOLD}'>Caricatures on, but nobody is approved yet: press Cast...</span>")
         t = storytypes.STORY_TYPES.get(c.get("story_type", ""))
         w = storytypes.writers().get(c.get("writer", ""))
-        if t:
+        if t and "story" in self.show:
             notes.append(f"<br><b>{t.name}:</b> {t.blurb}")
-        if w:
+        if w and "story" in self.show:
             notes.append(f"<br><b>Writer, {w.name}:</b> sounds like {w.sounds_like} (the writing style; Owlbert's "
                          "voice stays his own)")
         self.blurb.setText(" ".join(notes))

@@ -1,4 +1,8 @@
-"""Stories: three different ways to tell the tale and take the lie apart.
+"""Stories: two different ways to tell the tale and take the lie apart, each as a short video.
+
+Each story comes with the local AI's estimate of how long its video should be (a YouTube Short is up to
+3 minutes); choosing a story sets the video length to it. A book-sized subject can also become a long
+documentary video ("the movie", make_movie_story) built from the book's chapters.
 
 Each option has a title, a one-line pitch, the angle it takes, and a beat-by-beat
 outline that names the evidence each beat leans on. You pick one; you can ask for
@@ -10,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .. import storytypes, styles, techniques
+from .. import storytypes, techniques
 from ..scriptfmt import ROLES
 from ..episode import Episode
 from ..llm import Ollama
@@ -37,9 +41,11 @@ STORY_SCHEMA = {
         "owl_moments": {"type": "array", "items": {"type": "string"}},
         "thumbnail_words": {"type": "string"},
         "techniques": {"type": "array", "items": {"type": "string", "enum": list(techniques.TECHNIQUES)}},
+        "length_seconds": {"type": "integer", "minimum": 30, "maximum": 600},
+        "length_why": {"type": "string"},
     },
     "required": ["title", "logline", "angle", "opening_hook", "beats", "owl_moments", "thumbnail_words",
-                 "techniques"],
+                 "techniques", "length_seconds", "length_why"],
 }
 THREE_SCHEMA = {"type": "object", "properties": {"stories": {"type": "array", "items": STORY_SCHEMA}},
                 "required": ["stories"]}
@@ -69,6 +75,9 @@ someone sold, attributed to its seller. Then show how it was built. Include a "t
 names the manipulation trick (pick 1 or 2 from the techniques list) with a harmless everyday example,
 then shows it in this case. End on the fact again. Link beats with "but" or "therefore", never "and then".
 techniques: the keys of the 1-2 tricks this story teaches.
+length_seconds: how long THIS story's short video needs to tell it well, with no padding: count the beats, the
+evidence each needs and the trick (about 150 spoken words a minute). Up to 180 for a YouTube Short; up to 600
+for a short video. length_why: one line on why.
 thumbnail_words: 2 to 4 big, punchy words for the YouTube thumbnail that make people curious and fit
 this story's angle (e.g. "FEAR FOR SALE", "WHO GOT PAID?"). No names of private people, no victims.
 """
@@ -81,10 +90,9 @@ def _packet(ep: Episode) -> dict[str, Any]:
 
 def style_note(ep: Episode) -> str:
     c = ep.creative()
-    st = styles.get(c["style"])
     humor = ["no jokes at all", "a light touch of warmth", "some gentle humor aimed at the trick or the sellers",
              "plenty of satire, always punching up at the sellers, never at believers or victims"][c["humor"]]
-    return (f"\nVideo style: {st.name}. {st.tone}\nHumor: {humor}.\n"
+    return (f"\nHumor: {humor}.\n"
             f"Tricks you can name: {json.dumps(techniques.for_prompt())}\n")
 
 
@@ -119,7 +127,12 @@ def thumbnail_words(text: str) -> str:
     return " ".join([w for w in words if w][:4]).upper()
 
 
+STORY_COUNT = 2
+SHORT_MAX = 180          # a YouTube Short is up to 3 minutes
+
+
 def _clean(story: dict[str, Any], valid: set[str]) -> dict[str, Any]:
+    story["length_seconds"] = max(30, min(600, int(story.get("length_seconds") or 120)))
     for b in story.get("beats", []):
         b["evidence_ids"] = [e for e in b.get("evidence_ids", []) if e in valid]
     story["thumbnail_words"] = thumbnail_words(story.get("thumbnail_words") or story.get("title", ""))
@@ -162,20 +175,28 @@ def run(ctx: Context) -> None:
                                 on_text=ctx.writing("Sizing up the story", 3, 9, 250))
         ctx.progress(f"Size: {storysize.FORMATS[size['format']]} (about {size['video_seconds'] / 60:.0f} min of "
                      f"video, or a {size['pages']}-page book).", 10)
-        options = []
-        picks = storytypes.pick_three(ep.creative(), f"{ep.project_id}-{utc_now()}")
+        options: list[dict[str, Any]] = []
+        picks = storytypes.pick(ep.creative(), f"{ep.project_id}-{utc_now()}", STORY_COUNT)
+        step = 88 / len(picks)
         for n, (stype, writer) in enumerate(picks):
             ctx.check_cancel()
-            ctx.progress(f"Writing story option {n + 1} of 3: {stype.name}, written as {writer.name}", 10 + n * 30)
+            ctx.progress(f"Writing story option {n + 1} of {len(picks)}: {stype.name}, written as {writer.name}",
+                         10 + n * step)
+            other = ("\n\nAnother story was already planned; make this one clearly different (a different opening, "
+                     "a different main piece of evidence up front, a different angle):\n"
+                     + "\n".join(f"- {o['title']}: {o['angle']} Opening: {o['opening_hook']}" for o in options)) \
+                if options else ""
             story = llm.chat_json([
                 {"role": "system", "content": RULES + "\n" + storytypes.SHARED_RULES},
                 {"role": "user", "content": f"{style_note(ep)}Evidence:\n{evidence_for_prompt(ep)}\n\nPlan ONE story "
                                             f"as this story type. Its beats follow the beat sheet in order (one beat each; "
                                             f"use the beat sheet's roles):\n{stype.sheet()}\n\nThe script will be "
                                             f"written by {writer.name}: {writer.sounds_like} Write the logline and "
-                                            "the opening hook with that flavor."},
+                                            "the opening hook with that flavor. It becomes a short video on the "
+                                            "subject." + other},
             ], STORY_SCHEMA, temperature=0.8,
-                on_text=ctx.writing(f"Writing story {n + 1} of 3", 10 + n * 30, 38 + n * 30, 450))
+                on_text=ctx.writing(f"Writing story {n + 1} of {len(picks)}", 10 + n * step, 10 + (n + 1) * step - 2,
+                                    450))
             story = _clean(story, valid)
             story["angle_hint"] = f"{stype.name}: {stype.blurb}"
             story["story_type"], story["writer"] = stype.key, writer.key
@@ -193,6 +214,74 @@ def choose(ep: Episode, index: int) -> None:
         raise StageError("No such story option.")
     data["chosen"] = index
     write_json(ep.path("stories.json"), data)
+    story = data["options"][index]
+    if story.get("length_seconds"):          # the video length follows the chosen story
+        ep.set_creative(minutes=max(1.0, round(story["length_seconds"] / 30) / 2))
+
+
+# ---------------------------------------------------------------- the book as a long video ("the movie")
+PART_ROLE = {"introduction": "claim", "origin": "record", "players": "benefit", "spread": "record",
+             "record": "record", "profit": "benefit", "damage": "harm", "techniques": "tell", "verdict": "verdict"}
+
+
+def movie_minutes(ep: Episode) -> int:
+    """How long the documentary made from the book should run: about 40% of the book's words narrated at
+    150 a minute (a film condenses a book), or the full-telling estimate before the book is written;
+    30 to 120 minutes."""
+    from . import book as bookmod
+    from . import storysize
+    b = bookmod.load(ep)
+    words = bookmod.stats(b)["words"] if b.get("chapters") else 0
+    if words:
+        mins = words * 0.4 / 150
+    else:
+        mins = (storysize.load(ep).get("video_seconds") or 1800) / 60
+    return int(max(30, min(120, round(mins / 5) * 5)))
+
+
+def make_movie_story(ep: Episode) -> int:
+    """Add the book's chapters as a story ("the movie") and choose it. Returns its index."""
+    from . import book as bookmod
+    b = bookmod.load(ep)
+    if not b.get("chapters"):
+        raise StageError("Write the book first (or at least let it plan its chapters): the movie follows the book's "
+                         "chapters.")
+    valid = _valid_ids(ep) | {e for ch in b["chapters"] for e in ch.get("evidence_ids", [])}
+    first = b["chapters"][0]
+    beats = [{"role": "intro", "beat": "Cold open: the most striking true fact from the record, before the claim.",
+              "evidence_ids": [e for e in first.get("evidence_ids", []) if e in valid][:2]}]
+    for ch in b["chapters"]:
+        beats.append({"role": PART_ROLE.get(ch["part"], "record"), "beat": f"{ch['title']}: {ch.get('purpose', '')}",
+                      "evidence_ids": [e for e in ch.get("evidence_ids", []) if e in valid], "chapter": ch["number"]})
+    must = {"claim": "What was claimed, once, attributed to who sold it.",
+            "record": "What the record really shows.", "benefit": "Who profited from it, documented.",
+            "harm": "What it did to real people, documented and respectful."}
+    for role, how in must.items():            # every video answers all four, whatever chapters the book has
+        if not any(x["role"] == role for x in beats):
+            at = next((k for k, x in enumerate(beats) if x["role"] in ("tell", "verdict")), len(beats))
+            if role == "claim":
+                at = 1
+            ev = [e for ch in b["chapters"] for e in ch.get("evidence_ids", []) if e in valid][:3]
+            beats.insert(at, {"role": role, "beat": how, "evidence_ids": ev})
+    if not any(x["role"] == "verdict" for x in beats):
+        beats.append({"role": "verdict", "beat": "The verdict.", "evidence_ids": []})
+    minutes = movie_minutes(ep)
+    creative = ep.creative()
+    movie = {"title": b.get("title") or ep.title, "logline": b.get("subtitle") or "The full story, chapter by chapter.",
+             "angle": "The full documentary, following the book chapter by chapter.",
+             "opening_hook": beats[0]["beat"], "beats": beats,
+             "owl_moments": ["opens the film at his desk", "introduces each chapter", "delivers the verdict"],
+             "thumbnail_words": thumbnail_words(b.get("title") or ep.title), "techniques": [],
+             "story_type": creative.get("story_type") if creative.get("story_type") in storytypes.STORY_TYPES
+             else storytypes.DEFAULT_TYPE, "writer": creative.get("writer") if creative.get("writer") != "auto" else "",
+             "format": "movie", "length_seconds": minutes * 60, "revision": 1,
+             "angle_hint": f"The movie: about {minutes} minutes from the book's {len(b['chapters'])} chapters"}
+    data = read_json(ep.path("stories.json"), {}) or {"options": [], "made_at": utc_now()}
+    data["options"] = [o for o in data.get("options", []) if o.get("format") != "movie"] + [movie]
+    data["chosen"] = len(data["options"]) - 1
+    write_json(ep.path("stories.json"), data)
+    ep.set_creative(minutes=float(minutes))
+    return data["chosen"]
 
 
 def chosen(ep: Episode) -> dict[str, Any] | None:
@@ -203,7 +292,7 @@ def chosen(ep: Episode) -> dict[str, Any] | None:
 
 
 def used_by(ep: Episode) -> dict[int, list[str]]:
-    """Which of these three stories other videos already use (videos started from the same set)."""
+    """Which of these stories other videos already use (videos started from the same set)."""
     from ..episode import list_episodes, Episode as E
     data = read_json(ep.path("stories.json")) or {}
     if not data.get("set_id"):
@@ -223,7 +312,7 @@ def check(ep: Episode) -> list[Check]:
     if not data:
         return [Check(BLOCK, "No stories yet. Press Create stories.")]
     if data.get("chosen") is None:
-        return [Check(BLOCK, "Pick one of the three stories.")]
+        return [Check(BLOCK, "Pick one of the stories.")]
     story = data["options"][data["chosen"]]
     out = []
     roles = {b["role"] for b in story["beats"]}
