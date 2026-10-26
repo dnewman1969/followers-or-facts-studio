@@ -451,6 +451,14 @@ From the research "Bestseller book craft for nonfiction" (project docs):
 - Tests: archive searches are "offline" in tests (conftest), so storyboards use re-creations.
 127 tests pass.
 
+## 2026-10-26 — v0.5.10: a new project starts with clean pages
+
+Dave: starting a new project from the Database should clear steps 2-8. Some pages only updated when the new
+job had something to show, so the Publish page kept the old title, description, thumbnail words and
+"Uploaded" link, and the Script page kept the old notes for the writer. Now `StagePage.set_episode` calls
+`new_episode()` when the project changes (Publish, Script, Research clear their fields; cached signatures
+reset). Regression test `test_a_new_project_starts_with_clean_pages` (fails on the old code). 128 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

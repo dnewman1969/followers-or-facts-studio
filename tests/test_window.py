@@ -231,3 +231,42 @@ def test_caricature_box_offers_the_satire_style(app, episode):
     c = episode.creative()
     assert c["style"] == "satire" and c["caricatures"] and p.caric.isChecked()
     assert not app.problems, app.problems
+
+
+def test_a_new_project_starts_with_clean_pages(app, episode):
+    """Dave: starting a new project from the Database should clear steps 2 to 8."""
+    from fofstudio import subjects
+    from fofstudio.app.main import MainWindow
+    from fofstudio.episode import Episode, next_id
+    from fofstudio.util import write_json
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    write_json(ep.path("publish", "metadata.json"), {"title": "OLD TITLE", "description": "OLD DESCRIPTION",
+                                                     "made_at": "x"})
+    write_json(ep.path("publish", "upload.json"), {"youtube_id": "OLDVIDEO", "privacy": "private"})
+    w = MainWindow()
+    w.show()
+    w._fill_picker(ep.project_id)
+    pages = {type(p).__name__: p for p in w.pages_and_tools}
+    for row in range(1, 8):
+        w.nav.setCurrentRow(row)
+        app.processEvents()
+    pages["ScriptPage"].direction.setText("old notes for the writer")
+    assert "OLD TITLE" in pages["PublishPage"].title_edit.text()
+    # a new project from the Database page
+    b = subjects.breakdown("story", "A-Y2K-FEAR-INDUSTRY")
+    new = Episode.create(next_id(), "A brand new job", "A-Y2K-FEAR-INDUSTRY", b["claim_ids"][:1])
+    w._chosen(new.project_id, 1)
+    for row in range(1, 8):
+        w.nav.setCurrentRow(row)
+        app.processEvents()
+    pub, scr = pages["PublishPage"], pages["ScriptPage"]
+    assert pub.title_edit.text() == "" and pub.desc.toPlainText() == "" and "OLDVIDEO" not in pub.uploaded.text()
+    assert scr.direction.text() == "" and scr.editor.toPlainText() == ""
+    assert pages["StoryboardPage"].summary.text() == "" and pages["VideoPage"].summary.text() == ""
+    for k in range(2, 8):   # no step after Research shows as done or waiting for the old job
+        assert w.ep.stage_status(["stories", "script", "storyboard", "video", "render", "upload"][k - 2])["status"] \
+            == "not_started"
+    w.close()
+    assert not app.problems, app.problems

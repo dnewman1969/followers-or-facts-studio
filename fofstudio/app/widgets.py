@@ -375,8 +375,17 @@ class StagePage(QWidget):
 
     # ---- called by the window
     def set_episode(self, ep) -> None:
+        new = (getattr(ep, "project_id", None) != getattr(self.ep, "project_id", None)) if hasattr(self, "ep") else True
         self.ep = ep
+        if new:
+            self.new_episode()     # a different job: nothing from the last one may stay on the page
         self.refresh()
+
+    def new_episode(self) -> None:
+        """Clear whatever this page shows for the previous job (pages override it)."""
+        for name in ("_sig", "_tl_sig", "_loaded_media"):
+            if hasattr(self, name):
+                setattr(self, name, None)
 
     def refresh(self) -> None:
         if not self.ep or not self.APPROVE_STAGE:

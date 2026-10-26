@@ -144,6 +144,10 @@ class ResearchPage(StagePage):
         self._sig = None
 
     # ------------------------------------------------------------ loading
+    def new_episode(self) -> None:
+        super().new_episode()
+        self.search.clear()
+
     def refresh(self) -> None:
         if not self.ep:
             super().refresh()

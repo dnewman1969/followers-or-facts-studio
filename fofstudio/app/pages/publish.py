@@ -165,6 +165,15 @@ class PublishPage(StagePage):
         self._signin_timer.timeout.connect(done)
         self._signin_timer.start(500)
 
+    def new_episode(self) -> None:
+        super().new_episode()
+        self.title_edit.clear()
+        self.desc.clear()
+        self.thumb_words.clear()
+        self.thumb.clear()
+        self.thumb.setText("The thumbnail appears here")
+        self.uploaded.clear()
+
     def refresh(self) -> None:
         super().refresh()
         if not self.ep:

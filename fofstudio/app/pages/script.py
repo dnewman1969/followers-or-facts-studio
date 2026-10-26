@@ -169,6 +169,13 @@ class ScriptPage(StagePage):
             self.ep.set_creative(minutes=float(value))
             super().refresh()   # re-run the checks (the length check uses this)
 
+    def new_episode(self) -> None:
+        super().new_episode()
+        self.direction.clear()
+        self.editor.clear()
+        self.editor.document().setModified(False)
+        self.scan_text.clear()
+
     def set_episode(self, ep) -> None:
         if ep:
             self.minutes.blockSignals(True)
