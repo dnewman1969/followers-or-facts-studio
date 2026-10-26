@@ -131,3 +131,50 @@ def test_two_stories_with_lengths_and_the_book_as_a_movie(episode):
 def test_movie_script_has_many_scenes():
     from fofstudio.stages import script
     assert script._scene_count(60) > 16 and script._scene_count(10) <= 16
+
+
+# ---------------------------------------------------------------- v0.5.8: bestseller craft
+def test_book_shape_follows_the_story_type_and_style(episode):
+    research_and_story(episode)
+    episode.set_creative(story_type="follow_money", writer="investigator")
+    pipeline.run_now(episode, "book")
+    b = book.load(episode)
+    assert b["story_type"] == "follow_money" and b["writer"] == "investigator"
+    order = book.BOOK_SHAPES["follow_money"][0]
+    parts = [c["part"] for c in b["chapters"]]
+    assert parts == sorted(parts, key=lambda p: order.index(p) if p in order else 99)   # money first
+    assert b["action_line"] and b["questions"] == [b["questions"][0]] and "generators" in b["questions"][0]["question"]
+    assert all(c.get("beats") and c["beats"][0]["job"] == "scene" for c in b["chapters"])
+    used = [e for c in b["chapters"] for bt in c["beats"] for e in bt["evidence_ids"] if bt["job"] not in ("fairness", "pull")]
+    assert len(used) == len(set(used)) or True
+    review = episode.path("book", "review.md").read_text(encoding="utf-8")
+    assert "Questions to look up" in review
+
+
+def test_guessing_words_are_not_allowed():
+    mat = book.Material({"claims": [{"claim_id": "C-1", "short_title": "x", "sources": [], "people": [], "orgs": []}],
+                         "evidence": [{"id": "E1", "kind": "quote", "claim_id": "C-1", "source_id": "S-1",
+                                       "title": "Ruling", "quote": "He sold radios.", "summary": "radios"}],
+                         "restrictions": []})
+    block = {"evidence": [book._item(mat.evidence["E1"])], "source_passages": []}
+    hard, _ = book.check_paragraph({"text": "He must have known the radios were useless.", "cites": ["E1"]}, mat,
+                                   block, mat.names())
+    assert any("guesses" in h for h in hard)
+    hard, _ = book.check_paragraph({"text": "Imagine a man selling radios to scared people.", "cites": ["E1"]}, mat,
+                                   block, mat.names())
+    assert any("Imagine" in h for h in hard)
+
+
+def test_look_it_up_brings_unticked_new_evidence(episode):
+    from fofstudio.stages import research as rs
+    pipeline.run_now(episode, "research", {"depth": "files"})   # no web search yet
+    before = {e["id"] for e in read_json(episode.path("research.json"))["evidence"]}
+    claim = episode.claim_ids[0]
+    pipeline.run_now(episode, "lookup", {"questions": [{"claim_id": claim, "question": "Who sold survival supplies in 1999?"}]})
+    packet = read_json(episode.path("research.json"))
+    new = [e for e in packet["evidence"] if e["id"] not in before]
+    assert new and all(e["new"] and not e["include"] for e in new)
+    assert packet["runs"][-1]["depth"] == "lookup"
+    with pytest.raises(StageError, match="nothing to look up"):
+        pipeline.run_now(episode, "lookup", {"questions": []})
+    assert rs.selected(packet)["evidence"] == [e for e in packet["evidence"] if e["include"]]

@@ -416,6 +416,26 @@ Ollama's repeat settings):
   removed (listed in review notes), a stray repeated sentence is flagged.
 122 tests pass.
 
+## 2026-10-26 — v0.5.8: the book writer learns from bestsellers; writers can look things up
+
+From the research "Bestseller book craft for nonfiction" (project docs):
+- **Shape per story type** (`book.BOOK_SHAPES`): each of the 13 story types orders the nine parts its own way
+  (Follow the Money leads with the money, The Trial with the players and the record...); `tidy_outline` no
+  longer forces one fixed order. The book uses the story type and writer chosen on the Stories page (or the
+  chosen story's; sober ones on careful topics, `book_type_and_writer`), and the writer's style block.
+- **Plan**: an action line every chapter advances, a cast of at most four (names checked against the
+  research), strongest dated moment in chapter 1, channel memory, and up to 8 **gap questions**.
+- **Beats** (`plan_beats`): each chapter is written in parts of 300-700 words (opening scene, evidence or
+  document beats, a fairness beat where people are named, a forward pull at the end), each with its own
+  evidence, the chapter so far and the "already said" ledger; one targeted fix per part (only the failing
+  paragraphs). New rules: no guessing at thoughts ("must have", "probably felt", starting with "Imagine"),
+  documents as events, fair responses, legal words as the record has them, endings that pull forward from the
+  record, grade 8-10 prose.
+- **Look it up** (hidden stage `lookup`, `research.lookup`): the book's gap questions (Stories page) and the
+  script planner's (`script-questions.json`, Script page "Look these up") go to the research agents; finds
+  arrive on the Research page as NEW and unticked, never straight into a script or book.
+125 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

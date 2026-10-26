@@ -115,6 +115,10 @@ def fake_llm(get_packet):
             ev = props["chapters"]["items"]["properties"]["evidence_ids"]["items"]["enum"]
             cl = props["chapters"]["items"]["properties"]["claim_ids"]["items"]["enum"]
             return {"title": "The Y2K Fear Machine", "subtitle": "How a real bug was sold as doom",
+                    "action_line": "We follow the fear from a 1997 radio show to the quiet morning of 2000.",
+                    "cast": ["Gary North", "Nobody Real"],
+                    "gap_questions": [{"claim_id": cl[0], "question": "How many generators were sold in 1999?"},
+                                      {"claim_id": cl[0], "question": "short"}],
                     "chapters": [{"part": "verdict", "title": "What we know", "purpose": "the verdict",
                                   "claim_ids": cl, "evidence_ids": ev[:1]},
                                  {"part": "origin", "title": "A real bug", "purpose": "where it started",

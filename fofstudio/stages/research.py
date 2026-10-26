@@ -512,6 +512,59 @@ def run(ctx: Context) -> None:
     ctx.progress(f"Done: {len(new_ids)} new pieces of evidence, {len(packet['evidence'])} in all. Tick the ones to use.", 100)
 
 
+def lookup(ctx: Context) -> None:
+    """Look things up for the writers (hidden stage `lookup`): the questions the script or book planner couldn't
+    answer from the research. The agents search for primary documents; what they find goes into the database and
+    onto the Research page as NEW and unticked. Nothing reaches a script or book until you tick it."""
+    ep = ctx.episode
+    questions = [q for q in (ctx.options.get("questions") or []) if (q.get("question") or "").strip()]
+    if not questions:
+        raise StageError("There's nothing to look up.")
+    if not ep.path("research.json").exists():
+        raise StageError("Run Research first.")
+    llm = Ollama(job="research_plan")
+    before = read_json(ep.path("research.json")) or {}
+    packet = build_packet(ep)
+    before_ids = {e["id"] for e in packet["evidence"]}
+    claims = {c["claim_id"]: c for c in packet["claims"]}
+    if not claims:
+        raise StageError("This episode has no claims to look things up for.")
+    found = kept = rejected = 0
+    for n, q in enumerate(questions):
+        ctx.check_cancel()
+        c = claims.get(q.get("claim_id")) or next(iter(claims.values()))
+        about = (f"Claim: {c['short_title']}\nFind primary documents (court records, government documents, news "
+                 f"reports from the time, studies) that answer this question:\n{q['question'].strip()}")
+        f, k, r = _hunt(ctx, llm, c, about, 3, 3, 5 + 80 * n / len(questions), 80 / len(questions),
+                        f"question {n + 1} of {len(questions)}")
+        found, kept, rejected = found + f, kept + k, rejected + r
+    packet = build_packet(ep)
+    claim_by_id = {c["claim_id"]: c for c in packet["claims"]}
+    done = {r["source_id"] for r in db.rows("SELECT source_id FROM source WHERE summary IS NOT NULL AND summary != ''")}
+    for e in {e["source_id"]: e for e in packet["evidence"] if e["id"] not in before_ids}.values():
+        if e["source_id"] in done:
+            continue
+        text = sources.source_text(e["source_id"])
+        if text:
+            ctx.progress(f"Writing a summary of {e.get('title') or e['source_id']}", 90)
+            summary = _summarize(llm, claim_by_id[e["claim_id"]], e.get("title") or "", text)
+            if summary:
+                db.execute("UPDATE source SET summary=? WHERE source_id=?", (summary, e["source_id"]))
+    packet = build_packet(ep)
+    new_ids = [e["id"] for e in packet["evidence"] if e["id"] not in before_ids]
+    for e in packet["evidence"]:
+        e["new"] = e["id"] in new_ids
+    packet["new_ids"] = new_ids
+    packet["researched_at"] = before.get("researched_at") or utc_now()
+    packet["runs"] = (before.get("runs") or []) + [{
+        "at": utc_now(), "depth": "lookup", "questions": [q["question"] for q in questions], "found_sources": found,
+        "quotes_kept": kept, "quotes_thrown_out": rejected, "new_evidence": len(new_ids)}]
+    write_json(ep.path("research.json"), packet)
+    write_text(ep.path("research.md"), render_markdown(packet))
+    ctx.progress(f"Looked up {len(questions)} question(s): {len(new_ids)} new piece(s) of evidence, marked NEW on the "
+                 "Research page. Tick the ones to use, then write again.", 100)
+
+
 def set_include(ep: Episode, evidence_ids: str | list[str], include: bool) -> None:
     ids = {evidence_ids} if isinstance(evidence_ids, str) else set(evidence_ids)
     packet = read_json(ep.path("research.json"))

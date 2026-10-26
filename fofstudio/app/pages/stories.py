@@ -70,7 +70,12 @@ class StoriesPage(StagePage):
         self.movie_btn.setToolTip("A long documentary video that follows the book chapter by chapter. It becomes the "
                                   "chosen story and sets the length; then go to Script.")
         click_feedback(self.movie_btn, self._movie)
-        for b in (self.book_btn, self.book_again, self.book_open, self.book_notes, self.book_ok, self.movie_btn):
+        self.book_lookup = QPushButton("Look up questions")
+        self.book_lookup.setToolTip("Questions the book planner couldn't answer from the research. The agents search; "
+                                    "finds arrive on the Research page as NEW and unticked.")
+        click_feedback(self.book_lookup, self._book_questions)
+        for b in (self.book_btn, self.book_again, self.book_open, self.book_notes, self.book_ok, self.movie_btn,
+                  self.book_lookup):
             shelf.addWidget(b)
         self.book_state = QLabel("")
         self.book_state.setWordWrap(True)
@@ -176,6 +181,10 @@ class StoriesPage(StagePage):
         self.book_btn.setStyleSheet("")
         self.book_btn.setEnabled(research_ok and not busy)
         self.book_again.setVisible(bool(b.get("chapters")))
+        qs = b.get("questions") or []
+        self.book_lookup.setVisible(bool(qs))
+        self.book_lookup.setEnabled(not busy and not self.busy("lookup"))
+        self.book_lookup.setText(f"Look up {len(qs)} question(s)")
         self.movie_btn.setVisible(bool(b.get("chapters")) or size.get("format") == "book")
         self.movie_btn.setEnabled(bool(b.get("chapters")) and not busy)
         if size.get("format") == "book" or b.get("chapters"):
@@ -225,6 +234,10 @@ class StoriesPage(StagePage):
     def _rewrite_card(self, k: int) -> None:
         self._rewrite(self._index_of_card(k))
 
+    def _book_questions(self) -> None:
+        qs = book.load(self.ep).get("questions") or []
+        self.run_stage("lookup", {"questions": qs}, f"Looking up {len(qs)} question(s)")
+
     def _movie(self) -> None:
         i = stories.make_movie_story(self.ep)
         self.ep.record("stories", "awaiting_approval", "the movie chosen")
@@ -245,4 +258,4 @@ class StoriesPage(StagePage):
             self.run_stage("stories", {"rewrite": {"index": i, "notes": notes.strip()}}, f"Rewriting story {i + 1}")
 
     def watched(self) -> list[str]:
-        return ["stories", "research", "book"]
+        return ["stories", "research", "book", "lookup"]

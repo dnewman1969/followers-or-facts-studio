@@ -76,4 +76,7 @@ def _speedtest(ctx):
 STAGES.append(Stage("speedtest", "Speed test", "cpu", (), _speedtest, lambda ep: [], hidden=True,
                     description="Times the AI models, a picture, a Wan clip, a 2.5D move and the voice on this PC."))
 
+STAGES.append(Stage("lookup", "Look it up", "ollama", (), research.lookup, lambda ep: [], hidden=True,
+                    description="The research agents look up the writers' open questions; finds arrive unticked."))
+
 BY_NAME = {s.name: s for s in STAGES}

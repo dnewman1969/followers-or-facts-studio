@@ -19,6 +19,14 @@ How "nothing made up" is enforced (plain text checks, not AI opinions - see EDIT
     every page says DRAFT.
 
 The book is saved chapter by chapter (book/book.json), so a stopped job carries on where it left off.
+
+Craft (research "Bestseller book craft for nonfiction"): the chapters follow a shape that suits the chosen
+story type (BOOK_SHAPES, not one fixed order), the chosen writing style is used throughout, the plan names
+one action line and a cast of at most four, and each chapter is written in beats of a few hundred words
+(local models lose quality past ~2,000 words in one answer): an opening scene from a dated, sourced moment,
+the evidence beats, a fairness beat where people are named, and an ending that pulls forward with something
+from the record. Guessing words ("must have", "probably felt", "imagine") are not allowed. Questions the
+material can't answer become "look it up" tasks (gap questions), never facts.
 """
 
 from __future__ import annotations
@@ -78,7 +86,74 @@ HARD RULES (a program checks them; paragraphs that break them are thrown away):
 8. Clear, plain non-fiction for a general adult reader. Short paragraphs (60 to 160 words). Use "heading"
    for a short subheading when a new section of the chapter starts, otherwise "".
 9. Don't repeat what other chapters cover (their titles are listed). Tell this chapter's part fully.
+10. Never guess at what people thought, felt or must have done: no "must have", "probably felt", "one can
+    imagine", no scene that starts with "Imagine". Thoughts and feelings only when the person said so, with
+    attribution. No made-up people, composites or dialogue.
+
+CRAFT (what bestselling narrative non-fiction does):
+- Follow the book's action line: every beat moves it forward.
+- Open a chapter on a concrete, dated or placed moment from the material (a post, a broadcast, a filing, a
+  hearing), never a rhetorical question or a definition. Say what the chapter's question is early.
+- Turn documents into events: when it was made or exposed, who saw it, then its key line (as a quote_after).
+- Explain a hard idea with one concrete example from the material first, then the general point.
+- Be fair: when you name someone who spread the claim, give their documented response or defence from the
+  material; if there is none, say no public response was found in these sources. Use legal words exactly as
+  the record does (alleged, charged, convicted, settled, found liable).
+- End a chapter by pulling forward with something real: an open question the material answers next, a dated
+  event coming, a document about to be opened. No moral summary, no invented suspense.
+- Plain adult prose (about grade 8-10), sentences under 35 words, third person.
 """
+GUESSING = ["must have", "probably felt", "probably thought", "one can imagine", "can only imagine", "we can imagine",
+            "must surely have", "no doubt felt", "little did", "surely knew"]
+
+# the shape of the book for each story type: the order of the parts and where the turn falls
+# (research "Bestseller book craft for nonfiction", table "The thirteen types as book structures")
+BOOK_SHAPES: dict[str, tuple[list[str], str]] = {
+    "fact_sandwich": (["introduction", "origin", "record", "players", "spread", "profit", "damage", "techniques",
+                       "verdict"], "Frame: truth, myth, truth. Open on the true fact; state the myth once, early; "
+                                   "the verdict restates the fact."),
+    "patient_zero": (["introduction", "origin", "spread", "players", "record", "profit", "damage", "techniques",
+                      "verdict"], "A straight line from origin to outbreak; the rumor is the main character; the "
+                                  "moment the truth was bent comes about a quarter of the way in."),
+    "whodunit": (["introduction", "record", "players", "spread", "origin", "profit", "damage", "techniques",
+                  "verdict"], "A mystery: who started it? Clues are record items; be fair to wrong suspects; hold "
+                              "the answer to the last third ('no originator can be found' is a valid answer)."),
+    "follow_money": (["introduction", "profit", "players", "origin", "spread", "record", "damage", "techniques",
+                      "verdict"],
+                     "A chain of transactions; the money is the spine; the trail reaches its owner about 60% in."),
+    "rise_and_fall": (["introduction", "origin", "players", "spread", "profit", "record", "damage", "techniques",
+                       "verdict"], "An arc: the rise fills the first half, the first public crack about halfway, "
+                                   "the fall after; only public figures as the seller."),
+    "long_con": (["introduction", "origin", "players", "techniques", "spread", "profit", "record", "damage", "verdict"],
+                 "Con stages: setup, hook, convincer, raising the stakes, the sting (about 70% in), the blow-off. "
+                 "Show the tricks stage by stage, never as a how-to."),
+    "trial": (["introduction", "players", "record", "origin", "spread", "profit", "damage", "techniques", "verdict"],
+              "An argument: the charge, the prosecution, the defence (the believers' best case gets one full, fair "
+              "chapter), cross-examination, verdict; the evidence gets at least twice the defence's space."),
+    "lab": (["introduction", "origin", "record", "techniques", "spread", "players", "profit", "damage", "verdict"],
+            "Hypothesis, test, result: only tests that others really ran and the material reports."),
+    "trick_first": (["techniques", "introduction", "origin", "spread", "record", "players", "profit", "damage",
+                     "verdict"], "Teach the technique first with a harmless example, then switch to the real case."),
+    "the_turn": (["introduction", "origin", "spread", "record", "damage", "techniques", "profit", "verdict"],
+                 "Four movements with a shift of perspective about 60% in that reframes everything; suits honest "
+                 "mistakes; profit and damage may be short."),
+    "rabbit_hole": (["introduction", "spread", "techniques", "players", "record", "damage", "profit", "verdict"],
+                    "Descent, bottom (about 55% in), climb out, told through a real former believer's published "
+                    "account in the material; never a made-up believer."),
+    "abt": (["introduction", "origin", "record", "techniques", "verdict"], "And, But, Therefore: a short guide."),
+    "history_rhymes": (["introduction", "origin", "spread", "record", "players", "profit", "damage", "techniques",
+                        "verdict"], "Two timelines, then and now, that meet about 65% in; the historical half is "
+                                    "at most about 40% of the book."),
+}
+BEAT_JOBS = {
+    "scene": "Open on a concrete, dated or placed moment from this beat's material; say what the chapter is about.",
+    "evidence": "Lay out what this beat's material shows, strongest first, as a story moving forward.",
+    "document": "Treat the document as an event: when it was made or exposed, who saw it, then its key line.",
+    "fairness": "Give the documented response or defence of the people named in this chapter, from the material; "
+                "if there is none, say no public response was found in these sources.",
+    "pull": "Finish the chapter by pulling forward with something real from the material: an open question, a "
+            "dated event coming, a document about to be opened. No moral summary.",
+}
 
 
 # ---------------------------------------------------------------- the material
@@ -237,6 +312,11 @@ def check_paragraph(p: dict[str, Any], mat: Material, block: dict[str, Any], kno
     missing = sorted(_numbers(text) - _numbers(support))
     if missing:
         hard.append(f"the number(s) {', '.join(missing)} aren't in the material it cites")
+    low_text = text.lower()
+    guesses = [g for g in GUESSING if g in low_text] + (["it starts with 'Imagine'"]
+                                                         if low_text.lstrip().startswith("imagine") else [])
+    if guesses:
+        hard.append(f"it guesses at what people thought or did ({', '.join(guesses)}); only what the record shows")
     everything = support + "\n" + "\n".join(e.get("quote", "") for e in block["evidence"])
     from ..scriptfmt import quotes_in
     for q in quotes_in(text):
@@ -260,6 +340,11 @@ def check_paragraph(p: dict[str, Any], mat: Material, block: dict[str, Any], kno
 def outline_schema(claim_ids: list[str], ev_ids: list[str], most: int) -> dict[str, Any]:
     return {"type": "object", "properties": {
         "title": {"type": "string"}, "subtitle": {"type": "string"},
+        "action_line": {"type": "string"},
+        "cast": {"type": "array", "maxItems": 4, "items": {"type": "string"}},
+        "gap_questions": {"type": "array", "maxItems": 8, "items": {"type": "object", "properties": {
+            "claim_id": {"type": "string", "enum": claim_ids}, "question": {"type": "string"}},
+            "required": ["claim_id", "question"]}},
         "chapters": {"type": "array", "minItems": 5, "maxItems": most, "items": {"type": "object", "properties": {
             "part": {"type": "string", "enum": PART_KEYS},
             "title": {"type": "string"}, "purpose": {"type": "string"},
@@ -283,8 +368,10 @@ def _chapters_wanted(mat: Material) -> int:
     return max(5, min(16, 4 + c["claims"] + c["sources"] // 12))
 
 
-def tidy_outline(raw: dict[str, Any], mat: Material) -> list[dict[str, Any]]:
-    """Valid IDs only, parts in book order, and every ticked item used somewhere."""
+def tidy_outline(raw: dict[str, Any], mat: Material, order: list[str] | None = None) -> list[dict[str, Any]]:
+    """Valid IDs only, parts in the story type's order, and every ticked item used somewhere."""
+    order = order or PART_KEYS
+    rank = {k: (order.index(k) if k in order else len(order) + PART_KEYS.index(k)) for k in PART_KEYS}
     chapters = []
     for ch in raw.get("chapters", []):
         if ch.get("part") not in PART_KEYS or not (ch.get("title") or "").strip():
@@ -292,7 +379,7 @@ def tidy_outline(raw: dict[str, Any], mat: Material) -> list[dict[str, Any]]:
         chapters.append({"part": ch["part"], "title": ch["title"].strip(), "purpose": ch.get("purpose", ""),
                          "claim_ids": [c for c in dict.fromkeys(ch.get("claim_ids", [])) if c in mat.claims],
                          "evidence_ids": [e for e in dict.fromkeys(ch.get("evidence_ids", [])) if e in mat.evidence]})
-    chapters.sort(key=lambda c: PART_KEYS.index(c["part"]))      # stable: keeps the AI's order within a part
+    chapters.sort(key=lambda c: rank[c["part"]])      # stable: keeps the AI's order within a part
     if not chapters:
         raise StageError("The local AI didn't plan any chapters. Press Write the book again.")
     used = {e for ch in chapters for e in ch["evidence_ids"]}
@@ -314,78 +401,161 @@ def tidy_outline(raw: dict[str, Any], mat: Material) -> list[dict[str, Any]]:
     return [ch for ch in chapters if ch["evidence_ids"]]
 
 
-def make_outline(ctx: Context, llm: Ollama, mat: Material, title: str) -> dict[str, Any]:
+def book_type_and_writer(ep: Episode, options: dict[str, Any] | None = None):
+    """The story type and writing style for the book: chosen on the Stories page (or the chosen story's), the
+    sober ones on careful topics."""
+    from .. import storytypes
+    from .stories import chosen
+    o = options or {}
+    c = ep.creative()
+    story = chosen(ep) or {}
+    ok_types = {t.key for t in storytypes.allowed_types(bool(c.get("careful")))}
+    key = next((k for k in (o.get("story_type"), c.get("story_type"), story.get("story_type"))
+                if k in storytypes.STORY_TYPES and k in ok_types), storytypes.DEFAULT_TYPE)
+    ok_writers = {w.key: w for w in storytypes.allowed_writers(bool(c.get("careful")), int(c.get("humor", 1)))}
+    wkey = next((k for k in (o.get("writer"), c.get("writer"), story.get("writer")) if k in ok_writers),
+                storytypes.DEFAULT_WRITER if storytypes.DEFAULT_WRITER in ok_writers else next(iter(ok_writers)))
+    return storytypes.STORY_TYPES[key], ok_writers.get(wkey) or storytypes.writers()[storytypes.DEFAULT_WRITER]
+
+
+def make_outline(ctx: Context, llm: Ollama, mat: Material, title: str, stype=None, memory: str = "") -> dict[str, Any]:
     want = _chapters_wanted(mat)
     overview = {"subject": title, "claims": [_claim_note(c) for c in mat.claims.values()],
                 "evidence": [_item(e, long=False) for e in mat.evidence.values()],
                 "careful_rules": mat.careful_rules()}
-    parts = "\n".join(f"- {k}: {v}" for k, v in PARTS)
+    order, shape = BOOK_SHAPES.get(getattr(stype, "key", ""), BOOK_SHAPES["fact_sandwich"])
+    descr = dict(PARTS)
+    parts = "\n".join(f"- {k}: {descr[k]}" for k in order)
     raw = llm.chat_json([
         {"role": "system", "content": (
             "You plan non-fiction books for the fact-check channel Followers or Facts. Plan the chapters of a book "
-            "that is the complete breakdown of this subject, using ONLY the evidence listed. Use these parts in this "
-            f"order (a part can have several chapters; 'record' usually has one chapter per claim or group of "
-            f"claims):\n{parts}\nFor each chapter give its part, a clear title (no chapter numbers), one sentence on "
-            "what it covers, and the IDs of the claims and evidence it draws on. Use every evidence item at least "
-            "once. A title and subtitle for the book that say what it is about, honest and not sensational. Never "
-            "mock believers; aim at the people who sold it. Follow the careful-topic rules.")},
+            "that is the complete breakdown of this subject, using ONLY the evidence listed. "
+            + (f"The book is told as '{stype.name}': {shape}\n" if stype else "")
+            + "Use these parts in this order (a part can have several chapters; 'record' usually has one chapter per "
+              f"claim or group of claims):\n{parts}\nFor each chapter give its part, a clear title (no chapter "
+              "numbers), one sentence on what it covers and how it moves the action line forward, and the IDs of the "
+              "claims and evidence it draws on. Use every evidence item at least once, and give each item its main "
+              "home in one chapter. Put the strongest true, dated moment in chapter 1 (no method or background "
+              "chapter in the first three). action_line: one sentence naming the thread every chapter advances "
+              "(e.g. 'We follow the claim from a 1997 radio show to a 2000 court ruling'). cast: up to four main "
+              "people or groups from the material (prefer an investigator, a skeptic, or the claim itself as the "
+              "lead; never a victim). gap_questions: up to 8 questions the material can't answer that a reader would "
+              "ask (they become 'look it up' tasks; never guess the answers). A title and subtitle that say what it "
+              "is about, honest and not sensational. Never mock believers; aim at the people who sold it. Follow the "
+              "careful-topic rules.")},
         {"role": "user", "content": f"About {want} chapters.\n\nMaterial:\n"
-                                    f"{json.dumps(overview, ensure_ascii=False, indent=1)[:40000]}"},
+                                    f"{json.dumps(overview, ensure_ascii=False, indent=1)[:40000]}"
+                                    + (f"\n\n{memory}" if memory else "")},
     ], outline_schema(sorted(mat.claims), sorted(mat.evidence), min(20, want + 4)), lenient=True, temperature=0.4,
         on_text=ctx.writing("Planning the chapters", 2, 9, 60 * want))
+    names = {n.lower() for n in mat.names()}
+    cast = [x.strip() for x in raw.get("cast", []) if x.strip() and (x.strip().lower() in names or any(
+        x.strip().lower() in n or n in x.strip().lower() for n in names if len(n) > 3))][:4]
+    questions = [q for q in raw.get("gap_questions", []) if q.get("claim_id") in mat.claims and
+                 len((q.get("question") or "").split()) >= 4][:8]
     return {"title": (raw.get("title") or title).strip(), "subtitle": (raw.get("subtitle") or "").strip(),
-            "chapters": tidy_outline(raw, mat)}
+            "action_line": (raw.get("action_line") or "").strip(), "cast": cast, "questions": questions,
+            "chapters": tidy_outline(raw, mat, order)}
+
+
+def plan_beats(ch: dict[str, Any], mat: Material) -> list[dict[str, Any]]:
+    """Split a chapter into beats of a few hundred words, each with its own evidence (used only there):
+    an opening scene, evidence or document beats, a fairness beat where people are named, a forward pull."""
+    ev = [mat.evidence[i] for i in ch["evidence_ids"] if i in mat.evidence]
+    ev.sort(key=lambda e: (str(e.get("date") or "9999"), e["source_id"]))
+    groups = [ev[i:i + 3] for i in range(0, len(ev), 3)] or [[]]
+    beats = []
+    for k, g in enumerate(groups):
+        job = "scene" if k == 0 else ("document" if any(e.get("kind") == "quote" for e in g) else "evidence")
+        beats.append({"job": job, "evidence_ids": [e["id"] for e in g]})
+    named = ch["part"] in ("players", "profit", "spread", "record", "damage") and any(
+        mat.claims.get(c, {}).get("people") or mat.claims.get(c, {}).get("orgs") for c in ch.get("claim_ids", []))
+    if named:
+        beats.append({"job": "fairness", "evidence_ids": [e["id"] for e in ev][:4]})
+    if len(beats) > 1:
+        beats[-1]["job"] = "pull" if beats[-1]["job"] != "fairness" else "fairness"
+        if beats[-1]["job"] == "fairness":
+            beats.append({"job": "pull", "evidence_ids": [e["id"] for e in ev][-2:]})
+    else:
+        beats[0]["job"] = "scene"
+    for b in beats:
+        b["words"] = max(300, min(700, 170 * max(1, len(b["evidence_ids"])) + 120))
+    return beats
 
 
 def write_chapter(ctx: Context, llm: Ollama, mat: Material, book: dict[str, Any], ch: dict[str, Any],
-                  start: float, end: float) -> None:
-    block = chapter_material(mat, ch)
+                  start: float, end: float, writer=None) -> None:
+    from .. import storytypes
+    from ..repeats import ledger_text
     names = mat.names()
     techniques_ok = ch["part"] == "techniques"
-    cite_ids = sorted({e["id"] for e in block["evidence"]} | {e["source_id"] for e in block["evidence"]}
-                      | ({t["id"] for t in block.get("tricks", [])} if techniques_ok else set()))
-    quote_ids = [e["id"] for e in block["evidence"] if e.get("kind") == "quote"]
-    words = max(700, min(3500, 180 * len(block["evidence"]) + 120 * len(block["source_passages"])))
     others = [f"{c['number']}. {c['title']}" for c in book["chapters"] if c is not ch]
-    from ..repeats import ledger_text
     earlier = [(f"chapter {c['number']}", p["text"]) for c in book["chapters"]
                if c["number"] < ch["number"] for p in (c.get("paragraphs") or [])]
-    said = ledger_text(earlier, limit=60, chars=7000)
-    label = f"Writing chapter {ch['number']} of {len(book['chapters'])}: {ch['title']}"
-    messages = [
-        {"role": "system", "content": BOOK_RULES + ("\nThis is the chapter on the tricks: you may explain a trick "
-                                                    "in general citing its T-ID, but every claim about this case "
-                                                    "cites the evidence." if techniques_ok else "")},
-        {"role": "user", "content": (
-            f"Book: {book['title']}" + (f": {book['subtitle']}" if book.get("subtitle") else "") +
-            f"\nOther chapters: {'; '.join(others)}\n\nWrite chapter {ch['number']}: {ch['title']}\nWhat it covers: "
-            f"{ch['purpose']}\nAbout {words} words.\nCareful-topic rules: {json.dumps(mat.careful_rules())}\n\n"
-            + (f"Already said in earlier chapters (never re-tell these; refer back in a few words at most and add new "
-               f"detail):\n{said}\n\n" if said else "") +
-            f"Material for this chapter (use nothing else):\n{json.dumps(block, ensure_ascii=False, indent=1)}")},
-    ]
-    schema = chapter_schema(cite_ids, quote_ids)
-    answer = llm.chat_json(messages, schema, lenient=True, temperature=0.5,
-                           on_text=ctx.writing(label, start, start + (end - start) * 0.6, words))
-    paras, problems = _checked(answer, mat, block, names, techniques_ok, earlier)
-    if problems:
-        ctx.progress(f"Chapter {ch['number']}: {len(problems)} paragraph(s) need fixing; asking for a rewrite",
-                     start + (end - start) * 0.6)
-        fix = "\n".join(f"- Paragraph {i + 1}: {'; '.join(why)}" for i, why in problems)
-        answer = llm.chat_json(messages + [
-            {"role": "assistant", "content": json.dumps(answer, ensure_ascii=False)},
-            {"role": "user", "content": "A program checked this chapter against the material and found problems:\n"
-                                        f"{fix}\nWrite the whole chapter again. Fix those paragraphs using only the "
-                                        "material (cut a detail rather than guess it). Keep the good paragraphs."}],
-            schema, lenient=True, temperature=0.3, on_text=ctx.writing(f"Fixing chapter {ch['number']}", start + (end - start) * 0.6,
-                                                         end, words))
-        paras, problems = _checked(answer, mat, block, names, techniques_ok, earlier)
-    dropped = []
-    for i, why in sorted(problems, reverse=True):
-        p = paras.pop(i)
-        dropped.append({"text": p["text"], "why": why})
+    beats = plan_beats(ch, mat)
+    shape = BOOK_SHAPES.get(book.get("story_type", ""), BOOK_SHAPES["fact_sandwich"])[1]
+    system = (BOOK_RULES + (f"\n\nWRITING STYLE (rhythm and devices only; it never loosens the rules):\n"
+                            f"{storytypes.writer_block(writer)}" if writer else "")
+              + ("\nThis is the chapter on the tricks: you may explain a trick in general citing its T-ID, but every "
+                 "claim about this case cites the evidence." if techniques_ok else ""))
+    paras: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    for k, beat in enumerate(beats):
+        ctx.check_cancel()
+        b0 = start + (end - start) * k / len(beats)
+        b1 = start + (end - start) * (k + 1) / len(beats)
+        block = chapter_material(mat, {**ch, "evidence_ids": beat["evidence_ids"] or ch["evidence_ids"][:3]},
+                                 per_source=1800, max_sources=4)
+        cite_ids = sorted({e["id"] for e in block["evidence"]} | {e["source_id"] for e in block["evidence"]}
+                          | ({t["id"] for t in block.get("tricks", [])} if techniques_ok else set()))
+        quote_ids = [e["id"] for e in block["evidence"] if e.get("kind") == "quote"]
+        before = earlier + [(f"chapter {ch['number']}", p["text"]) for p in paras]
+        said = ledger_text(before, limit=60, chars=7000)
+        last = "\n\n".join(p["text"] for p in paras[-2:])
+        label = f"Writing chapter {ch['number']} of {len(book['chapters'])}, part {k + 1} of {len(beats)}: {ch['title']}"
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": (
+                f"Book: {book['title']}" + (f": {book['subtitle']}" if book.get("subtitle") else "")
+                + f"\nHow the book is told: {shape}"
+                + (f"\nAction line (every part moves it forward): {book['action_line']}" if book.get("action_line") else "")
+                + (f"\nMain people: {', '.join(book['cast'])}" if book.get("cast") else "")
+                + f"\nOther chapters: {'; '.join(others)}\n\nChapter {ch['number']}: {ch['title']}. What it covers: "
+                f"{ch['purpose']}\nWrite part {k + 1} of {len(beats)} of this chapter, about {beat['words']} words. "
+                f"Its job: {BEAT_JOBS[beat['job']]}\nCareful-topic rules: {json.dumps(mat.careful_rules())}\n\n"
+                + (f"The chapter so far ends:\n{last}\n\n" if last else "")
+                + (f"Already said (never re-tell these; refer back in a few words at most and add new detail):\n"
+                   f"{said}\n\n" if said else "")
+                + f"Material for this part (use nothing else):\n{json.dumps(block, ensure_ascii=False, indent=1)}")},
+        ]
+        schema = chapter_schema(cite_ids, quote_ids)
+        schema["properties"]["paragraphs"]["minItems"] = 1
+        answer = llm.chat_json(messages, schema, lenient=True, temperature=0.6,
+                               on_text=ctx.writing(label, b0, b0 + (b1 - b0) * 0.6, beat["words"]))
+        got, problems = _checked(answer, mat, block, names, techniques_ok, before)
+        if problems:
+            ctx.progress(f"Chapter {ch['number']}, part {k + 1}: {len(problems)} paragraph(s) need fixing",
+                         b0 + (b1 - b0) * 0.6)
+            fix = "\n".join(f"- Paragraph {i + 1}: {'; '.join(why)}" for i, why in problems)
+            answer = llm.chat_json(messages + [
+                {"role": "assistant", "content": json.dumps(answer, ensure_ascii=False)},
+                {"role": "user", "content": "A program checked this part against the material and found problems:\n"
+                                            f"{fix}\nReturn the part again. Fix ONLY those paragraphs using only the "
+                                            "material (cut a detail rather than guess it); keep the other paragraphs "
+                                            "word for word."}],
+                schema, lenient=True, temperature=0.3,
+                on_text=ctx.writing(f"Fixing chapter {ch['number']}, part {k + 1}", b0 + (b1 - b0) * 0.6, b1,
+                                    beat["words"]))
+            got, problems = _checked(answer, mat, block, names, techniques_ok, before)
+        for i, why in sorted(problems, reverse=True):
+            p = got.pop(i)
+            dropped.append({"text": p["text"], "why": why})
+        for p in got:
+            p["beat"] = beat["job"]
+        paras += got
+    ch["beats"] = [{"job": b["job"], "evidence_ids": b["evidence_ids"]} for b in beats]
     ch["paragraphs"] = paras
-    ch["dropped"] = list(reversed(dropped))
+    ch["dropped"] = dropped
     ch["written_at"] = utc_now()
 
 
@@ -445,10 +615,16 @@ def run(ctx: Context) -> None:
         book = {}
     if not book.get("chapters"):
         ctx.progress("Planning the chapters from the research", 2)
-        book = {**make_outline(ctx, llm, mat, ep.title), "evidence_key": mat.key(), "approved": False,
-                "made_at": utc_now(), "material": mat.counts()}
+        from .. import channelmemory
+        stype, writer = book_type_and_writer(ep, ctx.options)
+        book = {**make_outline(ctx, llm, mat, ep.title, stype, channelmemory.for_prompt(ep)),
+                "evidence_key": mat.key(), "approved": False, "made_at": utc_now(), "material": mat.counts(),
+                "story_type": stype.key, "story_type_name": stype.name, "writer": writer.key,
+                "writer_name": writer.name}
         save(ep, book)
     book["approved"] = False
+    from .. import storytypes
+    writer = storytypes.writers().get(book.get("writer", "")) or book_type_and_writer(ep, ctx.options)[1]
     todo = [ch for ch in book["chapters"] if ch.get("paragraphs") is None]
     total = len(book["chapters"])
     for ch in todo:
@@ -456,7 +632,7 @@ def run(ctx: Context) -> None:
         k = ch["number"] - 1
         start, end = 10 + 82 * k / total, 10 + 82 * (k + 1) / total
         ctx.progress(f"Writing chapter {ch['number']} of {total}: {ch['title']}", start)
-        write_chapter(ctx, llm, mat, book, ch, start, end)
+        write_chapter(ctx, llm, mat, book, ch, start, end, writer)
         save(ep, book)                     # chapter by chapter, so a stopped job carries on
     ctx.progress("Laying out the PDF", 93)
     pdf = make_pdf(ep, book, mat)
@@ -552,6 +728,9 @@ def review_notes(ep: Episode, book: dict[str, Any]) -> str:
         for d in ch.get("dropped", []):
             lines.append(f"- Removed: \"{d['text'][:160]}...\" because {'; '.join(d['why'])}")
         lines.append("")
+    if book.get("questions"):
+        lines += ["## Questions to look up (press Look up questions on the Stories page)"]
+        lines += [f"- {q['question']}" for q in book["questions"]] + [""]
     if len(lines) == 4:
         lines.append("Nothing was removed or flagged.")
     return "\n".join(lines) + "\n"

@@ -114,6 +114,10 @@ class ScriptPage(StagePage):
         click_feedback(self.repeat_btn, lambda: self.run_stage("script", {"derepeat": True}, "Fixing repeats"))
         self.repeat_btn.hide()
         want.addWidget(self.repeat_btn)
+        self.lookup_btn = QPushButton("Look these up")
+        click_feedback(self.lookup_btn, self._lookup)
+        self.lookup_btn.hide()
+        want.addWidget(self.lookup_btn)
         self.editor = QPlainTextEdit()
         self.editor.setFont(QFont("Consolas", 11))
         self.body.addWidget(self.editor, 1)
@@ -203,6 +207,10 @@ class ScriptPage(StagePage):
         self.toast(f"Ticked {len(w)} piece(s) of evidence on the Research page.")
         self.refresh()
 
+    def _lookup(self) -> None:
+        qs = (read_json(self.ep.path("script-questions.json")) or {}).get("questions", [])
+        self.run_stage("lookup", {"questions": qs}, f"Looking up {len(qs)} question(s)")
+
     def _repair(self) -> None:
         notes = script_stage.repair(self.ep)
         self.ep.record("script", "awaiting_approval", "made-up IDs and quotes fixed")
@@ -262,6 +270,12 @@ class ScriptPage(StagePage):
         self.repair_btn.setVisible(bool(self.ep) and invented and not busy)
         repeats = any("Fix repeats" in self.checks.item(i).text() for i in range(self.checks.count()))
         self.repeat_btn.setVisible(bool(self.ep) and repeats and not busy)
+        qs = (read_json(self.ep.path("script-questions.json")) or {}).get("questions", []) if self.ep else []
+        self.lookup_btn.setVisible(bool(qs) and not busy and not self.busy("lookup"))
+        self.lookup_btn.setText(f"Look these up ({len(qs)})")
+        self.lookup_btn.setToolTip("Questions the writer couldn't answer from the research. The agents search for "
+                                   "documents; finds arrive on the Research page as NEW and unticked:\n- "
+                                   + "\n- ".join(q["question"] for q in qs))
 
     def watched(self) -> list[str]:
-        return ["script", "stories", "scan"]
+        return ["script", "stories", "scan", "lookup"]

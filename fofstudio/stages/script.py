@@ -21,7 +21,7 @@ from .. import db
 from ..episode import Episode
 from ..llm import Ollama
 from ..scriptfmt import CHANGES, MOODS, MOVES, PROPS, ROLES, parse, quotes_in, render
-from ..util import StageError, normalize_for_match, read_json, reading_grade, write_text
+from ..util import StageError, normalize_for_match, read_json, reading_grade, utc_now, write_json, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 
 WORDS_PER_MINUTE = 150   # Owlbert's average; each style has its own pace (styles.py)
@@ -56,6 +56,7 @@ OUTLINE_SCHEMA = {
     "properties": {
         "title": {"type": "string"},
         "central_question": {"type": "string"},
+        "gap_questions": {"type": "array", "maxItems": 6, "items": {"type": "string"}},
         "scenes": {"type": "array", "items": {
             "type": "object",
             "properties": {
@@ -694,7 +695,8 @@ def run(ctx: Context) -> None:
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
             + story_text + (f"\n{channelmemory.for_prompt(ep)}\n" if channelmemory.for_prompt(ep) else "")
             + "Give each scene its OWN facts (each quote in one scene only); never plan two scenes that say the "
-              "same thing.\n"
+              "same thing. gap_questions: up to 6 questions a viewer would ask that the research packet can't answer "
+              "(they become 'look it up' tasks; never guess the answers).\n"
             + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
     ]
     outline = llm.chat_json(outline_msgs, outline_schema, model=planner, lenient=True, temperature=0.6,
@@ -735,6 +737,9 @@ def run(ctx: Context) -> None:
     from .. import channelmemory
     memory = channelmemory.for_prompt(ep)
     title = outline.get("title") or (story or {}).get("title") or ep.title
+    gaps = [q.strip() for q in outline.get("gap_questions", []) or [] if len(q.split()) >= 4][:6]
+    write_json(ep.path("script-questions.json"), {"questions": [{"claim_id": "", "question": q} for q in gaps],
+                                                  "made_at": utc_now()})
     base = int(words / max(1.0, sum(_words_for(p["role"], 1000) / 1000 for p in planned) - 0.6))
 
     # 2. one scene at a time
