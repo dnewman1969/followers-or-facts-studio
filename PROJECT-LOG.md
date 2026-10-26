@@ -398,6 +398,24 @@ From the research "Best local AI models per job" (project docs):
   (project docs). `repeats.py` added (used in the next step).
 119 tests pass.
 
+## 2026-10-26 — v0.5.7: no broken record
+
+From the research (repetition comes from writing scenes without memory; fix it in planning and code, not
+Ollama's repeat settings):
+- `repeats.py`: sentence similarity (2-word runs of content words) and shared 7-word runs, overused phrases
+  across scenes, a bigger stock-phrase list, and an "already said" ledger of key sentences.
+- Script (`stages/script.py`): **fact budget** (`budget_facts`: each verified quote in one scene only, every
+  ticked quote and primary source used somewhere); every scene prompt gets the "already said" ledger; a scene
+  that re-tells an earlier one goes back once with the sentences listed; checks warn about repeats, overused
+  phrases, stock phrases, a quote used twice, and thin research for the length (`material_note`, ~1.5 ticked
+  items a minute). **Fix repeats** (option `derepeat`) rewrites only the repeating sentences.
+- **Channel memory** (`channelmemory.py`, <data>/channel-memory.json): each script records its opening, ending,
+  hook, quotes and lead facts; stories and scripts for episodes sharing a claim or arc are told what earlier
+  videos already did.
+- Book: each chapter gets the earlier chapters' ledger; a paragraph that mostly re-tells earlier text is
+  removed (listed in review notes), a stray repeated sentence is flagged.
+122 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

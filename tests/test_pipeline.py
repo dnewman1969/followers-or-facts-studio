@@ -52,7 +52,9 @@ def fake_llm(get_packet):
                                "visual_idea": "An old desk with a newspaper and a clock"})
             return {"title": "The Y2K Fear Machine", "central_question": "Who sold the fear?", "scenes": scenes}
         if "narration" in props and "visual" in props:   # one scene
-            text = messages[-1]["content"]
+            # a rewrite request comes after the original one: read the scene's role and facts from the original
+            text = next((m["content"] for m in messages if m["role"] == "user" and "Role:" in m["content"]),
+                        messages[-1]["content"])
             import json as _j
             import re as _re
             m = _re.search(r"about (\d+) words", text)

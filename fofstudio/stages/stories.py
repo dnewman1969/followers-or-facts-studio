@@ -182,6 +182,8 @@ def run(ctx: Context) -> None:
             ctx.check_cancel()
             ctx.progress(f"Writing story option {n + 1} of {len(picks)}: {stype.name}, written as {writer.name}",
                          10 + n * step)
+            from .. import channelmemory
+            earlier = channelmemory.for_prompt(ep, "story")
             other = ("\n\nAnother story was already planned; make this one clearly different (a different opening, "
                      "a different main piece of evidence up front, a different angle):\n"
                      + "\n".join(f"- {o['title']}: {o['angle']} Opening: {o['opening_hook']}" for o in options)) \
@@ -193,7 +195,7 @@ def run(ctx: Context) -> None:
                                             f"use the beat sheet's roles):\n{stype.sheet()}\n\nThe script will be "
                                             f"written by {writer.name}: {writer.sounds_like} Write the logline and "
                                             "the opening hook with that flavor. It becomes a short video on the "
-                                            "subject." + other},
+                                            "subject." + other + (f"\n\n{earlier}" if earlier else "")},
             ], STORY_SCHEMA, temperature=0.8,
                 on_text=ctx.writing(f"Writing story {n + 1} of {len(picks)}", 10 + n * step, 10 + (n + 1) * step - 2,
                                     450))

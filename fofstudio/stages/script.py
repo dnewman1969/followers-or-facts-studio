@@ -184,9 +184,7 @@ OWLBERT = """Owlbert's voice:
 - Never sneers, never mocks believers ("anyone can be fooled by this, that's why it works"), never says
   "folks", "in today's video", "buckle up", "let's dive in", "delve", "tapestry", "it's important to note",
   "game-changer", "little did they know", "in conclusion", "the truth is out there"."""
-STOCK_PHRASES = ["in today's video", "buckle up", "let's dive in", "delve", "tapestry", "it's important to note",
-                 "game-changer", "game changer", "little did they know", "in conclusion", "the truth is out there",
-                 "in today's world", "a testament to", "folks", "imagine a world"]
+from ..repeats import STOCK as STOCK_PHRASES  # noqa: E402 - the shared list of overused phrases
 
 VOICE_RULES = """You write narration for "Followers or Facts", a calm, kind fact-check channel.
 The narrator is Professor Owlbert McFinnegan, a warm, curious owl professor.
@@ -514,7 +512,68 @@ def tidy_directions(sc: dict[str, Any], creative: dict[str, Any], before: list[d
     return notes
 
 
-def _problems(sc: dict[str, Any], target: int, packet: dict[str, Any] | None = None) -> list[str]:
+def scene_repeats(sc: dict[str, Any], earlier: list[dict[str, Any]], packet: dict[str, Any]) -> list[dict[str, Any]]:
+    """Sentences in this scene that say again what an earlier scene said (verified quotes aside)."""
+    from ..repeats import find_repeats
+    quotes = [e["text"] for e in _excerpt_map(packet).values()]
+    return find_repeats(sc.get("narration", ""), [(e.get("scene_id", "an earlier scene"), e.get("narration", ""))
+                                                    for e in earlier], keep_quotes=quotes)
+
+
+def budget_facts(planned: list[dict[str, Any]], packet: dict[str, Any]) -> list[str]:
+    """Each verified quote goes to one scene only, and every ticked quote and source is used somewhere, so
+    each scene has its own material instead of re-telling the same facts (the "fact budget")."""
+    notes = []
+    excerpts = {int(k): v for k, v in _excerpt_map(packet).items()}
+    claim_of_src = {s["source_id"]: c["claim_id"] for c in packet["claims"] for s in c["sources"]}
+    seen: set[int] = set()
+    for sc in planned:
+        mine = []
+        for e in sc.get("excerpt_ids", []) or []:
+            e = int(e) if str(e).isdigit() else None
+            if e is None or e in seen:
+                continue
+            seen.add(e)
+            mine.append(e)
+        sc["excerpt_ids"] = mine
+    fact = [sc for sc in planned if sc.get("role") in FACT_ROLES] or planned
+
+    def home(claim_id: str | None) -> dict[str, Any]:
+        same = [sc for sc in fact if claim_id and claim_id in (sc.get("claim_ids") or [])] or fact
+        return min(same, key=lambda sc: len(sc.get("excerpt_ids", [])) + len(sc.get("source_ids", [])))
+
+    for e, x in excerpts.items():
+        if e not in seen:
+            sc = home(claim_of_src.get(x["source_id"]))
+            sc.setdefault("excerpt_ids", []).append(e)
+            if x["source_id"] not in sc.setdefault("source_ids", []):
+                sc["source_ids"].append(x["source_id"])
+            notes.append(f"quote E{e} given to a {sc.get('role')} scene")
+    used_src = {s for sc in planned for s in sc.get("source_ids", []) or []}
+    for sid, cid in claim_of_src.items():
+        if sid not in used_src and any(s["source_id"] == sid and s.get("is_primary") for c in packet["claims"]
+                                       for s in c["sources"]):
+            sc = home(cid)
+            sc.setdefault("source_ids", []).append(sid)
+            if cid not in sc.setdefault("claim_ids", []):
+                sc["claim_ids"].append(cid)
+            notes.append(f"source {sid} given to a {sc.get('role')} scene")
+    return notes
+
+
+def material_note(packet: dict[str, Any], minutes: float) -> str:
+    """'' if there's enough research for this length, else a plain warning (about 1.5 ticked items a minute)."""
+    items = len(packet.get("evidence", [])) or sum(len(c["sources"]) + len(c["excerpts"]) for c in packet["claims"])
+    need = int(minutes * 1.5)
+    if items >= need:
+        return ""
+    fits = max(1.0, round(items / 1.5 * 2) / 2)
+    return (f"Thin research for {minutes:g} minutes: {items} ticked items (about {need} keeps a video from repeating "
+            f"itself). Tick more, Dig deeper on Research, or make it about {fits:g} minutes.")
+
+
+def _problems(sc: dict[str, Any], target: int, packet: dict[str, Any] | None = None,
+              earlier: list[dict[str, Any]] | None = None) -> list[str]:
     words = len(sc.get("narration", "").split())
     low = sc.get("narration", "").lower()
     out = []
@@ -530,6 +589,12 @@ def _problems(sc: dict[str, Any], target: int, packet: dict[str, Any] | None = N
             out.append("These words are in quote marks but aren't a verified quote word for word: "
                        + "; ".join(f'"{q[:80]}"' for q in bad) + ". Say them without quote marks (as a paraphrase "
                        "or plain speech), or copy a verified quote exactly and list its excerpt_id.")
+        if earlier:
+            reps = scene_repeats(sc, earlier, packet)
+            if reps:
+                out.append("These sentences say again what an earlier scene already said: "
+                           + "; ".join(f'"{r["sentence"][:110]}" ({r["where"]})' for r in reps[:5])
+                           + ". Replace them with NEW details from this scene's facts (or cut them); never re-tell.")
     return out
 
 
@@ -542,6 +607,8 @@ def run(ctx: Context) -> None:
         raise StageError("No evidence is ticked on the Research page.")
     if ctx.options.get("expand"):
         return _expand(ctx, packet)
+    if ctx.options.get("derepeat"):
+        return _derepeat(ctx, packet)
     from .. import styles, techniques
     from .stories import chosen
     story = chosen(ep)
@@ -605,6 +672,8 @@ def run(ctx: Context) -> None:
     llm = Ollama(job="script_write")
     ids = known_ids(packet)
     scene_schema = with_known_ids(SCENE_SCHEMA, ids)
+    from .. import channelmemory
+    from ..repeats import ledger_text
 
     # 1. outline
     slots = scene_slots(sheet, n_scenes)
@@ -623,7 +692,10 @@ def run(ctx: Context) -> None:
             f"The {n_scenes} roles in order: {', '.join(s.role for s in slots)}.\n" + type_text
             + (f"\n{film_text}\n" if film_text else "")
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
-            + story_text + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
+            + story_text + (f"\n{channelmemory.for_prompt(ep)}\n" if channelmemory.for_prompt(ep) else "")
+            + "Give each scene its OWN facts (each quote in one scene only); never plan two scenes that say the "
+              "same thing.\n"
+            + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
     ]
     outline = llm.chat_json(outline_msgs, outline_schema, model=planner, lenient=True, temperature=0.6,
                             on_text=ctx.writing("Planning the scenes", 3, 12, 60 * n_scenes))
@@ -654,6 +726,14 @@ def run(ctx: Context) -> None:
             plan_sc["source_ids"] = [x["source_id"] for x in c["sources"]][:2]
     if len(planned) < 3:
         raise StageError("The outline came back with fewer than 3 scenes. Press Write it again.")
+    budget = budget_facts(planned, packet)
+    if budget:
+        ctx.log(f"Fact budget: {len(budget)} unused quote(s)/source(s) given to scenes, each quote to one scene only.")
+    thin = material_note(packet, minutes)
+    if thin:
+        ctx.log(thin)
+    from .. import channelmemory
+    memory = channelmemory.for_prompt(ep)
     title = outline.get("title") or (story or {}).get("title") or ep.title
     base = int(words / max(1.0, sum(_words_for(p["role"], 1000) / 1000 for p in planned) - 0.6))
 
@@ -679,6 +759,9 @@ def run(ctx: Context) -> None:
                 "source_ids and excerpt_ids you used. The visual describes the picture for an illustrator in "
                 "this style.\n"
                 + (f"The previous scene ended: \"{' '.join(prev.split()[-40:])}\"\n" if prev else "")
+                + (f"Already said in earlier scenes (never say these again; build on them with new details):\n"
+                   f"{ledger_text([(x['scene_id'], x['narration']) for x in scenes])}\n" if scenes else "")
+                + (f"{memory}\n" if memory and plan_sc["role"] in ("intro", "verdict", "outro") else "")
                 + (f"The music in the previous scene: {json.dumps(scenes[-1].get('music', {}))}\n" if scenes else "")
                 + ("This is a careful topic: no playful music or moves.\n" if creative.get("careful") else "")
                 + f"\nFacts for this scene:\n{_facts_for(plan_sc, packet)}\n\n{DIRECTING}")},
@@ -687,7 +770,7 @@ def run(ctx: Context) -> None:
                            on_text=ctx.writing(f"Writing scene {n} of {len(planned)}", pct0, pct1 - 2, target + 60))
         # 3. one fix-up if it's short or full of stock phrases
         fix_refs(sc, packet, fill=False)
-        issues = _problems(sc, target, packet)
+        issues = _problems(sc, target, packet, scenes)
         if issues:
             ctx.progress(f"Polishing scene {n} of {len(planned)}: " + issues[0].split(":")[0], pct1 - 2)
             sc = llm.chat_json(messages + [
@@ -709,6 +792,10 @@ def run(ctx: Context) -> None:
             ctx.log(note)
         for note in fix_quotes(sc, packet):
             ctx.log(note)
+        left = scene_repeats(sc, scenes, packet)
+        if left:
+            ctx.log(f"{sc['scene_id']}: {len(left)} sentence(s) still repeat earlier scenes (shown in the checks; "
+                    "press Fix repeats)")
         scenes.append(sc)
     for sc in scenes:
         sc["est_seconds"] = round(len(sc.get("narration", "").split()) / style.wpm * 60)
@@ -718,6 +805,7 @@ def run(ctx: Context) -> None:
               "Target": f"{minutes:g} min",
               "Drafted by": model}
     write_text(ep.path("script.md"), render(title, scenes, header))
+    channelmemory.record(ep, scenes, story, title)
     total = sum(len(sc.get("narration", "").split()) for sc in scenes)
     ctx.log(f"Draft written: {len(scenes)} scenes, {total} words (aim {words}). Read and edit, then approve.")
 
@@ -848,9 +936,107 @@ def check(ep: Episode) -> list[Check]:
     if grade > 8:
         out.append(Check(WARN, f"Reading level is about grade {grade}; aim for 6-7. Shorter "
                                "sentences and plainer words will fix it."))
+    out += repeat_checks(scenes, packet)
+    thin = material_note(packet, target_min)
+    if thin:
+        out.append(Check(WARN, thin))
     out.append(Check(OK, f"{len(scenes)} scenes, {words} words (about {minutes:.1f} min in the {style.name} "
                          f"style), reading grade {grade}."))
     return out
+
+
+REPEAT_WARNING = "repeat"     # the Script page shows "Fix repeats" when a check says this
+
+
+def all_repeats(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """{scene_id: its sentences that say again what an earlier scene said}."""
+    out = {}
+    for k, sc in enumerate(scenes):
+        reps = scene_repeats(sc, scenes[:k], packet)
+        if reps:
+            out[sc["scene_id"]] = reps
+    return out
+
+
+def repeat_checks(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> list[Check]:
+    from ..repeats import overused_phrases, stock_phrases
+    out = []
+    reps = all_repeats(scenes, packet)
+    if reps:
+        n = sum(len(v) for v in reps.values())
+        first_scene, first = next(iter(reps.items()))
+        out.append(Check(WARN, f"{n} sentence(s) repeat what an earlier scene said, in {', '.join(list(reps)[:6])}: "
+                               f"{first_scene} \"{first[0]['sentence'][:80]}...\" repeats {first[0]['where']}. "
+                               "Press Fix repeats."))
+    over = overused_phrases({sc["scene_id"]: sc["narration"] for sc in scenes})
+    if over:
+        out.append(Check(WARN, "Phrases used over and over (" + "; ".join(f"\"{p}\" in {len(w)} scenes"
+                                                                           for p, w in over[:3]) + "): vary them."))
+    stock = sorted({p for sc in scenes for p in stock_phrases(sc["narration"])})
+    if stock:
+        out.append(Check(WARN, f"Stock phrases that make it sound machine-written: {', '.join(stock[:6])}."))
+    quoted: dict[int, list[str]] = {}
+    for sc in scenes:
+        for e in sc.get("excerpt_ids", []):
+            quoted.setdefault(e, []).append(sc["scene_id"])
+    twice = {e: s for e, s in quoted.items() if len(s) > 1}
+    if twice:
+        e, s = next(iter(twice.items()))
+        out.append(Check(WARN, f"{len(twice)} quote(s) are used in more than one scene (E{e} in {', '.join(s)}): "
+                               "each quote should land once."))
+    return out
+
+
+def _derepeat(ctx: Context, packet: dict[str, Any]) -> None:
+    """'Fix repeats': rewrite only the sentences that re-tell what an earlier scene said."""
+    from .. import styles
+    from ..repeats import ledger_text
+    ep = ctx.episode
+    style = styles.get(ep.creative()["style"])
+    script = load(ep)
+    scenes = script["scenes"]
+    reps = all_repeats(scenes, packet)
+    if not reps:
+        ctx.progress("No scene repeats an earlier one.", 100)
+        return
+    llm = Ollama(job="script_write")
+    ids = known_ids(packet)
+    scene_schema = with_known_ids(SCENE_SCHEMA, ids)
+    for n, (sid, found) in enumerate(reps.items(), 1):
+        ctx.check_cancel()
+        k = next(i for i, s in enumerate(scenes) if s["scene_id"] == sid)
+        sc = scenes[k]
+        new = llm.chat_json([
+            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT},
+            {"role": "user", "content": (
+                f"Style: {style.name}. {style.tone}\nThis scene re-tells things earlier scenes already said:\n"
+                + "\n".join(f'- "{r["sentence"]}" (already in {r["where"]})' for r in found)
+                + "\nRewrite ONLY those sentences: replace each with a new detail from this scene's facts that hasn't "
+                  "been said yet, or cut it. Keep everything else word for word, keep the length about the same, and "
+                  "keep its sources.\n"
+                f"Already said in earlier scenes:\n{ledger_text([(x['scene_id'], x['narration']) for x in scenes[:k]])}\n"
+                f"Scene: {json.dumps({x: sc[x] for x in ('role', 'narration', 'visual', 'on_screen_text', 'claim_ids', 'source_ids', 'excerpt_ids')}, ensure_ascii=False)}\n"
+                f"Facts:\n{_facts_for(sc, packet)}")},
+        ], scene_schema, lenient=True, temperature=0.6,
+            on_text=ctx.writing(f"Fixing repeats in {sid} ({n}/{len(reps)})", 100 * (n - 1) / len(reps),
+                                100 * n / len(reps), len(sc["narration"].split()) + 40))
+        drop_unknown(new, ids)
+        if new.get("narration"):
+            sc["narration"] = new["narration"]
+        for x in ("claim_ids", "source_ids", "excerpt_ids"):
+            if new.get(x):
+                sc[x] = new[x]
+        drop_unknown(sc, ids)
+        fix_refs(sc, packet)
+        fix_quotes(sc, packet)
+        sc["est_seconds"] = round(len(sc["narration"].split()) / style.wpm * 60)
+    text = ep.path("script.md").read_text(encoding="utf-8")
+    header_line = next((ln for ln in text.splitlines() if ln.startswith("**Episode:**")), "")
+    header = dict(re.findall(r"\*\*(.+?):\*\* ([^·]+?)(?: · |$)", header_line)) or {"Episode": ep.project_id}
+    write_text(ep.path("script.md"), render(script["title"], scenes, {k: v.strip() for k, v in header.items()}))
+    left = all_repeats(scenes, packet)
+    ctx.progress(f"Rewrote {len(reps)} scene(s)." + (f" {sum(len(v) for v in left.values())} repeat(s) are left: "
+                                                     "edit them by hand or press Fix repeats again." if left else ""), 100)
 
 
 def repair(ep: Episode) -> list[str]:

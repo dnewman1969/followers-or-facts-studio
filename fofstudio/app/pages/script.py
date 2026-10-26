@@ -108,6 +108,12 @@ class ScriptPage(StagePage):
         self.repair_btn.clicked.connect(self._repair)
         self.repair_btn.hide()
         want.addWidget(self.repair_btn)
+        self.repeat_btn = QPushButton("Fix repeats")
+        self.repeat_btn.setToolTip("Rewrite only the sentences that say again what an earlier scene already said, "
+                                   "with new details from that scene's facts")
+        click_feedback(self.repeat_btn, lambda: self.run_stage("script", {"derepeat": True}, "Fixing repeats"))
+        self.repeat_btn.hide()
+        want.addWidget(self.repeat_btn)
         self.editor = QPlainTextEdit()
         self.editor.setFont(QFont("Consolas", 11))
         self.body.addWidget(self.editor, 1)
@@ -254,6 +260,8 @@ class ScriptPage(StagePage):
         invented = any(("may have invented" in t or "doesn't match any verified quote" in t) for t in
                        (self.checks.item(i).text() for i in range(self.checks.count())))
         self.repair_btn.setVisible(bool(self.ep) and invented and not busy)
+        repeats = any("Fix repeats" in self.checks.item(i).text() for i in range(self.checks.count()))
+        self.repeat_btn.setVisible(bool(self.ep) and repeats and not busy)
 
     def watched(self) -> list[str]:
         return ["script", "stories", "scan"]

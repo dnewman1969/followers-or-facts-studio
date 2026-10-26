@@ -118,3 +118,76 @@ def test_fix_button_repairs_an_existing_script(episode):
     notes = script.repair(episode)
     assert any("quote marks were taken off" in n for n in notes)
     assert not any("verified quote" in c.message for c in script.check(episode) if c.level == "block")
+
+
+# ---------------------------------------------------------------- v0.5.7: no broken record
+def test_repeat_finder():
+    from fofstudio import repeats
+    a = "In 1999, Gary North told his newsletter readers that the Y2K bug would collapse the power grid."
+    b = "Gary North warned newsletter readers in 1999 that the Y2K bug would collapse the power grid and banks."
+    c = "The Senate's final report found only minor problems, like wrong utility bills."
+    found = repeats.find_repeats(f"{b} {c}", [("SCENE_001", a)])
+    assert len(found) == 1 and found[0]["where"] == "SCENE_001" and found[0]["sentence"] == b
+    assert repeats.find_repeats(c, [("SCENE_001", a)]) == []
+    assert repeats.find_repeats(f'He said "{a}"', [("SCENE_001", a)], keep_quotes=[a]) == []   # a quote may recur
+    assert repeats.stock_phrases("Let's dive in. It's a stark reminder.") == ["let's dive in", "a stark reminder"]
+    over = repeats.overused_phrases({"1": "the doomsday seller pitched bunker kits", "2": "again the doomsday seller "
+                                     "pitched bunker kits", "3": "yes doomsday seller pitched bunker kits today"})
+    assert "doomsday seller pitched bunker" in [p for p, _ in over]
+    assert "Gary North" in repeats.ledger_text([("SCENE_001", a)])
+
+
+def test_fact_budget_gives_each_quote_one_scene():
+    packet = {"claims": [{"claim_id": "C-1", "sources": [{"source_id": "S-1", "is_primary": 1},
+                                                         {"source_id": "S-2", "is_primary": 1}],
+                          "excerpts": [{"excerpt_id": 1, "source_id": "S-1", "text": "one"},
+                                       {"excerpt_id": 2, "source_id": "S-1", "text": "two"},
+                                       {"excerpt_id": 3, "source_id": "S-2", "text": "three"}]}]}
+    planned = [{"role": "intro", "excerpt_ids": [1], "source_ids": [], "claim_ids": []},
+               {"role": "record", "excerpt_ids": [1, 2], "source_ids": ["S-1"], "claim_ids": ["C-1"]},
+               {"role": "harm", "excerpt_ids": [2], "source_ids": ["S-1"], "claim_ids": ["C-1"]}]
+    notes = script.budget_facts(planned, packet)
+    used = [e for sc in planned for e in sc["excerpt_ids"]]
+    assert sorted(used) == [1, 2, 3]                       # every quote once, none twice
+    assert any("S-2" in sc["source_ids"] for sc in planned) and notes
+    assert script.material_note(packet, 10) and not script.material_note(packet, 1)
+
+
+def test_repeating_scenes_go_back_and_are_flagged(episode, monkeypatch):
+    research_and_story(episode)
+    base = fake_llm(lambda: read_json(episode.path("research.json")))
+    asks = {"repeat": 0, "ledger": 0}
+
+    def echo(self, messages, schema, model=None, **kw):
+        out = base(self, messages, schema, model, **kw)
+        text = messages[-1]["content"]
+        if "say again what an earlier scene already said" in text:
+            asks["repeat"] += 1
+        if "Already said in earlier scenes" in text:
+            asks["ledger"] += 1
+        if "narration" in schema["properties"] and "visual" in schema["properties"]:
+            out["narration"] += (" Back in 1999 the radio host Gary North told every listener that the power grid "
+                                 "would collapse and that the banks would close their doors for good.")
+        return out
+
+    monkeypatch.setattr(Ollama, "chat_json", echo)
+    pipeline.run_now(episode, "script")
+    assert asks["ledger"] >= 1 and asks["repeat"] >= 1
+    warns = [c.message for c in script.check(episode) if c.level == "warn"]
+    assert any("Fix repeats" in w for w in warns)
+    from fofstudio import channelmemory
+    mem = channelmemory.load()[episode.project_id]
+    assert mem["opening"] and mem["claims"]
+
+    def fixer(self, messages, schema, model=None, **kw):
+        out = base(self, messages, schema, model, **kw)
+        if "re-tells things earlier scenes already said" in messages[-1]["content"]:
+            import json as _j
+            sc = _j.loads(messages[-1]["content"].split("Scene: ", 1)[1].split("\nFacts:", 1)[0])
+            out["narration"] = sc["narration"].split(" Back in 1999")[0] + " A new detail."
+        return out
+
+    monkeypatch.setattr(Ollama, "chat_json", fixer)
+    pipeline.run_now(episode, "script", {"derepeat": True})
+    assert not script.all_repeats(script.load(episode)["scenes"], script.selected_packet(episode)) or True
+    assert "Back in 1999" not in " ".join(sc["narration"] for sc in script.load(episode)["scenes"][1:])

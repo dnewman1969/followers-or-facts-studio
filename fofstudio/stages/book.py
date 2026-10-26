@@ -347,6 +347,10 @@ def write_chapter(ctx: Context, llm: Ollama, mat: Material, book: dict[str, Any]
     quote_ids = [e["id"] for e in block["evidence"] if e.get("kind") == "quote"]
     words = max(700, min(3500, 180 * len(block["evidence"]) + 120 * len(block["source_passages"])))
     others = [f"{c['number']}. {c['title']}" for c in book["chapters"] if c is not ch]
+    from ..repeats import ledger_text
+    earlier = [(f"chapter {c['number']}", p["text"]) for c in book["chapters"]
+               if c["number"] < ch["number"] for p in (c.get("paragraphs") or [])]
+    said = ledger_text(earlier, limit=60, chars=7000)
     label = f"Writing chapter {ch['number']} of {len(book['chapters'])}: {ch['title']}"
     messages = [
         {"role": "system", "content": BOOK_RULES + ("\nThis is the chapter on the tricks: you may explain a trick "
@@ -356,12 +360,14 @@ def write_chapter(ctx: Context, llm: Ollama, mat: Material, book: dict[str, Any]
             f"Book: {book['title']}" + (f": {book['subtitle']}" if book.get("subtitle") else "") +
             f"\nOther chapters: {'; '.join(others)}\n\nWrite chapter {ch['number']}: {ch['title']}\nWhat it covers: "
             f"{ch['purpose']}\nAbout {words} words.\nCareful-topic rules: {json.dumps(mat.careful_rules())}\n\n"
+            + (f"Already said in earlier chapters (never re-tell these; refer back in a few words at most and add new "
+               f"detail):\n{said}\n\n" if said else "") +
             f"Material for this chapter (use nothing else):\n{json.dumps(block, ensure_ascii=False, indent=1)}")},
     ]
     schema = chapter_schema(cite_ids, quote_ids)
     answer = llm.chat_json(messages, schema, lenient=True, temperature=0.5,
                            on_text=ctx.writing(label, start, start + (end - start) * 0.6, words))
-    paras, problems = _checked(answer, mat, block, names, techniques_ok)
+    paras, problems = _checked(answer, mat, block, names, techniques_ok, earlier)
     if problems:
         ctx.progress(f"Chapter {ch['number']}: {len(problems)} paragraph(s) need fixing; asking for a rewrite",
                      start + (end - start) * 0.6)
@@ -373,7 +379,7 @@ def write_chapter(ctx: Context, llm: Ollama, mat: Material, book: dict[str, Any]
                                         "material (cut a detail rather than guess it). Keep the good paragraphs."}],
             schema, lenient=True, temperature=0.3, on_text=ctx.writing(f"Fixing chapter {ch['number']}", start + (end - start) * 0.6,
                                                          end, words))
-        paras, problems = _checked(answer, mat, block, names, techniques_ok)
+        paras, problems = _checked(answer, mat, block, names, techniques_ok, earlier)
     dropped = []
     for i, why in sorted(problems, reverse=True):
         p = paras.pop(i)
@@ -384,7 +390,10 @@ def write_chapter(ctx: Context, llm: Ollama, mat: Material, book: dict[str, Any]
 
 
 def _checked(answer: dict[str, Any], mat: Material, block: dict[str, Any], names: set[str],
-             techniques_ok: bool) -> tuple[list[dict[str, Any]], list[tuple[int, list[str]]]]:
+             techniques_ok: bool, earlier: list[tuple[str, str]] | None = None
+             ) -> tuple[list[dict[str, Any]], list[tuple[int, list[str]]]]:
+    from ..repeats import find_repeats
+    before = list(earlier or [])
     paras, problems = [], []
     valid_quotes = {e["id"] for e in block["evidence"] if e.get("kind") == "quote"}
     for p in answer.get("paragraphs", []):
@@ -394,6 +403,12 @@ def _checked(answer: dict[str, Any], mat: Material, block: dict[str, Any], names
         p = {"heading": (p.get("heading") or "").strip(), "text": text, "cites": list(p.get("cites", [])),
              "quote_after": p.get("quote_after") if p.get("quote_after") in valid_quotes else ""}
         hard, soft = check_paragraph(p, mat, block, names, techniques_ok)
+        reps = find_repeats(text, before)
+        if reps:     # a paragraph that mostly re-tells earlier text is removed; a stray sentence is flagged
+            share = len(reps) / max(1, len(re.split(r"(?<=[.!?])\s+", text)))
+            (hard if share >= 0.5 else soft).append(
+                f"it repeats what {reps[0]['where']} already said: \"{reps[0]['sentence'][:90]}\"")
+        before.append(("this chapter", text))
         p["warnings"] = soft
         if hard:
             problems.append((len(paras), hard))

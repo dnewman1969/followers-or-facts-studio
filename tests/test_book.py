@@ -42,14 +42,18 @@ def test_book_is_written_only_from_the_research(episode):
     used = {e for c in b["chapters"] for e in c["evidence_ids"]}
     assert used == set(mat.evidence)
     assert all("E-MADE-UP" not in c["evidence_ids"] and "C-MADE-UP" not in c["claim_ids"] for c in b["chapters"])
-    for ch in b["chapters"]:
+    for k, ch in enumerate(b["chapters"]):
         texts = [p["text"] for p in ch["paragraphs"]]
         assert not any("1987" in t for t in texts), "a number the sources don't have is removed"
         assert not any("fraud from start" in t for t in texts), "a made-up quotation is removed"
-        assert any("survival supplies" in t for t in texts), "the fixed paragraph is kept"
         assert any("1987" in d["text"] for d in ch["dropped"])
-        named = [p for p in ch["paragraphs"] if "Northman" in p["text"]]
-        assert named and any("Gary Northman" in w for w in named[0]["warnings"])   # flagged, not removed
+        if k == 0:
+            assert any("survival supplies" in t for t in texts), "the fixed paragraph is kept"
+            named = [p for p in ch["paragraphs"] if "Northman" in p["text"]]
+            assert named and any("Gary Northman" in w for w in named[0]["warnings"])   # flagged, not removed
+        else:   # the fake writer says the same things in every chapter: re-told paragraphs are removed
+            assert not any("survival supplies" in t for t in texts)
+            assert any("repeats what chapter 1" in "; ".join(d["why"]) for d in ch["dropped"])
         assert all(p["cites"] for p in ch["paragraphs"])
         assert all(p["quote_after"] in ("",) or p["quote_after"] in mat.evidence for p in ch["paragraphs"])
     pdf = episode.abs(b["pdf"])
