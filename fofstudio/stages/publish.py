@@ -76,9 +76,15 @@ def package(ctx: Context) -> None:
     head = [hook, ""]
     if len(chapters) >= 3:
         head += ["Chapters:"] + [f"{_stamp(c['start'])} {c['name']}" for c in chapters] + [""]
-    tail = ["", credit_line(ep), "",
+    real = [sh["image"] for sh in board_shots(ep) if sh.get("image", {}).get("real")]
+    media = ["", "Image credits:"] + list(dict.fromkeys(
+        f"{c['credit']} - {c.get('source_url', '')}" + (f" ({c['licence_url']})" if c.get("licence_url") else "")
+        for c in real)) if real else []
+    recreated = any(sh.get("image", {}).get("recreation") for sh in board_shots(ep))
+    tail = media + ["", credit_line(ep), "",
             "Illustrations are made with AI on our own computer and are labelled on screen. Quotes are "
             "shown exactly as they appear in the sources. Owlbert is a cartoon with a synthetic voice."
+            + (" Scenes marked RE-CREATION are illustrations of real events, not footage." if recreated else "")
             + (" Caricatures are satirical cartoon illustrations of the documented public conduct of public "
                "figures, not real images; every claim about them is sourced below."
                if any(sh.get("kind") == "caricature" for sh in board_shots(ep)) else ""),

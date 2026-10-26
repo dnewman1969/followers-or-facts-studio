@@ -109,7 +109,11 @@ def plan(ctx: Context) -> None:
             from .storyboard import set_only
             entry["motion_prompt"] = set_only(entry["motion_prompt"]) + ". The set stays empty."
             entry["owl_live"] = shot["owl_live"]
+        if shot["image"].get("real") and entry.get("method") in ("animate", "text_to_video"):
+            entry["method"] = "parallax" if sb.get("parallax", True) else "camera_move"   # real photos never get AI motion
         out.append({"shot_id": shot["shot_id"], "scene_id": shot["scene_id"], "type": shot["type"],
+                    "real": bool(shot["image"].get("real")), "recreation": bool(shot["image"].get("recreation")),
+                    "credit": shot["image"].get("credit", ""),
                     "image": shot["image"]["path"], "raw": shot["image"].get("raw"),
                     "prompt": shot.get("prompt", ""), **entry, "clip": None, "approved": False})
     save_plan(ep, {"shots": out, "made_at": utc_now()})
@@ -132,7 +136,7 @@ def choose_animated(ep: Episode, shots: list[dict[str, Any]], level: str) -> set
     except Exception:  # noqa: BLE001 - no script: every scene is fine
         pass
     careful = ep.creative().get("careful")
-    pool = [s for s in shots if s["type"] == "ai_image" and not s.get("owl_live")
+    pool = [s for s in shots if s["type"] == "ai_image" and not s.get("owl_live") and not s["image"].get("real")
             and not (careful and script_roles.get(s["scene_id"]) == "harm")]
     want = len(pool) if share >= 1 else max(1 if pool else 0, round(share * len(pool)))
     if want >= len(pool):
@@ -232,7 +236,8 @@ def run(ctx: Context) -> None:
                     f"Animating {sid} with Wan 2.2 ({k + 1}/{total}): {t}"))
             clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
             s["clip"] = {"path": ep.rel(clip), "kind": "animated", "seed": seed, "model": cfg["video_model_name"],
-                         "workflow": meta["workflow"], "digest": digest, "made_at": utc_now(), "ai": True}
+                         "workflow": meta["workflow"], "digest": digest, "made_at": utc_now(), "ai": True,
+                         "recreation": bool(s.get("recreation"))}
         elif s["method"] == "parallax":
             ctx.progress(f"Making a 2.5D move for {s['shot_id']} ({n + 1}/{total})", 100 * n / total)
             depth = depth_map(ep, s, ctx)

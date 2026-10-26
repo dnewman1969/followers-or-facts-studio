@@ -118,6 +118,10 @@ DEFAULTS: dict[str, Any] = {
         "parallax": True,               # every other picture moves in 2.5D (depth) instead of a flat zoom
         "t2v_shots_per_scene": 0,       # Wan 2.2 text-to-video b-roll clips per scene (needs the TI2V-5B model)
     },
+    "media": {
+        "enabled": True,          # the storyboard may use real, free-licence pictures (mediafinder.py)
+        "sources": ["commons", "openverse"],
+    },
     "book": {
         "author": "Followers or Facts",   # the name on the cover and the copyright line
         "min_pages": 45,                  # a subject with this much material is called book-sized

@@ -92,6 +92,12 @@ def fakes(monkeypatch):
     monkeypatch.setattr(narration, "get_engine", lambda name=None: FakeVoice())
     for mod in (storyboard, music, video):
         monkeypatch.setattr(mod, "run_template", fake_run_template)
+    from fofstudio import mediafinder
+    from fofstudio.util import StageError as _SE
+
+    def offline(url, params):
+        raise _SE("offline in tests")
+    monkeypatch.setattr(mediafinder, "_get_json", offline)   # no picture archives in tests: re-creations instead
 
     class FakeComfy:
         def upload_image(self, path):

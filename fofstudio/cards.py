@@ -296,3 +296,39 @@ def thumbnail(words: str, out: Path, background: Path | None = None, verdict: st
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out)
     return out
+
+
+def fit_frame(src: Path, out: Path, size: tuple[int, int]) -> Path:
+    """A real picture fitted into the video frame without cropping it: the whole picture in the middle, a soft
+    blurred copy behind it (never stretched)."""
+    from PIL import ImageFilter
+    w, h = size
+    im = Image.open(src).convert("RGB")
+    bg = im.copy()
+    scale = max(w / bg.width, h / bg.height)
+    bg = bg.resize((max(1, int(bg.width * scale)), max(1, int(bg.height * scale))), Image.LANCZOS)
+    bg = bg.crop(((bg.width - w) // 2, (bg.height - h) // 2, (bg.width - w) // 2 + w, (bg.height - h) // 2 + h))
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=max(8, w // 60))).point(lambda v: int(v * 0.55))
+    scale = min(w / im.width, h / im.height)
+    fg = im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))), Image.LANCZOS)
+    bg.paste(fg, ((w - fg.width) // 2, (h - fg.height) // 2))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    bg.save(out)
+    return out
+
+
+def credit_caption(src: Path, out: Path, text: str) -> Path:
+    """The picture's credit (author / licence / where from), small, top-left, as the licence asks."""
+    img = Image.open(src).convert("RGB")
+    d = ImageDraw.Draw(img, "RGBA")
+    size = max(14, img.height // 56)
+    fnt = font("sans", size)
+    text = text if len(text) <= 110 else text[:107] + "..."
+    pad = size // 2
+    tw = d.textlength(text, font=fnt)
+    x, y = pad * 3, pad * 3
+    d.rounded_rectangle((x - pad, y - pad // 2, x + tw + pad, y + size + pad), radius=pad, fill=(0, 0, 0, 140))
+    d.text((x, y), text, font=fnt, fill=(255, 255, 255, 230))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out)
+    return out

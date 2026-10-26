@@ -436,6 +436,21 @@ From the research "Bestseller book craft for nonfiction" (project docs):
   arrive on the Research page as NEW and unticked, never straight into a script or book.
 125 tests pass.
 
+## 2026-10-26 — v0.5.9: real pictures with proven licences, labelled re-creations
+
+- `mediafinder.py`: searches Wikimedia Commons, then Openverse (commercial filter); accepts only public domain,
+  CC0, CC BY, CC BY-SA; refuses NC/ND/unknown and news agencies; never victims or private people; nothing of
+  people or the event on careful topics; public figures only in scenes whose claims link them as sellers
+  (`public_ok`). Downloads keep a provenance JSON. Settings → media.
+- Storyboard: new shot kind `real` (with `search` and `subject`); version 1 is the real picture if one is found
+  (fitted into the frame, credit caption top-left), version 2 is always a drawn re-creation stamped
+  RE-CREATION; if nothing usable is found both are re-creations and the reasons are kept (`why_not_real`).
+  Check warns to look over each real picture. Real photos are never Wan-animated or text-to-video (2.5D only);
+  animated re-creations carry the RE-CREATION overlay. The description gets an "Image credits" block and a
+  re-creation note. EDITORIAL-RULES updated (Dave's request).
+- Tests: archive searches are "offline" in tests (conftest), so storyboards use re-creations.
+127 tests pass.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

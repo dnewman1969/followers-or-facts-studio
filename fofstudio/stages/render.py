@@ -34,6 +34,7 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
     if not tl_json:
         raise StageError("Assemble the timeline on the Production page first.")
     label_png = cards.label_overlay(w, h, ep.path("render", f"ai-label-{w}.png"))
+    recreation_png = cards.label_overlay(w, h, ep.path("render", f"recreation-label-{w}.png"), "RE-CREATION")
     video = sorted(tl_json["video"], key=lambda c: c["start"])
     segments: list[Segment] = []
     t = 0.0
@@ -54,7 +55,7 @@ def build(ep: Episode, w: int, h: int, fps: int, progress=lambda t, p=None: None
             t = c["start"] + c["duration"] - overlap
             continue
         segments.append(Segment(ep.abs(c["src"]), c["duration"], kind="clip", inpoint=c.get("inpoint", 0.0),
-                                overlay=label_png if c.get("ai") else None,
+                                overlay=(recreation_png if c.get("recreation") else label_png) if c.get("ai") else None,
                                 transition="fade" if overlap > 0.05 else "cut",
                                 transition_seconds=min(overlap, c["duration"] * 0.45), label=c["label"]))
         t = c["start"] + c["duration"] - overlap

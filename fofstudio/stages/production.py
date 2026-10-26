@@ -146,7 +146,8 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
             dur = length + (SCENE_FADE - FADE if last else 0.0)
             item = {"id": s["shot_id"], "src": s["clip"]["path"], "start": round(t, 3),
                     "duration": round(dur, 3), "inpoint": 0.0, "label": s["shot_id"],
-                    "kind": "clip", "ai": bool(s["clip"].get("ai")), "scene_id": sc["scene_id"]}
+                    "kind": "clip", "ai": bool(s["clip"].get("ai")), "recreation": bool(s["clip"].get("recreation")),
+                    "scene_id": sc["scene_id"]}
             if s.get("kind") == "owl":       # Owlbert is in this shot, so the corner Owlbert steps aside
                 item["owl_shot"] = True
                 if s.get("owl_live"):

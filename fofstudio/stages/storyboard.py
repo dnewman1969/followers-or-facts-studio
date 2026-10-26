@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import re
+from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageFilter
@@ -107,14 +108,18 @@ def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str
     return out[:n]
 
 
+REAL_SUBJECTS = ["place", "object", "event", "document", "public_figure", "generic", "victim", "private_person"]
+
+
 def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.Style, kinds: list[str],
                 people: list[dict[str, Any]], restrictions: list[str], so_far: list[dict[str, Any]],
                 on_text=None, film: str = "") -> list[dict[str, Any]]:
+    item = {"kind": {"type": "string", "enum": kinds}, "idea": {"type": "string"}, "person_id": {"type": "string"}}
+    if "real" in kinds:
+        item["search"] = {"type": "string"}
+        item["subject"] = {"type": "string", "enum": REAL_SUBJECTS}
     schema = {"type": "object", "properties": {"shots": {"type": "array", "minItems": k, "maxItems": k, "items": {
-        "type": "object", "properties": {
-            "kind": {"type": "string", "enum": kinds},
-            "idea": {"type": "string"},
-            "person_id": {"type": "string"}},
+        "type": "object", "properties": item,
         "required": ["kind", "idea", "person_id"]}}}, "required": ["shots"]}
     who = ("\nCaricature cast you may use (by person_id; describe what they're DOING from the narration, never "
            f"their looks or name, those are added automatically): {[{'person_id': p['person_id'], 'who': p.get('role_types')} for p in people]}"
@@ -132,8 +137,13 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
             "documents, crowds seen from behind, visual metaphors; 'owl' = a shot where Owlbert talks to camera: "
             "describe ONLY the empty place he'll stand in (a desk, a study, a set that fits the scene) and never "
             "describe him, he's added live from his artwork; 'caricature' = a cartoon "
-            "caricature of one of the cast doing the documented thing the narration describes. Never name a real "
-            "person. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
+            "caricature of one of the cast doing the documented thing the narration describes. "
+            + ("'real' = a REAL photo from public archives (Wikimedia Commons, government archives) of a place, "
+               "object, document, event or public figure the narration names: give 'search' (3 to 6 words to search "
+               "for it, e.g. 'Y2K command center 1999') and 'subject' (what it shows); if no free-to-use photo "
+               "exists it becomes a labelled re-creation. Never 'real' for victims or private people. "
+               if "real" in kinds else "")
+            + "Never name a real person in an idea. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
             "Keep each idea short." + (f"\n{film}\nUse that genre look and directing style for every shot: "
                                          "framing, lighting, palette, camera." if film else ""))},
         {"role": "user", "content": f"Style: {style.look}\nOwlbert's scenes look like: {style.owl_look}\n"
@@ -147,8 +157,12 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
         pid = (x.get("person_id") or "").strip()
         if kind == "caricature" and pid not in allowed:
             kind, pid = "broll", ""
-        out.append({"kind": kind, "idea": (x.get("idea") or "").strip() or sc["visual"],
-                    "person_id": pid if kind == "caricature" else ""})
+        shot = {"kind": kind, "idea": (x.get("idea") or "").strip() or sc["visual"],
+                "person_id": pid if kind == "caricature" else ""}
+        if kind == "real":
+            shot["search"] = (x.get("search") or "").strip() or shot["idea"][:60]
+            shot["subject"] = x.get("subject") if x.get("subject") in REAL_SUBJECTS else "generic"
+        out.append(shot)
     while len(out) < k:  # the model came back short: fill from the scene's own visual note, varied framing
         framing = ["wide establishing view", "close-up detail", "overhead view", "symbolic image"][(start + len(out)) % 4]
         out.append({"kind": "broll", "idea": f"{sc['visual']} ({framing})", "person_id": ""})
@@ -187,9 +201,35 @@ def _place_owlbert(background, out, side: int) -> None:
     canvas.convert("RGB").save(out)
 
 
+def _real_picture(ep: Episode, shot: dict[str, Any], name: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """A real, free-licence picture for this shot (or None and why not)."""
+    from .. import mediafinder
+    subject = shot.get("subject") or "generic"
+    if subject == "public_figure" and not shot.get("public_ok"):
+        return None, ["no real photo of a person unless the research links them to selling this claim"]
+    try:
+        c, why = mediafinder.find(shot.get("search") or shot["idea"], subject, bool(ep.creative().get("careful")))
+        if not c:
+            return None, why
+        rec = mediafinder.download(c, ep.path("images", "real", name))
+    except Exception as exc:  # noqa: BLE001 - no picture: it's re-created instead, and says why
+        return None, [f"couldn't get a real picture: {exc}"]
+    size = (settings()["video"]["width"], settings()["video"]["height"])
+    framed = cards.fit_frame(Path(rec["path"]), ep.path("images", "raw", f"{name}-real.png"), size)
+    labeled = cards.credit_caption(framed, ep.path("images", f"{name}.png"), rec["credit"])
+    return {"path": ep.rel(labeled), "raw": ep.rel(framed), "prompt": shot["idea"], "real": True,
+            "credit": rec["credit"], "licence": rec["licence"], "licence_url": rec["licence_url"],
+            "source_url": rec["page_url"], "original": ep.rel(Path(rec["path"])), "made_at": utc_now()}, why
+
+
 def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, people: dict[str, dict[str, Any]]
            ) -> dict[str, Any]:
     name = f"{shot['shot_id']}-c{k}"
+    why: list[str] = []
+    if shot["kind"] == "real" and k == 0:
+        found, why = _real_picture(ep, shot, name)
+        if found:
+            return found
     cfg = settings()["comfyui"]
     from .. import filmstyles
     genre, _ = filmstyles.chosen(ep.creative())
@@ -199,6 +239,8 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         full = f"{shot['idea']}. The character: {person['design']}. {look}. {CARICATURE_GUARD}"
     elif shot["kind"] == "owl":
         full = f"{set_only(shot['idea'])}. {OWL_SET}. {look}. {GUARD}"
+    elif shot["kind"] == "real":   # no free-to-use real picture (or the second version): a labelled re-creation
+        full = (f"{shot['idea']}. {look}. An illustrated re-creation, clearly drawn, not a photograph. {GUARD}")
     else:
         full = f"{shot['idea']}. {look}. {GUARD}"
     full += f". Avoid: {style.negative}, washed out, low contrast"
@@ -213,12 +255,13 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         _place_owlbert(raw, picture, side=side)
         set_pic = cards.ai_label(raw, ep.path("images", f"{name}-set.png"))
         extra = {"set": ep.rel(set_pic), "set_raw": ep.rel(raw), "side": side}
-    labeled = cards.ai_label(picture, ep.path("images", f"{name}.png"))
+    recreation = shot["kind"] == "real"
+    labeled = cards.ai_label(picture, ep.path("images", f"{name}.png"), "RE-CREATION" if recreation else "AI illustration")
     if shot["kind"] == "caricature":
         labeled = cards.name_caption(labeled, labeled, people[shot["person_id"]]["name"])
     return {"path": ep.rel(labeled), "raw": ep.rel(picture), "prompt": shot["idea"], "full_prompt": full,
             "seed": seed, "model": cfg["image_model_name"], "workflow": meta["workflow"], "made_at": utc_now(),
-            **extra}
+            **({"recreation": True, "why_not_real": why[:5]} if recreation else {}), **extra}
 
 
 def _cards(ep: Episode, scene: dict[str, Any], excerpts: dict[int, dict[str, Any]],
@@ -300,6 +343,8 @@ def run(ctx: Context) -> None:
                 if sc.get("source_ids") else []   # caricatures only in scenes that cite the documented act
             if not scene_people and "caricature" in kinds:
                 kinds.remove("caricature")
+            if settings().get("media", {}).get("enabled", True):
+                kinds.append("real")
             need = shots_needed(sc, style, sum(CARD_SECONDS.get(c["type"], 4) for c in card_list),
                                 director.average_shot if director else None)
             ctx.progress(f"Planning {need} shots for {sid} ({n + 1}/{total})", 100 * n / total)
@@ -320,6 +365,9 @@ def run(ctx: Context) -> None:
                     continue
                 if shot["kind"] == "caricature" and shot["person_id"] not in people:
                     shot["kind"], shot["person_id"] = "broll", ""
+                if shot["kind"] == "real":
+                    shot["public_ok"] = bool([p for p in people.values()
+                                              if set(p["claims"]) & set(sc.get("claim_ids", []))])
                 ctx.progress(f"Painting {shot['shot_id']} ({shot['kind']}), version {k + 1} of {len(shot['candidates'])} "
                              f"- scene {n + 1} of {total}",
                              100 * (n + (j + (k + 1) / len(shot['candidates'])) / max(1, len(shots))) / total)
@@ -444,6 +492,7 @@ def check(ep: Episode) -> list[Check]:
     style = styles.get(board.get("style"))
     approved = {p["person_id"]: p for p in cast.approved(ep)}
     seen_prompts: dict[str, str] = {}
+    real_used: list[dict[str, Any]] = []
     covered = 0.0
     for s in board["scenes"]:
         used = [sh for sh in s["shots"] if not sh.get("skip")]
@@ -455,7 +504,9 @@ def check(ep: Episode) -> list[Check]:
             if not c or not ep.abs(c["path"]).exists():
                 out.append(Check(BLOCK, f"{sh['shot_id']}: the chosen picture is missing; remake it."))
                 continue
-            if names_in(c["full_prompt"] if sh["kind"] != "caricature" else c["prompt"], names):
+            if c.get("real"):      # a real archival picture: its licence and credit are on record (mediafinder)
+                real_used.append(c)
+            elif names_in(c.get("full_prompt", c["prompt"]) if sh["kind"] != "caricature" else c["prompt"], names):
                 out.append(Check(BLOCK, f"{sh['shot_id']}: the picture idea names a real person "
                                         f"({', '.join(names_in(c['prompt'], names))}). Real people only appear as "
                                         "approved caricatures, drawn from their design."))
@@ -495,4 +546,7 @@ def check(ep: Episode) -> list[Check]:
         out.append(Check(OK, f"{n} shots across {len(board['scenes'])} scenes in the {style.name} style "
                              f"(about {covered / 60:.1f} minutes of pictures)"
                              + (f", {car} caricature shot(s)" if car else "") + "."))
+    if real_used:
+        out.append(Check(WARN, f"{len(real_used)} real picture(s) from free archives (credited on screen and in the "
+                               "description). Look at each one: right subject, right licence?"))
     return out

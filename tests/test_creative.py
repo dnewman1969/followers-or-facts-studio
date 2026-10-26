@@ -173,3 +173,49 @@ def test_settings_page_builds_without_a_sound_card(data, monkeypatch):
     assert page.speaker.count() >= 1
     page._test_chime()
     assert "switched off" in page.test_msg.text()
+
+
+# ---------------------------------------------------------------- v0.5.9: real pictures and re-creations
+def test_media_licences_and_blocks():
+    from fofstudio import mediafinder as mf
+    assert mf.licence_ok("CC BY-SA 4.0") == (True, "CC BY SA 4.0")
+    assert mf.licence_ok("Public domain")[0] and mf.licence_ok("PD-USGov")[0] and mf.licence_ok("CC0")[0]
+    for bad in ("CC BY-NC 2.0", "CC BY-ND 4.0", "All rights reserved", "", "Fair use"):
+        assert not mf.licence_ok(bad)[0], bad
+    c = mf.Candidate("x", "https://u/x.jpg", "https://p", "CC BY 4.0", "", "AP Photo/John Doe", "Wikimedia Commons", 1600, 900)
+    assert mf.usable(c) == (False, "news-agency picture")
+    assert mf.find("anything", "victim") == (None, ["no real pictures of a victim: re-created instead"])
+    assert mf.find("anything", "event", careful=True)[0] is None
+
+
+def test_storyboard_uses_a_real_picture_or_a_labelled_recreation(episode, monkeypatch):
+    from PIL import Image
+
+    from fofstudio import mediafinder as mf
+    from fofstudio.stages import publish, storyboard, video
+    from tests.test_pipeline import research_and_story
+    research_and_story(episode)
+    pipeline.run_now(episode, "script")
+    pipeline.approve(episode, "script")
+    good = mf.Candidate("Y2K centre", "https://upload.example/y2k.jpg", "https://commons.example/File:Y2K.jpg",
+                        "CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/", "Jane Smith",
+                        "Wikimedia Commons", 1600, 1000)
+    monkeypatch.setattr(mf, "search_commons", lambda q, limit=12: [good])
+
+    def fake_download(c, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (1600, 1000), (90, 120, 160)).save(dest.with_suffix(".jpg"))
+        return {**mf.asdict(c), "credit": c.credit(), "path": str(dest.with_suffix(".jpg")), "page_url": c.page_url}
+    monkeypatch.setattr(mf, "download", fake_download)
+    pipeline.run_now(episode, "storyboard")
+    shots = [sh for sc in episode.storyboard()["scenes"] for sh in sc["shots"] if sh["kind"] == "real"]
+    assert shots, "the planner may ask for real pictures"
+    first = shots[0]["candidates"]
+    assert first[0]["real"] and "Jane Smith" in first[0]["credit"] and "CC BY 4.0" in first[0]["credit"]
+    assert first[1].get("recreation"), "the second version is always a labelled re-creation"
+    checks = storyboard.check(episode)
+    assert any("real picture" in c.message for c in checks)
+    # a real photo is never animated by AI
+    plan_shots = storyboard.shots(episode)
+    assert not any(s["shot_id"] in video.choose_animated(episode, plan_shots, "full")
+                   for s in plan_shots if s["image"].get("real"))
