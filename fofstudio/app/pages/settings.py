@@ -155,10 +155,10 @@ class SettingsPage(QWidget):
         cfg = settings()["youtube"]
         box = QGroupBox("YouTube")
         form = QFormLayout(box)
-        form.addRow(label("One-time setup (free, about 10 minutes): make a Google Cloud project with the YouTube "
-                          "Data API turned on and a 'Desktop app' sign-in client, then choose its file here and sign "
-                          "in. The guide walks through every click.", "muted"))
-        form.addRow("Guide", row(button("Open the setup guide", self._guide),
+        form.addRow(label("One-time setup (free, about 10 minutes). The step-by-step window opens each Google page "
+                          "for you. No setup at all? Publish → Upload in my browser works without it.", "muted"))
+        form.addRow("Guide", row(button("Set up YouTube, step by step", self._setup, "primary"),
+                                 button("Open the setup guide", self._guide),
                                  button("Open Google Cloud", lambda: QDesktopServices.openUrl(
                                      QUrl("https://console.cloud.google.com/apis/library/youtube.googleapis.com")))))
         self.client_lab = QLabel("")
@@ -189,6 +189,11 @@ class SettingsPage(QWidget):
         form.addRow("Automatic", self.auto)
         self._show_account()
         return box
+
+    def _setup(self) -> None:
+        from ..youtube_ui import SetupDialog
+        SetupDialog(self).exec()
+        self._show_account()
 
     def _guide(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(REPO / "docs" / "YOUTUBE.md")))

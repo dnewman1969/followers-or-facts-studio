@@ -1,9 +1,14 @@
 """Signing in to your YouTube channel (free YouTube Data API), for Settings and the Upload step.
 
-One-time setup (docs/YOUTUBE.md): make a free Google Cloud project, turn on YouTube Data API v3,
-make an OAuth client of type "Desktop app", download its JSON, then in Settings → YouTube press
-"Choose client file" and "Sign in". The sign-in is saved in the data folder; nothing is sent
-anywhere except to Google.
+One-time setup (Settings → YouTube → Set up YouTube, step by step; docs/YOUTUBE.md): make a free Google
+Cloud project, turn on YouTube Data API v3, fill in Branding, set Audience to External and PUBLISH the app
+("In production" - in "Testing", Google signs you out every 7 days, the likely cause of the failed uploads),
+make a "Desktop app" client, download its JSON, sign in (tick "Manage your YouTube videos").
+
+Why PowerDirector needs none of this (research "Easy YouTube upload like PowerDirector"): CyberLink ships its
+own Google project, approved by Google, inside the program. A personal app can't borrow that; for one user,
+your own project "In production" is allowed without Google's verification. If YouTube still locks API uploads
+as private, or anything goes wrong, Publish → "Upload in my browser" needs no setup at all (publishkit.py).
 """
 
 from __future__ import annotations
@@ -19,6 +24,52 @@ from .util import StageError
 # upload + manage (thumbnails, captions, reading your channel name)
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
           "https://www.googleapis.com/auth/youtube.force-ssl"]
+
+
+UPLOAD_SCOPE = SCOPES[0]
+SETUP_LINKS = [
+    ("Make a free Google Cloud project (any name, e.g. 'Followers or Facts Studio')",
+     "https://console.cloud.google.com/projectcreate"),
+    ("Turn on 'YouTube Data API v3' (press Enable)",
+     "https://console.cloud.google.com/apis/library/youtube.googleapis.com"),
+    ("Branding: app name 'Followers or Facts Studio', your email twice, Save",
+     "https://console.cloud.google.com/auth/branding"),
+    ("Audience: External, then press PUBLISH APP so it says 'In production' (stops the 7-day sign-out)",
+     "https://console.cloud.google.com/auth/audience"),
+    ("Clients: Create client, type 'Desktop app', then Download JSON (it lands in Downloads; the Studio finds it)",
+     "https://console.cloud.google.com/auth/clients/create"),
+]
+
+
+def explain(exc: Exception | str) -> str:
+    """Google's errors in plain words, with the fix."""
+    t = str(exc)
+    low = t.lower()
+    if "invalid_grant" in low or "token has been expired or revoked" in low:
+        return ("Google signed the Studio out. If your Google app is still in 'Testing', Google does that every 7 "
+                "days: Settings → YouTube → Set up YouTube → step 4 (Audience → PUBLISH APP), then Sign in again.")
+    if "access_denied" in low or "has not completed the google verification" in low:
+        return ("Google refused the sign-in: in Testing mode only listed test users may sign in. Publish the app "
+                "(Settings → YouTube → Set up YouTube → step 4), or add your Google account as a test user.")
+    if "redirect_uri_mismatch" in low:
+        return ("The client file isn't a 'Desktop app' client. Make a new client of type Desktop app (step 5) and "
+                "download its JSON.")
+    if "youtubesignuprequired" in low or "unlinked" in low:
+        return "That Google account has no YouTube channel. Sign out and pick the account that owns the channel."
+    if "insufficientpermissions" in low or "insufficient authentication scopes" in low:
+        return ("Google didn't give permission to upload: Sign out, Sign in again and tick the box 'Manage your "
+                "YouTube videos' on Google's permission page.")
+    if "quotaexceeded" in low or "uploadlimitexceeded" in low:
+        return ("YouTube's daily upload limit for the app is used up. Try again tomorrow, or use Publish → Upload "
+                "in my browser now.")
+    if "timed out" in low or "timeout" in low:
+        return ("The sign-in didn't come back to the Studio. Finish the sign-in in the browser tab; if it never "
+                "returns, a firewall may be blocking the Studio's local sign-in page (allow Python).")
+    return t
+
+
+def expired_path() -> Path:
+    return Paths().root / "youtube-expired.json"
 
 
 def token_path() -> Path:
@@ -79,7 +130,14 @@ def status() -> dict[str, Any]:
             signed = credentials(interactive=False) is not None
         except Exception:  # noqa: BLE001 - a broken token counts as signed out
             signed = False
-    return {"libs": libs, "client_file": str(cf) if cf else "", "account": acct, "signed_in": signed}
+    expired = None
+    if expired_path().exists():
+        try:
+            expired = json.loads(expired_path().read_text(encoding="utf-8")).get("why")
+        except (OSError, ValueError):
+            expired = None
+    return {"libs": libs, "client_file": str(cf) if cf else "", "account": acct, "signed_in": signed,
+            "expired": expired if not signed else None}
 
 
 def use_client_file(src: str | Path) -> Path:
@@ -126,8 +184,12 @@ def credentials(interactive: bool = True):
         try:
             creds.refresh(Request())
             token.write_text(creds.to_json(), encoding="utf-8")
+            expired_path().unlink(missing_ok=True)
             return creds
-        except Exception:  # noqa: BLE001 - e.g. a 7-day "Testing" sign-in ran out: sign in again
+        except Exception as exc:  # noqa: BLE001 - e.g. a 7-day "Testing" sign-in ran out: sign in again
+            from .util import utc_now
+            expired_path().write_text(json.dumps({"at": utc_now(), "why": explain(exc), "error": str(exc)[:300]}),
+                                      encoding="utf-8")
             creds = None
     if not interactive:
         return None
@@ -136,10 +198,19 @@ def credentials(interactive: bool = True):
         raise StageError("Choose your Google client file first: Settings → YouTube → Choose client file. "
                          "docs/YOUTUBE.md explains how to make one (free, about 10 minutes).")
     flow = InstalledAppFlow.from_client_secrets_file(str(secrets), SCOPES)
-    creds = flow.run_local_server(port=0, open_browser=True, prompt="consent", access_type="offline",
-                                  authorization_prompt_message="",
-                                  success_message="Signed in. You can close this tab and go back to the Studio.")
+    try:
+        creds = flow.run_local_server(port=0, open_browser=True, prompt="consent", access_type="offline",
+                                      authorization_prompt_message="", timeout_seconds=600,
+                                      success_message="Signed in. You can close this tab and go back to the Studio.")
+    except Exception as exc:  # noqa: BLE001 - say what went wrong in plain words
+        raise StageError(explain(exc))
+    if creds is None:
+        raise StageError(explain("timed out"))
+    granted = set(getattr(creds, "granted_scopes", None) or creds.scopes or [])
+    if granted and UPLOAD_SCOPE not in granted:
+        raise StageError(explain("insufficientPermissions"))
     token.write_text(creds.to_json(), encoding="utf-8")
+    expired_path().unlink(missing_ok=True)
     return creds
 
 

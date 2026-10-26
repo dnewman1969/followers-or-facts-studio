@@ -219,3 +219,36 @@ def test_storyboard_uses_a_real_picture_or_a_labelled_recreation(episode, monkey
     plan_shots = storyboard.shots(episode)
     assert not any(s["shot_id"] in video.choose_animated(episode, plan_shots, "full")
                    for s in plan_shots if s["image"].get("real"))
+
+
+# ---------------------------------------------------------------- v0.6.0: YouTube like PowerDirector
+def test_google_errors_in_plain_words():
+    from fofstudio import youtube
+    assert "7 days" in youtube.explain("('invalid_grant: Token has been expired or revoked.', ...)")
+    assert "Manage your YouTube videos" in youtube.explain("insufficientPermissions")
+    assert "no YouTube channel" in youtube.explain("youtubeSignupRequired")
+    assert "Desktop app" in youtube.explain("Error 400: redirect_uri_mismatch")
+    assert "browser" in youtube.explain("quotaExceeded")
+    assert [u for _, u in youtube.SETUP_LINKS][3].endswith("/auth/audience")
+
+
+def test_browser_publish_kit(episode):
+    from fofstudio import publishkit
+    from fofstudio.util import read_json, write_json
+    ep = episode
+    (ep.path("render")).mkdir(parents=True, exist_ok=True)
+    ep.path("render", "final.mp4").write_bytes(b"x")
+    write_json(ep.path("publish", "metadata.json"), {"title": "T" * 120, "description": "D", "tags": ["a", "b c"],
+                                                     "video": "render/final.mp4", "thumbnail": "publish/thumbnail.png",
+                                                     "captions": "render/final.srt", "made_at": "x"})
+    kit = publishkit.prepare(ep)
+    assert len(kit["title"]) == 100 and kit["tags"] == "a, b c" and kit["checklist"]
+    assert ep.path("publish", "upload-kit.txt").exists()
+    for link in ("https://youtu.be/abcDEF12345", "https://www.youtube.com/watch?v=abcDEF12345&t=3",
+                 "https://studio.youtube.com/video/abcDEF12345/edit", "abcDEF12345"):
+        assert publishkit.video_id_from(link) == "abcDEF12345"
+    with pytest.raises(StageError):
+        publishkit.video_id_from("not a link")
+    info = publishkit.record_upload(ep, "https://youtu.be/abcDEF12345")
+    assert read_json(ep.path("publish", "upload.json"))["via"] == "browser" and info["youtube_id"] == "abcDEF12345"
+    assert ep.stage_status("upload")["status"] == "approved"

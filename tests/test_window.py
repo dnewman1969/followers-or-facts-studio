@@ -270,3 +270,27 @@ def test_a_new_project_starts_with_clean_pages(app, episode):
             == "not_started"
     w.close()
     assert not app.problems, app.problems
+
+
+def test_youtube_setup_and_browser_upload_windows(app, episode, monkeypatch):
+    from fofstudio.app import youtube_ui
+    from fofstudio.util import read_json, write_json
+    opened = []
+    monkeypatch.setattr(youtube_ui, "_open", lambda url: opened.append(url))
+    monkeypatch.setattr(youtube_ui, "reveal", lambda p: opened.append(str(p)))
+    d = youtube_ui.SetupDialog()
+    assert "No client file" in d.file_lab.text() or "Client file" in d.file_lab.text()
+    d.close()
+    ep = episode
+    ep.path("render", "final.mp4").write_bytes(b"x")
+    write_json(ep.path("publish", "metadata.json"), {"title": "My title", "description": "My description",
+                                                     "tags": ["y2k"], "video": "render/final.mp4", "made_at": "x"})
+    k = youtube_ui.PublishKitDialog(ep)
+    assert any("youtube.com/upload" in u for u in opened)
+    k._copy("title", "Title")
+    from PySide6.QtGui import QGuiApplication
+    assert QGuiApplication.clipboard().text() == "My title"
+    k.link.setText("https://youtu.be/abcDEF12345")
+    k._done()
+    assert read_json(ep.path("publish", "upload.json"))["youtube_id"] == "abcDEF12345"
+    assert not app.problems, app.problems

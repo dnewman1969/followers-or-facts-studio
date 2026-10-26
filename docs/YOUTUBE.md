@@ -3,24 +3,33 @@
 The Studio uploads with the free YouTube Data API. You make a small "app" in Google Cloud that only
 you use, download its sign-in file, and sign in once from the Studio. No billing, no card.
 
+**Easiest:** Settings → YouTube → **Set up YouTube, step by step** opens each Google page in order and checks
+what it can. **No setup at all:** Publish → **Upload in my browser** opens YouTube's own upload page with
+copy buttons for everything (research "Easy YouTube upload like PowerDirector": PowerDirector ships its own
+Google-approved sign-in; a personal program can't borrow it, so it's your own app or the browser).
+
+The step people miss is **Publish app** (step 4 below): in "Testing" Google signs you out every 7 days, and
+the next upload fails. Do it before you download the client file.
+
 ## Set it up
 
 1. Go to https://console.cloud.google.com/ and make a **New project** (call it "FoF Studio").
 2. **APIs & Services → Library** → search **YouTube Data API v3** → **Enable**.
 3. **Google Auth Platform** (it used to be called "OAuth consent screen"):
    - **Branding:** app name "FoF Studio", your email as the support email.
-   - **Audience:** choose **External**, and add your own Gmail as a **test user**.
+   - **Audience:** choose **External**, then press **Publish app** so it says **In production** (without
+     this, Google signs you out every 7 days). Google doesn't need to review an app only you use.
 4. **Data access → Add or remove scopes:** tick `.../auth/youtube.upload` and `.../auth/youtube.force-ssl`
    (upload, thumbnail, captions, and reading your channel's name).
 5. **Clients → Create client → Desktop app** → **Create** → **Download JSON**.
-6. **Audience → Publish app** → confirm. This moves it to **In production**. Without this step Google
-   signs you out every 7 days. Google doesn't need to review an app only you use (under 100 users).
+6. Check **Audience** still says **In production** (step 3).
 7. In the Studio: **Settings → YouTube → Choose client file...** and pick the JSON you downloaded. (If you
    just leave the downloaded `client_secret_....json` in your Downloads folder, on the Desktop or in
    `F:\AI\fof-data`, the Studio finds it by itself.)
 8. **Sign in to YouTube.** A browser tab opens. Pick the Google account that owns the channel (or its
    Brand Account). Google warns "Google hasn't verified this app": that's expected for your own app.
-   Click **Advanced → Go to FoF Studio (unsafe)**, allow access, and close the tab.
+   Click **Advanced → Go to FoF Studio (unsafe)**, **tick "Manage your YouTube videos"**, allow access, and
+   close the tab. (If that box isn't ticked, uploads fail with "insufficient permissions".)
 9. Settings now says **Signed in as <your channel>**. The sign-in is kept in `fof-data\youtube-token.json`.
 
 ## First upload: one quick check

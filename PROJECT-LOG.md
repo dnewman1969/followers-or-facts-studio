@@ -459,6 +459,27 @@ job had something to show, so the Publish page kept the old title, description, 
 `new_episode()` when the project changes (Publish, Script, Research clear their fields; cached signatures
 reset). Regression test `test_a_new_project_starts_with_clean_pages` (fails on the old code). 128 tests pass.
 
+## 2026-10-26 — v0.6.0: YouTube upload made easy (research "Easy YouTube upload like PowerDirector")
+
+PowerDirector is easy because CyberLink ships its own Google-approved project inside the program; a personal
+app can't borrow that (and copying another app's key breaks YouTube's rules). For one user, your own project
+"In production" needs no Google review. The likely cause of Dave's failures: the app still in "Testing", where
+Google signs you out 7 days after consent; and the refresh error was swallowed, so the real reason never showed.
+- `youtube.py`: `explain()` turns Google's errors into plain words with the fix (invalid_grant → publish the
+  app; access_denied; redirect_uri_mismatch; no channel; missing "Manage your YouTube videos" permission;
+  quota; sign-in timeout/firewall). A failed refresh is recorded (youtube-expired.json) and shown; sign-in
+  times out after 10 minutes instead of hanging; the granted permissions are checked.
+- Settings → YouTube → **Set up YouTube, step by step** (`app/youtube_ui.SetupDialog`): one button per Google
+  page (project, enable API, Branding, Audience → Publish app, Desktop client), "Find my client file",
+  Sign in, with checks.
+- Publish → **Upload in my browser (no setup)** (`publishkit.py`, `PublishKitDialog`): opens YouTube's upload
+  page and the video's folder, copy buttons for title/description/tags, a checklist (not for kids, altered
+  content yes, captions, thumbnail, private), then paste the link back to record the upload. Offered whenever
+  the Google setup isn't done, and named in every upload error.
+- docs/YOUTUBE.md: Publish app moved before the client download; tick "Manage your YouTube videos".
+131 tests pass. Open question: whether YouTube still locks API uploads from unaudited projects as private
+(Google's pages disagree in Oct 2026): one test upload settles it; the browser kit works either way.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

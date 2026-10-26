@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QComboBox, QFormLayout, QHBoxLayout, QLabel, QLin
 
 from ... import pipeline
 from ...config import settings
-from ...util import read_json, write_json, write_text
+from ...util import StageError, read_json, write_json, write_text
 from ..common import GOLD, GREEN, MUTED
 from ..widgets import StagePage, click_feedback
 
@@ -68,6 +68,11 @@ class PublishPage(StagePage):
         self.upload_btn.setMinimumHeight(44)
         click_feedback(self.upload_btn, self._upload)
         rl.addWidget(self.upload_btn)
+        self.browser_btn = QPushButton("Upload in my browser (no setup)")
+        self.browser_btn.setToolTip("Opens YouTube's upload page and the video's folder, with copy buttons for the "
+                                    "title, description and tags and a checklist. No Google setup needed.")
+        click_feedback(self.browser_btn, self._browser_upload)
+        rl.addWidget(self.browser_btn)
         self.yt_state = QLabel("")
         self.yt_state.setWordWrap(True)
         self.yt_state.setTextFormat(Qt.RichText)
@@ -102,6 +107,17 @@ class PublishPage(StagePage):
         self.toast(f"Saved. Description is {len(meta['description'])} of 5,000 characters.")
         self.refresh()
 
+    def _browser_upload(self) -> None:
+        from ..youtube_ui import PublishKitDialog
+        meta = read_json(self.ep.path("publish", "metadata.json"))
+        if not meta:
+            if self.stage_status("render")["status"] != "approved":
+                raise StageError("Render the final video first (Production page).")
+            self.run_stage("package", {}, "Writing the YouTube write-up (then press Upload in my browser again)")
+            return
+        PublishKitDialog(self.ep, self).exec()
+        self.refresh()
+
     def _upload(self) -> None:
         """Upload: signs in first if needed (a browser tab), writes it up if that hasn't been done, then
         uploads PRIVATE. Each step that can't go ahead says exactly why."""
@@ -112,10 +128,15 @@ class PublishPage(StagePage):
                                 "and run Update Studio.cmd, then try again.")
             return
         if not st["client_file"]:
-            QMessageBox.warning(self, "Upload to YouTube", "First make your free Google client file and choose it in "
-                                "Settings → YouTube → Choose client file (docs/YOUTUBE.md, about 10 minutes). If you "
-                                "already downloaded it, put client_secret....json in your Downloads folder and the "
-                                "Studio will find it.")
+            answer = QMessageBox.question(
+                self, "Upload to YouTube", "Uploading from the Studio needs a one-time Google setup (about 10 minutes, "
+                "Settings → YouTube → Set up YouTube, step by step).\n\nYes: open the step-by-step setup now.\nNo: "
+                "upload in your browser instead (no setup).")
+            if answer == QMessageBox.StandardButton.Yes:
+                from ..youtube_ui import SetupDialog
+                SetupDialog(self).exec()
+            else:
+                self._browser_upload()
             return
         if not st["signed_in"]:
             self._sign_in_then_upload()

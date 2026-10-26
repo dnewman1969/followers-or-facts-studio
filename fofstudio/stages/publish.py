@@ -252,7 +252,8 @@ def upload(ctx: Context) -> None:
                 ctx.progress(f"YouTube had a hiccup ({code}); trying again in {2 ** retries} s...", None)
                 _time.sleep(2 ** retries)
                 continue
-            raise
+            raise StageError(f"The upload stopped: {youtube.explain(exc)} You can also use Publish → Upload in my "
+                             "browser (no setup).")
         if status:
             ctx.progress(f"Uploading the video: {int(status.progress() * 100)}%", status.progress() * 95)
     video_id = response["id"]
