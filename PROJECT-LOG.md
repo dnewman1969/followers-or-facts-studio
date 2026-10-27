@@ -480,6 +480,29 @@ Google signs you out 7 days after consent; and the refresh error was swallowed, 
 131 tests pass. Open question: whether YouTube still locks API uploads from unaudited projects as private
 (Google's pages disagree in Oct 2026): one test upload settles it; the browser kit works either way.
 
+## 2026-10-27 — v0.6.1: the script writer is a cinematic story architect
+
+Dave said the script writer read like a report and gave the brief: find the characters, conflicts, mysteries,
+goals, obstacles and stakes in the research; build the arc hook → setup → rising tension → discovery → climax →
+resolution → future implications; tell it like a documentary in the director's style; never invent a fact.
+
+- New first step, the **film treatment** (`stages/treatment.py`, planner model): film title, logline, opening
+  scene, three acts (what happens, feeling, turning point), key characters (real only: names checked against the
+  people and organisations in the ticked research, invented ones dropped and logged), major revelations (each
+  must list ticked evidence, else dropped), emotional arc, open questions, closing thought. Saved as
+  treatment.json / treatment.md; cleared at the start of each run so an old one never sits beside a new script.
+- The scene plan follows the treatment. The program then gives every scene its place in the arc by position
+  (hook first, implications last, in order) and puts each revelation in the scene that holds its proof.
+- Every scene prompt now starts with the architect brief (Dave's 10 points, fact rules kept) and the scene's
+  part of the film: the logline, its act and feeling, the characters, the revelation to land, the opening
+  scene (scene 1), the open questions and closing thought (the end).
+- Report language added to the stock-phrase list, so "according to the research", "in summary", "this report"
+  etc. send a scene back for a rewrite.
+- Script page: tabs "Final narrative (the script)" and "Film treatment: <title>". The script header names the film.
+- If the planner can't make a usable treatment, the script is still written from the outline, and the log says so.
+- Fixed a flaky book test (it assumed the default chapter order; the book follows the story type's shape).
+Tested with the fake AI only (137 tests).
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

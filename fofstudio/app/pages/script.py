@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
-                               QPushButton)
+                               QPushButton, QTabWidget, QTextBrowser)
 
 from ... import filmstyles, pipeline
 from ...stages import lengthscan
 from ...stages import research as rs
 from ...stages import script as script_stage
+from ...stages import treatment as treatment_stage
 from ...util import read_json, write_text
 from ..common import GOLD, tint
 from ..creative import CreativePanel
@@ -120,7 +121,15 @@ class ScriptPage(StagePage):
         want.addWidget(self.lookup_btn)
         self.editor = QPlainTextEdit()
         self.editor.setFont(QFont("Consolas", 11))
-        self.body.addWidget(self.editor, 1)
+        self.treatment = QTextBrowser()
+        self.treatment.setOpenExternalLinks(False)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.editor, "Final narrative (the script)")
+        self.tabs.addTab(self.treatment, "Film treatment")
+        self.tabs.setTabToolTip(1, "The story the writer found in the research before writing: film title, "
+                                   "logline, opening scene, three acts, the real characters, the major "
+                                   "revelations (with their proof) and the emotional arc")
+        self.body.addWidget(self.tabs, 1)
         save_row = QHBoxLayout()
         self.save_btn = QPushButton("Save my changes")
         click_feedback(self.save_btn, self._save, "Saving...")
@@ -174,6 +183,8 @@ class ScriptPage(StagePage):
         self.direction.clear()
         self.editor.clear()
         self.editor.document().setModified(False)
+        self.treatment.clear()
+        self._treat_page = None
         self.scan_text.clear()
 
     def set_episode(self, ep) -> None:
@@ -269,6 +280,13 @@ class ScriptPage(StagePage):
                 text = "Writing... watch the progress line above."
             self.editor.setPlainText(text)
             self.editor.document().setModified(False)
+        treat = treatment_stage.load(self.ep) if self.ep else {}
+        page = treatment_stage.to_html(treat) if treat else ("<p style='color:#888'>The film treatment appears "
+                                                             "here once the script is produced.</p>")
+        if page != getattr(self, "_treat_page", None):   # only when it changed, so the scroll stays put
+            self._treat_page = page
+            self.treatment.setHtml(page)
+        self.tabs.setTabText(1, "Film treatment" + (f": {treat['film_title']}" if treat.get("film_title") else ""))
         if self.ep and self.ep.path("script.md").exists():
             self.write_btn.setText("Write it again")
         self._show_wanted()

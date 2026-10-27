@@ -39,6 +39,29 @@ def fake_llm(get_packet):
                     "techniques": ["fear", "not-a-real-trick"], "thumbnail_words": "fear for sale, folks",
                     "beats": [{"role": r, "beat": f"The {r} beat.", "evidence_ids": ev + ["E-MADE-UP"]}
                               for r in ("intro", "claim", "record", "benefit", "harm", "verdict")]}
+        if "acts" in props and "key_characters" in props:   # the film treatment
+            ev = props["revelations"]["items"]["properties"]["evidence"]["items"]["enum"]
+            claims = get_packet()["claims"]
+            real = next((p["name"] for c in claims for p in c.get("people", [])), "")
+            chars = [{"name": "Dr. Invented Person", "role": "expert", "wants": "fame", "obstacle": "none",
+                      "evidence": [ev[0]]},
+                     {"name": "Radio listeners", "role": "the believers", "wants": "safety", "obstacle": "fear",
+                      "evidence": [ev[0], "S-MADE-UP"]}]
+            if real:
+                chars.append({"name": real, "role": "the seller", "wants": "money", "obstacle": "the court",
+                              "evidence": [ev[0]]})
+            return {"film_title": "Midnight Money", "logline": "A real bug became a fear machine, and someone "
+                    "cashed in.", "opening_scene": "A radio glows in a dark kitchen in 1999.",
+                    "acts": [{"act": n, "title": f"Act {n}", "what_happens": f"part {n}", "emotion": "unease",
+                              "turning_point": f"turn {n}"} for n in (1, 2, 3)],
+                    "key_characters": chars,
+                    "revelations": [{"reveal": "The court found he sold the supplies.", "why_it_matters": "money",
+                                     "arc": "climax", "evidence": [ev[-1]]},
+                                    {"reveal": "Proved by nothing.", "why_it_matters": "x", "arc": "hook",
+                                     "evidence": []}],
+                    "emotional_arc": "From fear to clear eyes.",
+                    "unanswered_questions": ["How much did he make in all?"],
+                    "closing_thought": "Fear is easy to sell; questions are free."}
         if "central_question" in props:   # the script outline
             claims = get_packet()["claims"]
             scenes = []

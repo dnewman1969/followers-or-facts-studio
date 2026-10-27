@@ -37,7 +37,9 @@ def test_book_is_written_only_from_the_research(episode):
     b = book.load(episode)
     # the plan: invented parts and IDs gone, parts in book order, every ticked item used
     parts = [c["part"] for c in b["chapters"]]
-    assert parts == sorted(parts, key=book.PART_KEYS.index) and "nonsense" not in parts
+    order = book.BOOK_SHAPES.get(b["story_type"], book.BOOK_SHAPES["fact_sandwich"])[0]   # the story type's shape
+    rank = {k: (order.index(k) if k in order else len(order) + book.PART_KEYS.index(k)) for k in book.PART_KEYS}
+    assert parts == sorted(parts, key=rank.get) and "nonsense" not in parts
     mat = book.Material(book._packet(episode))
     used = {e for c in b["chapters"] for e in c["evidence_ids"]}
     assert used == set(mat.evidence)

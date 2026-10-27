@@ -32,7 +32,12 @@ STOCK = ["in today's video", "buckle up", "let's dive in", "dive deep", "delve",
          "plays a crucial role", "a crucial role", "the realm of", "in the realm", "a double-edged sword",
          "a web of", "a cautionary tale", "only time will tell", "the rest is history", "fast forward to",
          "but here's the kicker", "spoiler alert", "make no mistake", "needless to say", "it goes without saying",
-         "a perfect storm", "the stakes have never been higher", "a chilling reminder", "sent shockwaves"]
+         "a perfect storm", "the stakes have never been higher", "a chilling reminder", "sent shockwaves",
+         # report language: the script tells a story, it doesn't summarise research (Dave, 2026-10-27)
+         "according to the research", "the research shows", "the research packet", "research indicates",
+         "in summary", "to summarize", "to sum up", "this report", "as mentioned earlier", "as mentioned before",
+         "in this video we will", "in this video, we will", "this video will explore", "let's take a look at",
+         "the evidence suggests that", "studies show"]
 
 
 def sentences(text: str) -> list[str]:

@@ -1,5 +1,9 @@
-"""Script: Owlbert's narration, written the way a story writer works, not in one go.
+"""Script: Owlbert's narration, written the way a film-maker works, not in one go.
 
+0. Treatment: the writer works as a cinematic story architect, not a report writer (treatment.py): film
+   title, logline, opening scene, three acts, the real characters, the major revelations (each with its
+   proof) and the emotional arc. Every scene then gets its place in the arc (hook, setup, rising tension,
+   discovery, climax, resolution, future implications) and the revelation it must land.
 1. Outline: the local AI plans the scenes from the chosen story, the ticked evidence and the
    video style: the fact first, the myth shown once as a claim, how the lie was built, the trick
    named ("tell"), the real story, the question to ask next time, the fact again. Each scene gets
@@ -187,8 +191,9 @@ OWLBERT = """Owlbert's voice:
   "game-changer", "little did they know", "in conclusion", "the truth is out there"."""
 from ..repeats import STOCK as STOCK_PHRASES  # noqa: E402 - the shared list of overused phrases
 
-VOICE_RULES = """You write narration for "Followers or Facts", a calm, kind fact-check channel.
-The narrator is Professor Owlbert McFinnegan, a warm, curious owl professor.
+VOICE_RULES = """You write the narration of a true-story film for "Followers or Facts", a kind fact-check channel
+that tells real stories like documentaries. The narrator is Professor Owlbert McFinnegan, a warm, curious owl
+professor. The story is cinematic; the facts are fixed.
 
 Hard rules (breaking any of them makes the script unusable):
 1. Use ONLY facts from the research packet. Never invent a date, number, name, quote or source.
@@ -599,6 +604,51 @@ def _problems(sc: dict[str, Any], target: int, packet: dict[str, Any] | None = N
     return out
 
 
+def _treatment(ctx: Context, llm: Ollama, planner: str, packet: dict[str, Any], ids: dict[str, list],
+               story_text: str, style_text: str, film_text: str, type_text: str, minutes: float) -> dict[str, Any]:
+    """The film treatment (treatment.py). If the planner can't make a usable one, the script is still written
+    from the outline alone, and the log says so."""
+    from . import treatment as tr
+    ep = ctx.episode
+    ctx.progress(f"Finding the story in the research (film treatment) with {planner}", 1)
+    for old in ("treatment.json", "treatment.md"):   # never show last time's treatment with a new script
+        ep.path(old).unlink(missing_ok=True)
+    careful = ep.creative().get("careful")
+    msgs = [{"role": "system", "content": tr.ARCHITECT + "\n\n" + VOICE_RULES},
+            {"role": "user", "content": (
+                f"Make the film treatment for a {minutes:g}-minute true-story video: {ep.title}\n{style_text}\n"
+                + (f"\n{film_text}\nEmulate this directing style (pacing, themes, camera language, symbolism, "
+                   "emotional tone) without copying any film and without naming any director.\n" if film_text else "")
+                + type_text + story_text
+                + ("Careful topic: the victims are never dramatised; their story comes from courts and documents.\n"
+                   if careful else "")
+                + "\nfilm_title: short and memorable. logline: one sentence with the protagonist, the conflict and "
+                  "the stakes. opening_scene: the first image and moment, using only real facts. acts: three, each "
+                  "with what happens, the feeling and its turning point. key_characters: up to 5 REAL people or "
+                  "groups from the packet (their real names), with what they wanted and what stood in the way, as "
+                  "the record shows; never invent anyone. revelations: the surprises in the order the viewer learns "
+                  "them, each with the evidence that proves it and its place in the arc. emotional_arc: how the "
+                  "viewer should feel from start to end. unanswered_questions: what the record still can't answer. "
+                  "closing_thought: the line to leave the viewer thinking (true to the facts).\n"
+                + f"\nResearch packet:\n{_packet_for_prompt(packet)}")}]
+    try:
+        raw = llm.chat_json(msgs, tr.schema(ids), model=planner, lenient=True, temperature=0.7,
+                            on_text=ctx.writing("Finding the story in the research", 1, 3, 700))
+    except StageError as exc:
+        ctx.log(f"No film treatment this time ({exc}); the scenes are planned from the story alone.")
+        return {}
+    treat = tr.tidy(raw or {}, packet, ids)
+    if not (treat["film_title"] and treat["logline"] and treat["acts"]):
+        ctx.log("The film treatment came back empty; the scenes are planned from the story alone.")
+        return {}
+    if treat["dropped_characters"]:
+        ctx.log("Treatment: left out characters who aren't in the research (nobody is invented): "
+                + ", ".join(treat["dropped_characters"]))
+    tr.save(ep, treat)
+    ctx.log(f"Film treatment: \"{treat['film_title']}\" - {treat['logline']}")
+    return treat
+
+
 def run(ctx: Context) -> None:
     ep = ctx.episode
     if not ep.path("research.json").exists():
@@ -676,6 +726,11 @@ def run(ctx: Context) -> None:
     from .. import channelmemory
     from ..repeats import ledger_text
 
+    # 0. the film treatment: find the story in the research before planning any scene
+    from . import treatment as tr
+    treat = _treatment(ctx, llm, planner, packet, ids, story_text, style_text, film_text, type_text, minutes)
+    treat_text = f"\n{tr.brief_for_outline(treat)}\n" if treat else ""
+
     # 1. outline
     slots = scene_slots(sheet, n_scenes)
     n_scenes = len(slots)
@@ -693,7 +748,11 @@ def run(ctx: Context) -> None:
             f"The {n_scenes} roles in order: {', '.join(s.role for s in slots)}.\n" + type_text
             + (f"\n{film_text}\n" if film_text else "")
             + (f"Producer's direction: {ctx.options['direction']}\n" if ctx.options.get("direction") else "")
-            + story_text + (f"\n{channelmemory.for_prompt(ep)}\n" if channelmemory.for_prompt(ep) else "")
+            + story_text + treat_text
+            + ("Follow the treatment: the opening scene first, the acts in order, each revelation in a scene "
+               "that holds its proof, building to the climax; end on the open questions and the closing thought.\n"
+               if treat else "")
+            + (f"\n{channelmemory.for_prompt(ep)}\n" if channelmemory.for_prompt(ep) else "")
             + "Give each scene its OWN facts (each quote in one scene only); never plan two scenes that say the "
               "same thing. gap_questions: up to 6 questions a viewer would ask that the research packet can't answer "
               "(they become 'look it up' tasks; never guess the answers).\n"
@@ -729,6 +788,8 @@ def run(ctx: Context) -> None:
     if len(planned) < 3:
         raise StageError("The outline came back with fewer than 3 scenes. Press Write it again.")
     budget = budget_facts(planned, packet)
+    tr.assign_arc(planned)
+    tr.place_revelations(treat, planned)
     if budget:
         ctx.log(f"Fact budget: {len(budget)} unused quote(s)/source(s) given to scenes, each quote to one scene only.")
     thin = material_note(packet, minutes)
@@ -750,12 +811,14 @@ def run(ctx: Context) -> None:
         prev = scenes[-1]["narration"] if scenes else ""
         pct0, pct1 = 15 + 80 * (n - 1) / len(planned), 15 + 80 * n / len(planned)
         messages = [
-            {"role": "system", "content": VOICE_RULES + "\n\n" + OWLBERT + "\n\n" + storytypes.writer_block(writer)
+            {"role": "system", "content": tr.ARCHITECT + "\n\n" + VOICE_RULES + "\n\n" + OWLBERT + "\n\n"
+             + storytypes.writer_block(writer)
              + (f"\n\n{film_text}" if film_text else "")},
             {"role": "user", "content": (
                 f"Video: {title}. Central question: {outline.get('central_question', '')}\n{style_text}\n"
                 f"Story type: {stype.name}. Writing style: {writer.name} (keep to it in every scene).\n\n"
-                f"Write scene {n} of {len(planned)}. Role: {plan_sc['role']}. Purpose: {plan_sc['purpose']}. "
+                + (f"{tr.scene_brief(treat, plan_sc, n, len(planned))}\n\n" if treat else "")
+                + f"Write scene {n} of {len(planned)}. Role: {plan_sc['role']}. Purpose: {plan_sc['purpose']}. "
                 f"It links to the previous scene with '{plan_sc['link']}'. "
                 f"{'Owlbert is on camera. ' if plan_sc.get('owl_on_camera') else ''}"
                 f"Picture idea: {plan_sc.get('visual_idea', '')}\n"
@@ -784,6 +847,8 @@ def run(ctx: Context) -> None:
             ], scene_schema, lenient=True, temperature=0.7, on_text=ctx.writing(f"Polishing scene {n}", pct1 - 2, pct1, target + 60))
         sc["role"] = plan_sc["role"]
         sc["scene_id"] = f"SCENE_{n:03d}"
+        if plan_sc.get("arc"):
+            sc["arc"] = plan_sc["arc"]
         for note in tidy_directions(sc, creative, scenes):
             ctx.log(note)
         dropped = drop_unknown(sc, ids)
@@ -807,6 +872,7 @@ def run(ctx: Context) -> None:
     header = {"Episode": ep.project_id, "Arc": (packet.get("arc") or {}).get("arc_id", "-"),
               "Style": style.name, "Story type": stype.name, "Writer": writer.name,
               **({"Genre": genre.name} if genre else {}), **({"Director": director.label} if director else {}),
+              **({"Film": treat["film_title"]} if treat.get("film_title") else {}),
               "Target": f"{minutes:g} min",
               "Drafted by": model}
     write_text(ep.path("script.md"), render(title, scenes, header))
