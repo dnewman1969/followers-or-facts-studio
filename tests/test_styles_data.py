@@ -305,3 +305,40 @@ def test_a_backup_vision_model_takes_over_when_the_first_fails(data, monkeypatch
     res = cast.research_design(person)
     assert calls[:3] == ["qwen3-vl:8b-instruct"] * 3 and "gemma4:e4b" in calls   # 3 failures, then the backup
     assert "bald head" in res["design"]
+
+
+def test_the_photo_search_finds_the_right_person_with_that_name(data, monkeypatch):
+    """Dave: 'Alex Jones InfoWars host' was confused with the British TV presenter Alex Jones."""
+    import sys
+    import types
+
+    from fofstudio import mediafinder
+    from fofstudio.agents import web
+    queries = []
+    pages = [("Alex Jones presents The One Show on BBC One", "https://bbc.example/one-show"),
+             ("Alex Jones Welsh TV presenter", "https://tv.example/alex"),
+             ("Alex Jones InfoWars broadcast", "https://news.example/infowars-a"),
+             ("InfoWars host Alex Jones at trial", "https://court.example/b"),
+             ("Alex Jones, the Infowars founder", "https://paper.example/c")]
+
+    class FakeDDGS:
+        def images(self, query, **kw):
+            queries.append(query)
+            return [{"image": f"{u}/img.jpg", "thumbnail": f"{u}/t.jpg", "url": u, "title": t} for t, u in pages]
+    monkeypatch.setitem(sys.modules, "ddgs", types.SimpleNamespace(DDGS=FakeDDGS))
+    monkeypatch.setattr(web, "get_json", lambda *a, **k: {})
+    monkeypatch.setattr(mediafinder, "search_commons", lambda *a, **k: [])
+    person = {"person_id": "P-9", "name": "Alex Jones", "orgs_text": "InfoWars", "role_types": "Host / amplifier"}
+    assert "InfoWars" in cast.default_hint(person)
+    refs = cast.find_references(person)
+    assert refs and all("infowars" in (r["title"] + r["page"]).lower() for r in refs)
+    assert not any("bbc" in r["page"] or "presenter" in r["title"] for r in refs)
+    assert "infowars" in queries[0].lower() and '"Alex Jones"' in queries[0]
+    # your own description wins, and is remembered
+    cast.save_hint("P-9", "Austin Texas conspiracy radio")
+    from fofstudio import db
+    assert db.one("SELECT search_hint FROM caricature WHERE person_id='P-9'")["search_hint"] == "Austin Texas conspiracy radio"
+    # nothing names who we mean: the search's best guesses are used, marked so the design gets a warning
+    pages[:] = [("Alex Jones photo", f"https://x.example/{i}") for i in range(4)]
+    refs = cast.find_references(person)
+    assert refs and all("not confirmed" in r["from"] for r in refs)

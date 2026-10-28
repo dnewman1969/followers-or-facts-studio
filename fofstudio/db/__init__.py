@@ -38,6 +38,7 @@ MIGRATIONS = [
     ("source", "summary", "TEXT"),
     ("caricature", "design_json", "TEXT"),       # the structured design (research "Art styles caricatures ...")
     ("caricature", "references_json", "TEXT"),   # the free photos looked at (audit only; never sent to ComfyUI)
+    ("caricature", "search_hint", "TEXT"),       # who this is, so the photo search finds the right person
 ]
 
 

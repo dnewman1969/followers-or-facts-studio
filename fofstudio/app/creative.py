@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFrame, QHBoxLayout,
-                               QLabel, QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget)
+                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from .. import cast, storytypes, styles
 from .common import GOLD, MUTED, PANEL, error
@@ -286,6 +286,7 @@ class CastDialog(QDialog):
         v.addLayout(trow)
         self.rows = []
         self._research: dict = {}
+        self._who: dict = {}
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         holder = QWidget()
@@ -304,6 +305,15 @@ class CastDialog(QDialog):
             hl_ = QLabel(head)
             hl_.setWordWrap(True)
             bl.addWidget(hl_)
+            who_row = QHBoxLayout()
+            who_row.addWidget(QLabel("Who is this (for the photo search)"))
+            who = QLineEdit(p.get("search_hint") or "")
+            who.setPlaceholderText("e.g. InfoWars conspiracy radio host, Austin Texas")
+            who.setToolTip("Words that pick out THIS person, so the photo search doesn't find someone else with the "
+                           "same name (Alex Jones the InfoWars host, not the British TV presenter). Only photos "
+                           "from pages that mention these words are used.")
+            who_row.addWidget(who, 1)
+            bl.addLayout(who_row)
             design = QPlainTextEdit(p["design"])
             design.setPlaceholderText("e.g. a stocky man with a shaved head and a goatee, shouting into a huge "
                                       "radio microphone, sleeves rolled up")
@@ -326,8 +336,8 @@ class CastDialog(QDialog):
                              "with ComfyUI), to see it before you approve")
             paint.setEnabled(False)
             pics = QHBoxLayout()
-            suggest.clicked.connect(lambda _=False, pp=p, d=design, n=note, b=suggest, pb=paint:
-                                    self._suggest(pp, d, n, b, pb))
+            suggest.clicked.connect(lambda _=False, pp=p, d=design, n=note, b=suggest, pb=paint, w=who:
+                                    self._suggest({**pp, "search_hint": w.text().strip()}, d, n, b, pb))
             paint.clicked.connect(lambda _=False, pp=p, d=design, n=note, pb=paint, pl=pics:
                                   self._paint(pp, d, n, pb, pl))
             r.addWidget(suggest)
@@ -339,6 +349,7 @@ class CastDialog(QDialog):
             bl.addLayout(pics)
             hl.addWidget(box)
             self.rows.append((p, design, ok))
+            self._who[p["person_id"]] = who
         hl.addStretch(1)
         scroll.setWidget(holder)
         v.addWidget(scroll, 1)
@@ -382,7 +393,9 @@ class CastDialog(QDialog):
     def _suggest(self, person, edit, note, button, paint) -> None:
         """Dave's five steps: research photos, analyse the features, design, art direction, output."""
         button.setEnabled(False)
-        note.setText("Step 1: searching for photos...")
+        if person.get("search_hint"):
+            cast.save_hint(person["person_id"], person["search_hint"])
+        note.setText(f"Step 1: searching for photos of {person['name']} ({person.get('search_hint') or 'no description'})...")
         tradition = self.trad.currentData()
 
         def done(res, err) -> None:
@@ -462,5 +475,8 @@ class CastDialog(QDialog):
                 return
             if text or ok.isChecked():
                 cast.save(p["person_id"], text, ok.isChecked())
+        for pid, who in self._who.items():
+            if who.text().strip():
+                cast.save_hint(pid, who.text())
         self.ep.set_creative(caricature_style=self.trad.currentData())
         self.accept()

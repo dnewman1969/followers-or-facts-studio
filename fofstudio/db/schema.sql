@@ -213,5 +213,6 @@ CREATE TABLE IF NOT EXISTS caricature (
     approved_at TEXT,
     notes TEXT,
     design_json TEXT,               -- the structured design the text was written from
-    references_json TEXT            -- the free-licence photos looked at (audit trail only)
+    references_json TEXT,           -- the photos looked at (audit trail only)
+    search_hint TEXT                -- who this is, for the photo search ("InfoWars conspiracy radio host")
 );

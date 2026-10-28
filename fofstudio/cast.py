@@ -44,7 +44,8 @@ def eligible(ep: Episode, claim_ids: list[str] | None = None) -> list[dict[str, 
         return []
     marks = ",".join("?" * len(claim_ids))
     roles = ",".join("?" * len(SELLER_ROLES))
-    rows = db.rows(f"""SELECT p.person_id, p.name, p.role_types, p.status, GROUP_CONCAT(DISTINCT ce.claim_id) AS claims,
+    rows = db.rows(f"""SELECT p.person_id, p.name, p.role_types, p.status, p.orgs_text, p.aka, p.wiki_or_bio_url,
+                              GROUP_CONCAT(DISTINCT ce.claim_id) AS claims,
                               GROUP_CONCAT(DISTINCT ce.link_role) AS roles
                        FROM claim_entity ce JOIN person p ON p.person_id = ce.entity_id
                        WHERE ce.entity_type='person' AND ce.claim_id IN ({marks}) AND ce.link_role IN ({roles})
@@ -54,7 +55,8 @@ def eligible(ep: Episode, claim_ids: list[str] | None = None) -> list[dict[str, 
     for r in rows:
         if _never(r):
             continue
-        d = db.one("SELECT design, approved FROM caricature WHERE person_id=?", (r["person_id"],)) or {}
+        d = db.one("SELECT design, approved, search_hint FROM caricature WHERE person_id=?", (r["person_id"],)) or {}
+        r["search_hint"] = d.get("search_hint") or default_hint(r)
         out.append({**r, "claims": (r["claims"] or "").split(","), "design": d.get("design") or "",
                     "approved": bool(d.get("approved")), "deceased": (r.get("status") or "") == "deceased"})
     return out
@@ -135,14 +137,44 @@ MAX_LOOKS = 6     # photos the vision model looks at
 MIN_LOOKS = 3     # fewer clear photos still works, with a warning to check the design
 
 
+GENERIC = {"host", "guest", "amplifier", "seller", "video", "researcher", "academic", "the", "and", "of", "a",
+           "an", "for", "on", "in", "said", "it", "show", "report"}
+
+
+def default_hint(person: dict[str, Any]) -> str:
+    """Who this is, for the photo search: their organisations and roles from the research database
+    (e.g. "InfoWars; Host / amplifier"). You can change it in the Cast window."""
+    parts = [x.strip() for x in ((person.get("orgs_text") or ""), (person.get("role_types") or "")) if x and x.strip()]
+    return re.sub(r"\s+", " ", "; ".join(parts))[:160]
+
+
+def hint_words(hint: str) -> list[str]:
+    """The words in the description that pick out THIS person (e.g. "infowars", "conspiracy", "radio")."""
+    words = re.findall(r"[a-z0-9][a-z0-9'-]{2,}", (hint or "").lower())
+    return list(dict.fromkeys(w for w in words if w not in GENERIC))
+
+
+def save_hint(person_id: str, hint: str) -> None:
+    db.execute("""INSERT INTO caricature(person_id, design, approved, search_hint) VALUES (?, '', 0, ?)
+                  ON CONFLICT(person_id) DO UPDATE SET search_hint=excluded.search_hint""", (person_id, hint.strip()))
+
+
+def matches_hint(text: str, words: list[str]) -> int:
+    low = (text or "").lower()
+    return sum(1 for w in words if w in low)
+
+
 def find_references(person: dict[str, Any], limit: int = 16) -> list[dict[str, str]]:
     """Photos of a public figure to LOOK AT, from a normal web image search (like typing the name into an image
     search), plus their Wikipedia and Wikimedia Commons pictures. They're only looked at by the local vision
     model to describe the face in words; they're never used in a video, never sent to the picture maker, and
     deleted straight after."""
     name = person["name"]
-    role = (person.get("role_types") or "").split("/")[0].strip()
+    hint = person.get("search_hint") or default_hint(person)
+    words = hint_words(hint)
+    key = " ".join(words[:4])          # e.g. "infowars conspiracy radio"
     out: list[dict[str, str]] = []
+    unsure: list[dict[str, str]] = []
     seen: set[str] = set()
 
     def add(url: str, page: str, title: str, where: str, thumb: str = "") -> None:
@@ -154,7 +186,7 @@ def find_references(person: dict[str, Any], limit: int = 16) -> list[dict[str, s
         from ddgs import DDGS
     except ImportError:
         DDGS = None
-    for query in (f"{name} {role}".strip(), f"{name} face"):
+    for query in (f'"{name}" {key}'.strip(), f"{name} {hint}".strip()[:120]):
         for backend in ("auto", "bing", "duckduckgo"):   # one engine busy or refusing: try the next
             if DDGS is None:
                 break
@@ -163,6 +195,13 @@ def find_references(person: dict[str, Any], limit: int = 16) -> list[dict[str, s
             except Exception:  # noqa: BLE001
                 continue
             for r in hits:
+                about = f"{r.get('title', '')} {r.get('url', '')} {r.get('image', '')}"
+                if words and matches_hint(about, words) == 0:
+                    # a page that says nothing about who we mean may be someone else of that name: last resort only
+                    unsure.append({"url": r.get("image", ""), "thumb": r.get("thumbnail", ""),
+                                   "page": r.get("url", ""), "title": r.get("title", ""),
+                                   "from": "image search (not confirmed)"})
+                    continue
                 add(r.get("image", ""), r.get("url", ""), r.get("title", ""), r.get("source") or "image search",
                     r.get("thumbnail", ""))
             if hits:
@@ -171,22 +210,33 @@ def find_references(person: dict[str, Any], limit: int = 16) -> list[dict[str, s
             break
     try:
         from .agents import web
+        bio = person.get("wiki_or_bio_url") or ""
+        title = bio.rsplit("/wiki/", 1)[1] if "wikipedia.org/wiki/" in bio else ""
+        params = ({"titles": title.replace("_", " ")} if title else
+                  {"generator": "search", "gsrsearch": f"{name} {key}".strip(), "gsrlimit": 1})
         data = web.get_json("https://en.wikipedia.org/w/api.php", {
-            "action": "query", "format": "json", "generator": "search", "gsrsearch": f"{name} {role}".strip(),
-            "gsrlimit": 1, "prop": "pageimages", "piprop": "original"})
+            "action": "query", "format": "json", "prop": "pageimages|extracts", "piprop": "original",
+            "exintro": 1, "explaintext": 1, "exchars": 600, **params})
         for pg in (data.get("query") or {}).get("pages", {}).values():
-            if name.split()[-1].lower() in pg.get("title", "").lower():
+            right = title or (not words or matches_hint(pg.get("extract", ""), words) > 0)
+            if right and name.split()[-1].lower() in pg.get("title", "").lower():
                 add((pg.get("original") or {}).get("source", ""), "https://en.wikipedia.org/wiki/" +
                     pg["title"].replace(" ", "_"), pg["title"], "Wikipedia")
     except Exception:  # noqa: BLE001
         pass
     try:
         from . import mediafinder
-        for c in mediafinder.search_commons(name, limit=8):
-            if name.split()[-1].lower() in c.title.lower():
+        for c in mediafinder.search_commons(f"{name} {key}".strip(), limit=8):
+            about = f"{c.title} {' '.join(c.notes)}"
+            if name.split()[-1].lower() in c.title.lower() and (not words or matches_hint(about, words) > 0):
                 add(c.file_url, c.page_url, c.title, "Wikimedia Commons")
     except Exception:  # noqa: BLE001
         pass
+    if len(out) < MIN_LOOKS:   # too few pages named who we mean: use the search's own best guesses, marked
+        for u in unsure:
+            if u["url"] and u["url"] not in seen and len(out) < MIN_LOOKS * 2:
+                seen.add(u["url"])
+                out.append(u)
     return out[:limit]
 
 
@@ -458,6 +508,9 @@ def research_design(person: dict[str, Any], tradition_key: str | None = None, on
     notes = {f: [v for v, _ in Counter(a[f] for a in clear if a.get(f)).most_common(3)] for f in NOTE_FIELDS}
     warnings = [] if len(clear) >= MIN_LOOKS else [
         f"only {len(clear)} clear photo(s): check the design against what you know of {name}"]
+    if any("not confirmed" in r["from"] for r in records):
+        warnings.append("some photos came from pages that didn't mention who this is; if the design looks like "
+                        "someone else, make the 'Who is this' description more specific and research again")
 
     # 3-4: design with art direction
     say("Step 3: designing the caricature")

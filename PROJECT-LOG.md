@@ -643,6 +643,18 @@ longer counts, so the backups get their turn); vision calls get their own small 
 num_predict 800, max 1600) instead of the writer's; a thumbnail under 300 px is replaced by the full photo when
 that loads. MODELS.md: Qwen2.5-VL 7B is Apache-2.0 (official card); check Gemma 4's size with ollama list.
 
+## 2026-10-28 — v0.7.7: find the right person with that name
+
+Dave: "Alex Jones InfoWars host" was confused with the British TV presenter Alex Jones (the search used only
+the name plus "Host"). Now:
+- Each person has a "Who is this (for the photo search)" description in the Cast window, filled from the
+  database (orgs_text + role_types, e.g. "InfoWars; Host / amplifier"), editable, saved (caricature.search_hint).
+- Searches: "\"Name\" infowars ..." and "Name + description"; only photos from pages whose title/address mention a
+  description word (e.g. "infowars") are used. Wikipedia uses the person's own bio link when the database has one,
+  else a page whose intro mentions the description; Commons likewise.
+- If fewer than 3 pages name who we mean, the search's best guesses are used, marked "not confirmed", and the
+  design carries a warning to sharpen the description.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.
