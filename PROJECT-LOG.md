@@ -635,6 +635,14 @@ Settings → models → vision_backups (default gemma4:e4b, then qwen2.5vl:7b), 
 installed. A model that fails 3 photos in a row hands over to the next. Order from the research "Local vision
 model face reading" (reasoned, not measured on Dave's PC); Llama 3.2 Vision ruled out (worst at faces).
 
+## 2026-10-28 — v0.7.6: vision answers must really describe a face
+
+From the report "Local vision model face reading": a photo counts as a clear face only if the answer wasn't
+"is_portrait: false" AND at least 5 face fields matched real words (garbled text or half-finished reasoning no
+longer counts, so the backups get their turn); vision calls get their own small settings (num_ctx 8192,
+num_predict 800, max 1600) instead of the writer's; a thumbnail under 300 px is replaced by the full photo when
+that loads. MODELS.md: Qwen2.5-VL 7B is Apache-2.0 (official card); check Gemma 4's size with ollama list.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

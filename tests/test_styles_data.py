@@ -214,8 +214,12 @@ def test_previews_paint_the_design_in_four_styles(episode):
 def test_vision_answers_are_read_even_when_untidy():
     a = cast.parse_vision('Here you go: {"is_portrait": true, "head_shape": "Square", "nose": "a long one"}')
     assert a["head_shape"] == "square" and a["nose"] == "long" and a["chin"] == "can't tell"
-    b = cast.parse_vision("is_portrait: true\nhead shape: oval\nhair volume: bald")
+    b = cast.parse_vision("is_portrait: true\nhead shape: oval\nhair volume: bald\nnose: long\njaw: wide\n"
+                          "glasses: none")
     assert b["head_shape"] == "oval" and b["hair_volume"] == "bald" and b["is_portrait"]
+    # garbled or half-finished answers don't count as a clear face, so a backup model gets its turn
+    assert not cast.parse_vision("is_portrait: true\nhead shape: oval?")["is_portrait"]
+    assert not cast.parse_vision("Let me think about the photo...")["is_portrait"]
 
 
 def test_pictures_go_to_the_vision_model_on_either_route():
@@ -294,7 +298,8 @@ def test_a_backup_vision_model_takes_over_when_the_first_fails(data, monkeypatch
         calls.append(model)
         if model == "qwen3-vl:8b-instruct":
             raise StageError("The local AI returned an empty answer.")
-        return '{"is_portrait": true, "head_shape": "round", "hair_volume": "bald", "glasses": "round frames"}'
+        return ('{"is_portrait": true, "head_shape": "round", "hair_volume": "bald", "glasses": "round frames", '
+                '"nose": "long", "jaw": "wide", "expression": "smug"}')
     monkeypatch.setattr(Ollama, "chat", flaky)
     monkeypatch.setattr(Ollama, "chat_json", lambda self, m, schema, **kw: {})
     res = cast.research_design(person)

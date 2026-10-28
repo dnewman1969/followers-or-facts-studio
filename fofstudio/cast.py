@@ -201,6 +201,7 @@ def _fetch_small(ref: dict[str, str] | str, dest: Path) -> Path | None:
     if isinstance(ref, str):
         ref = {"url": ref}
     s = web.session()
+    small = None
     for url, extra in ((ref.get("thumb"), {}),
                        (ref.get("url"), {"Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
                                          "Referer": ref.get("page") or ""})):
@@ -214,11 +215,17 @@ def _fetch_small(ref: dict[str, str] | str, dest: Path) -> Path | None:
             continue
         if min(img.size) < 120:
             continue
-        img.thumbnail((768, 768))
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        img.save(dest, "JPEG", quality=88)
-        return dest
-    return None
+        if min(img.size) < 300 and small is None:   # a tiny thumbnail: the full photo shows the face better
+            small = img
+            continue
+        small = img
+        break
+    if small is None:
+        return None
+    small.thumbnail((768, 768))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    small.save(dest, "JPEG", quality=88)
+    return dest
 
 
 VISION_PROMPT = ("Look at the main person in this photo, as a cartoonist would. Answer with ONE JSON object and "
@@ -248,11 +255,15 @@ def parse_vision(text: str) -> dict[str, Any]:
         for line in (text or "").splitlines():
             k, _, v = line.partition(":")
             raw[k.strip().strip('"').lower().replace(" ", "_")] = v.strip().strip('",')
-    out: dict[str, Any] = {"is_portrait": str(raw.get("is_portrait", "true")).lower() not in ("false", "no", "0")}
+    said_no = str(raw.get("is_portrait", "true")).lower() in ("false", "no", "0")
+    out: dict[str, Any] = {}
     for field, allowed in FACE_FIELDS.items():
         v = str(raw.get(field, "")).strip().lower()
         hit = next((a for a in allowed if a == v), None) or next((a for a in allowed if a in v or v and v in a), None)
         out[field] = hit or "can't tell"
+    # a clear face only if the answer really described one: garbled text or half-finished reasoning that
+    # matched next to nothing doesn't count (so a backup model gets its turn)
+    out["is_portrait"] = not said_no and sum(1 for f in FACE_FIELDS if out[f] != "can't tell") >= 5
     for field in NOTE_FIELDS:   # free notes, kind ones only
         v = re.sub(r"\s+", " ", str(raw.get(field, "") or "")).strip(" .")[:80]
         out[field] = "" if (not v or NEVER_WORDS.search(v) or "can't tell" in v.lower()) else v
@@ -383,7 +394,9 @@ def research_design(person: dict[str, Any], tradition_key: str | None = None, on
                          "again in a minute, or write the design yourself, using looks only.")
     folder = data_dir() / "caricature-refs" / person["person_id"]
     chain = vision_models()
-    llm = Ollama(job="vision")
+    from .config import settings
+    llm = Ollama({**settings()["ollama"], "num_ctx": 8192, "num_predict": 800, "max_predict": 1600,
+                  "max_ctx": 8192, "presence_penalty": 0.0}, job="vision")   # a short answer, not an essay
     answers, records, failed, errors, log, vision = [], [], 0, [], [], chain[0]
     try:
         photos = []                      # download once; every model in the chain looks at the same photos

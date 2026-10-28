@@ -8,8 +8,8 @@ Check a model's licence before adding it, and add a line here when you do.
 | Script, storyboard, quote finding | Qwen 3 14B (`qwen3:14b`) in Ollama | Apache-2.0 | already installed | ~9 GB | ~30 tokens/s |
 | Checks (a different model) | Qwen 3 8B (`qwen3:8b`) | Apache-2.0 | already installed | ~5 GB | |
 | Caricature references (sees pictures) | Qwen3-VL 8B Instruct (`qwen3-vl:8b-instruct`; plain `qwen3-vl:8b` is the thinking version and is switched to instruct automatically) | Apache-2.0 | `ollama pull qwen3-vl:8b-instruct` (Ollama 0.12.7+) | 6.2 GB | only for Cast → Research looks |
-| Caricature references, backup 1 | Gemma 4 E4B (`gemma4:e4b`) | Apache-2.0 (since April 2026) | `ollama pull gemma4:e4b` | ~4 GB | only if the main vision model fails |
-| Caricature references, backup 2 | Qwen2.5-VL 7B (`qwen2.5vl:7b`; never the 3B, which is non-commercial) | check the repo licence file before use (sources disagree) | `ollama pull qwen2.5vl:7b` | ~6 GB | only if both above fail |
+| Caricature references, backup 1 | Gemma 4 E4B (`gemma4:e4b`) | Apache-2.0 (since April 2026) | `ollama pull gemma4:e4b` | check with `ollama list` (sources say 7-20 GB across sizes) | only if the main vision model fails |
+| Caricature references, backup 2 | Qwen2.5-VL 7B (`qwen2.5vl:7b`; never the 3B, which is non-commercial) | Apache-2.0 (official model card) | `ollama pull qwen2.5vl:7b` | ~6 GB | only if both above fail |
 | Clay looks (optional LoRA) | ClayAnimation-Redmond-ZIMAGE | Apache-2.0 | `models/loras` (not wired in yet) | | |
 | Pictures | Z-Image Turbo bf16 | Apache-2.0 | already in ComfyUI | | 8 steps |
 | Animation | Wan 2.2 I2V 14B fp8 (high + low noise) + Lightning 4-step LoRAs | Apache-2.0 | `models/diffusion_models`, `models/loras` | ~2 × 14 GB + 2 × 1.2 GB | ~5–6 min per 5 s clip (reported by another 3060 owner) |
