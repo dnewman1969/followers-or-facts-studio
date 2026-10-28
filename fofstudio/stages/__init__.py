@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from . import (book, captions, lengthscan, music, narration, production, publish, render, research, script, stories,
-               storyboard, video)
+               storyboard, styletest, video)
 from .base import Stage
 
 STAGES: list[Stage] = [
@@ -78,5 +78,16 @@ STAGES.append(Stage("speedtest", "Speed test", "cpu", (), _speedtest, lambda ep:
 
 STAGES.append(Stage("lookup", "Look it up", "ollama", (), research.lookup, lambda ep: [], hidden=True,
                     description="The research agents look up the writers' open questions; finds arrive unticked."))
+
+STAGES.append(Stage("styletest", "Style test", "comfy", (), styletest.run, lambda ep: [], hidden=True,
+                    description="Paints the same test pictures in each look you pick, to keep or drop them."))
+
+def _deepdive(ctx):
+    from .. import claimcheck
+    claimcheck.deep_dive(ctx)
+
+
+STAGES.append(Stage("deepdive", "Deep dive", "ollama", (), _deepdive, lambda ep: [], hidden=True,
+                    description="Digs for more proof of the ticked claims that don't hold up yet."))
 
 BY_NAME = {s.name: s for s in STAGES}

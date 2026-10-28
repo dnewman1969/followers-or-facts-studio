@@ -203,6 +203,15 @@ def check_package(ep: Episode) -> list[Check]:
         out.append(Check(WARN, f"Sources without a link in the description: {', '.join(nourl)}"))
     if len(meta.get("chapters", [])) < 3:
         out.append(Check(WARN, "Fewer than 3 chapters, so YouTube won't show chapters."))
+    from .. import promptcheck   # brand, show and artist names: trademark and false-endorsement risk
+    named = promptcheck.found(f"{meta['title']} {' '.join(meta.get('tags', []))}")
+    if named:
+        out.append(Check(BLOCK, f"The title or tags name a brand, show or artist ({', '.join(named)}). Describe "
+                                "the look in your own words instead; a 'X style' title can read as an endorsement."))
+    in_desc = promptcheck.found(meta["description"])
+    if in_desc:
+        out.append(Check(WARN, f"The description mentions {', '.join(in_desc)}. Fine if a source is about them; "
+                               "never as 'in the style of'."))
     out.append(Check(OK, "Read description.txt and look at thumbnail.png, then approve."))
     return out
 

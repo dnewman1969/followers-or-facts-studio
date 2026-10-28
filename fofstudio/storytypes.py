@@ -1,6 +1,6 @@
 """Story types (how the story is built) and writer types (how it's written: the writing style, not
-Owlbert's speaking voice). Chosen on the Stories page; "Let the AI pick" gives the three story options
-three different types and writers, so videos don't all sound alike.
+Owlbert's speaking voice). Chosen on the Stories page; "Let the AI pick" gives the two story options
+two different types and writers, so videos don't all sound alike.
 
 From the research "Story types writer voices animation" (project docs). Every type keeps the
 debunking rules: open on a true fact, state the claim once with a warning, name one trick, give one

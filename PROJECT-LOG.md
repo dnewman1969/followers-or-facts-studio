@@ -531,6 +531,54 @@ ComfyUI → Video → Editor → Final movie, with a long brief for the director
   directors are described by traits only, per the director policy.
 Tested with the fake AI only (146 tests).
 
+## 2026-10-28 — v0.7.0: styles database, style mixer, honest claims, no more repeats
+
+From two research reports ("Art styles caricatures and hybrids", "AI writer repetition and claim checks") and
+Dave's requests on 28 Oct.
+
+**Styles and caricatures**
+- `data/styles.json`: the 12 house styles plus 73 new looks (animation, film and TV history, puppets and stop
+  motion, print and posters, fine art, storybook, international), each in Dave's format (visual DNA, character
+  design, linework, palette, background, animation, lighting, best uses, prompt elements) with tier, difficulty,
+  medium, careful/caricature flags, cultural/political notes and a human-only `inspired_by`. `styles.py` is now a
+  loader; new looks are "(untested)" until kept. Built with a one-off script from the research notes.
+- `data/hybrids.json` (Dave's 13 examples rewritten by traits + 25 recipes), `data/caricature_traditions.json`
+  (18, tiered A/B/C/exclude), `data/visual_language.json` (metaphors, shape language, colour script, symbol and
+  cultural rules), `data/watchlist.json` (brand, show, format and artist names).
+- `styleengine.py`: mixes (BODY from one look, WORLD from another; key `mix:a+b`), clash rules (proportions,
+  careful topics, politically coded looks, care looks need OK, dropped looks), fatigue score across the last 8
+  videos (medium and palette double, 0.8 decay), "due" families, recommendations. Script page → Fresh looks...
+- Storyboard → Test styles...: hidden stage `styletest` paints two fixed test pictures per look (plus an invented
+  salesman for caricature looks), a contact sheet in `<data>/style-tests/`, Keep / Drop saved in
+  `<data>/style-ratings.json`; dropped looks leave the pickers.
+- Fix 1 (positive prompts): Z-Image runs at cfg 1, so "no X"/"Avoid: X" did nothing. Guards rewritten as things to
+  draw, the "Avoid:" tail removed, `promptcheck.py` strips negations and watchlist names from every picture prompt;
+  the medium now comes first. Publish blocks brand/artist names in the title or tags.
+- Fix 2 (caricature designer): Cast → "Research looks from free photos": 3-6 PD/CC photos from Commons, the
+  vision model (`qwen3-vl:8b`, new job "vision") answers multiple-choice face questions per photo, majority vote,
+  a kind design pushing 1-3 features (no fields for skin, weight, race, religion), saved with its references
+  (new caricature columns design_json, references_json). Photos never reach ComfyUI. Cast window also picks the
+  caricature tradition. The name-recall `propose()` is no longer offered.
+- Likeness rule (Dave): public figures may be caricatured; never a victim or a child in any form (cast NEVER words
+  extended; shot planner told; "child" is a refused real-picture subject). Careful-topic lock unchanged.
+- Stories page: "Let the AI pick (2 different)".
+
+**Script writer**
+- Each scene sees only its budgeted quotes (`_facts_for` leaked every quote of a shared source: the cause of one
+  quote in six scenes); the empty-scene fallback no longer shares sources.
+- Topic ledger (IDs, claim titles, numbers already given) instead of 45 earlier sentences.
+- Length follows the material: per-scene caps (45 words per fact unit); "the video must fill N minutes" removed;
+  "Honest length" in the header; the length check warns instead of blocking when the script matches it.
+- Delete, don't rewrite: `dedupe_scenes` keeps each quote in its first scene and removes re-told sentences (also
+  the first step of Fix repeats). `find_repeats` no longer exempts quotes in scenes.
+- `claimcheck.py`: claims hold up by rule A (primary record) or B (two independent quoted sources; same site,
+  publisher or near-copy quotes count once); unverified/contested verdicts don't. Weak claims are left out of
+  stories/script/cast (logged, Research page banner) and get a Deep dive (hidden stage `deepdive`: planned
+  questions → research.lookup; finds unticked). After writing, the checker model takes out fact sentences their
+  scene's evidence doesn't back (subtractive only; claim-check.json). Settings → claims.check_sentences.
+- Prose temperature 0.7 (Qwen's recommendation).
+Tested with the fake AI only (170 tests).
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

@@ -32,10 +32,16 @@ class CreativePanel(QFrame):
         style_label = QLabel("<b>Video style</b>")
         row.addWidget(style_label)
         self.style = QComboBox()
-        for key, name in styles.choices():
-            self.style.addItem(name, key)
+        self._fill_styles(False)
         self.style.setMinimumWidth(240)
         row.addWidget(self.style)
+        self.fresh_btn = QPushButton("Fresh looks...")
+        self.fresh_btn.setToolTip("Looks you haven't used lately, and the style mixer (how it's made from one look, "
+                                  "where it lives from another)")
+        self.fresh_btn.clicked.connect(self._fresh)
+        row.addWidget(self.fresh_btn)
+        style_label.setToolTip("About 85 looks and 38 mixes from the research. '(untested)' ones haven't been "
+                               "painted on your PC yet: Storyboard → Test styles.")
         minutes_label = QLabel("Length")
         row.addWidget(minutes_label)
         self.minutes = QDoubleSpinBox()
@@ -70,7 +76,7 @@ class CreativePanel(QFrame):
         row2.addWidget(self.writer)
         row2.addStretch(1)
         v.addLayout(row2)
-        parts = {"style": (style_label, self.style), "minutes": (minutes_label, self.minutes),
+        parts = {"style": (style_label, self.style, self.fresh_btn), "minutes": (minutes_label, self.minutes),
                  "humor": (humor_label, self.humor), "caricatures": (self.caric, self.cast_btn),
                  "story": (type_label, self.story_type, writer_label, self.writer)}
         for name, widgets in parts.items():
@@ -95,6 +101,7 @@ class CreativePanel(QFrame):
             return
         self._loading = True
         c = ep.creative()
+        self._fill_styles(bool(c.get("careful")), c["style"])
         self.style.setCurrentIndex(max(0, self.style.findData(c["style"])))
         self.minutes.setValue(float(c.get("minutes", 8)))
         self.humor.setCurrentIndex(c["humor"])
@@ -107,7 +114,8 @@ class CreativePanel(QFrame):
         """Only the story types and writers that suit this topic (careful topics get the sober ones)."""
         careful, humor = bool(c.get("careful")), int(c.get("humor", 1))
         self.story_type.clear()
-        self.story_type.addItem("Let the AI pick (3 different)", "auto")
+        from ..stages.stories import STORY_COUNT
+        self.story_type.addItem(f"Let the AI pick ({STORY_COUNT} different)", "auto")
         for t in storytypes.allowed_types(careful):
             self.story_type.addItem(t.name, t.key)
             self.story_type.setItemData(self.story_type.count() - 1, f"{t.blurb}\nSuits: {t.suits}", 3)
@@ -119,10 +127,42 @@ class CreativePanel(QFrame):
             self.writer.setItemData(self.writer.count() - 1, f"Sounds like {w.sounds_like}", 3)
         self.writer.setCurrentIndex(max(0, self.writer.findData(c.get("writer", "auto"))))
 
+    def _fill_styles(self, careful: bool, current: str = "") -> None:
+        """The looks you can pick (careful topics: sober ones only), each with its description as a tooltip."""
+        was = self.style.blockSignals(True)
+        self.style.clear()
+        items = styles.choices(careful)
+        if current and current not in {k for k, _ in items}:
+            items.insert(0, (current, styles.get(current).name))
+        for key, name in items:
+            self.style.addItem(name, key)
+            self.style.setItemData(self.style.count() - 1, styles.describe(styles.get(key)) or
+                                   styles.get(key).blurb, 3)
+        self.style.blockSignals(was)
+
+    def _fresh(self) -> None:
+        if not self.ep:
+            return
+        from .styleideas import StyleIdeasDialog
+        d = StyleIdeasDialog(self.ep, self)
+        if d.exec() and d.chosen:
+            st = styles.get(d.chosen)
+            self.ep.set_creative(style=d.chosen, humor=st.humor, caricatures=st.caricature)
+            self.set_episode(self.ep)
+            self.changed.emit()
+
     def _style_changed(self) -> None:
         if self._loading or not self.ep:
             return
         st = styles.get(self.style.currentData())
+        if st.tier == "care" and styles.ratings().get(st.key) != "kept":
+            from PySide6.QtWidgets import QMessageBox
+            if QMessageBox.question(self, "This look needs your OK", f"{st.name} comes from a living cultural "
+                                    f"tradition, so it needs care:\n\n{st.needs_ok}\n\nUse it with that care?") \
+                    != QMessageBox.StandardButton.Yes:
+                self.set_episode(self.ep)
+                return
+            styles.rate(st.key, "kept")
         # a new style brings its own humor level and caricature default
         self.ep.set_creative(style=st.key, humor=st.humor, caricatures=st.caricature)
         self.set_episode(self.ep)
@@ -135,12 +175,13 @@ class CreativePanel(QFrame):
             return
         st = styles.get(self.style.currentData())
         if on and not st.caricature:
-            satire = next((s for s in styles.STYLES.values() if s.caricature), None)
+            satire = styles.STYLES.get("satire") or next((s for s in styles.STYLES.values() if s.caricature), None)
             from PySide6.QtWidgets import QMessageBox
             if satire and QMessageBox.question(
                     self, "Caricatures",
-                    f"Caricatures of the people who sold the lie are only drawn in the {satire.name} style "
-                    f"(clearly cartoon, so nobody mistakes them for real pictures). This video is {st.name}.\n\n"
+                    f"Caricatures of the people who sold the lie are only drawn in clearly-cartoon styles "
+                    f"(so nobody mistakes them for real pictures), such as {satire.name}. This video is {st.name}."
+                    f"\n\n"
                     f"Switch this video to {satire.name} and turn caricatures on?") == QMessageBox.StandardButton.Yes:
                 self.ep.set_creative(style=satire.key, humor=satire.humor, caricatures=True)
                 self.set_episode(self.ep)
@@ -176,13 +217,24 @@ class CreativePanel(QFrame):
         notes = [f"<b>{st.name}:</b> {st.blurb} About {st.shot_seconds:g} s per picture, so a "
                  f"{c['minutes']:g}-minute video needs about {round(c['minutes'] * 60 / st.shot_seconds)} pictures."] \
             if "style" in self.show else []
+        if "style" in self.show:
+            from .. import styleengine
+            f = styleengine.fatigue(st.key, styleengine.history(self.ep.project_id))
+            if f >= styleengine.FATIGUE_LIMIT:
+                notes.append(f"<span style='color:{GOLD}'>This look is close to your last videos (fatigue {f:.2f}): "
+                             "press Fresh looks... for ones you haven't used lately.</span>")
+            if st.status == "draft" and styles.status_of(st) == "draft":
+                notes.append("Untested look: Storyboard → Test styles paints it on your PC first.")
+            if st.needs_ok:
+                notes.append(f"<span style='color:{GOLD}'>Care: {st.needs_ok}</span>")
         if c["careful"]:
             notes.append(f"<span style='color:{GOLD}'>Careful topic (victims: courts and documents only): no humor and "
                          "no caricatures.</span>")
         elif "caricatures" not in self.show:
             pass
         elif not st.caricature:
-            notes.append("Caricatures are only drawn in the Political-cartoon satire style: tick the box to switch.")
+            notes.append("This look doesn't carry caricatures (only clearly-cartoon drawn looks do): tick the box "
+                         "to switch to Political-cartoon satire.")
         elif c["caricatures"]:
             n_ok = len(cast.approved(self.ep))
             notes.append(f"Caricatures on: {n_ok} approved in the Cast." if n_ok else
@@ -221,6 +273,17 @@ class CastDialog(QDialog):
             "not legal advice.</span>")
         intro.setWordWrap(True)
         v.addWidget(intro)
+        trow = QHBoxLayout()
+        trow.addWidget(QLabel("<b>Caricature style</b>"))
+        self.trad = QComboBox()
+        tier_name = {"A": "house style", "B": "with care", "C": "history only"}
+        for t in cast.traditions():
+            self.trad.addItem(f"{t['name']} ({tier_name.get(t['tier'], t['tier'])})", t["key"])
+            self.trad.setItemData(self.trad.count() - 1, f"{t['visual_dna']}\nFaces: {t['face_body']}\n"
+                                  f"Best for: {t['best_use']}\nTone risk: {t['tone_risk']}", 3)
+        self.trad.setCurrentIndex(max(0, self.trad.findData(cast.tradition(ep)["key"])))
+        trow.addWidget(self.trad, 1)
+        v.addLayout(trow)
         self.rows = []
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -246,14 +309,22 @@ class CastDialog(QDialog):
             design.setFixedHeight(64)
             bl.addWidget(design)
             r = QHBoxLayout()
-            suggest = QPushButton("Suggest a design")
+            suggest = QPushButton("Research looks from free photos")
+            suggest.setToolTip("Finds 3-6 free-licence photos on Wikimedia Commons, has the vision model describe "
+                               "the face (multiple choice, majority vote) and writes a kind cartoon design that "
+                               "pushes the 1-3 most recognisable features. You edit and approve it. The photos "
+                               "are never sent to the picture maker.")
             ok = QCheckBox("Approved: OK to draw this person in this style")
             ok.setChecked(p["approved"])
-            suggest.clicked.connect(lambda _=False, pp=p, d=design: self._suggest(pp, d))
+            note = QLabel("")
+            note.setWordWrap(True)
+            note.setObjectName("muted")
+            suggest.clicked.connect(lambda _=False, pp=p, d=design, n=note, b=suggest: self._suggest(pp, d, n, b))
             r.addWidget(suggest)
             r.addWidget(ok)
             r.addStretch(1)
             bl.addLayout(r)
+            bl.addWidget(note)
             hl.addWidget(box)
             self.rows.append((p, design, ok))
         hl.addStretch(1)
@@ -270,14 +341,44 @@ class CastDialog(QDialog):
         buttons.addWidget(save)
         v.addLayout(buttons)
 
-    def _suggest(self, person, edit) -> None:
-        edit.setPlainText("Thinking...")
-        QApplication.processEvents()
-        try:
-            edit.setPlainText(cast.propose(person))
-        except Exception as exc:  # noqa: BLE001 - Ollama not running, etc.
-            edit.setPlainText("")
-            error(self, f"Couldn't suggest a design: {exc}")
+    def _suggest(self, person, edit, note, button) -> None:
+        """Runs in the background (photos to download, the vision model to ask); the window stays usable."""
+        import threading
+
+        from PySide6.QtCore import QTimer
+        button.setEnabled(False)
+        note.setText("Looking for free-licence photos...")
+        box: dict = {}
+
+        def work() -> None:
+            try:
+                box["result"] = cast.research_design(person, on_progress=lambda m: box.__setitem__("msg", m))
+            except Exception as exc:  # noqa: BLE001 - shown in plain words below
+                box["error"] = str(exc)
+
+        threading.Thread(target=work, daemon=True).start()
+        timer = QTimer(self)
+
+        def poll() -> None:
+            if "msg" in box:
+                note.setText(box.pop("msg"))
+            if "result" in box or "error" in box:
+                timer.stop()
+                button.setEnabled(True)
+                if "error" in box:
+                    note.setText(f"Couldn't research a design: {box['error']}")
+                    return
+                res = box["result"]
+                cast.save_research(person["person_id"], res)
+                edit.setPlainText(res["design"])
+                note.setText(f"From {len(res['references'])} free photos ({', '.join(sorted({r['licence'] for r in res['references']}))}). "
+                             f"Pushed: {', '.join(f.replace('_', ' ') for f in res['push']) or 'nothing stood out'}. "
+                             + (f"The photos didn't agree on: {', '.join(res['unsure'])}; add those yourself if they "
+                                "matter. " if res["unsure"] else "")
+                             + "Write in the prop tied to what they're documented doing, then approve.")
+
+        timer.timeout.connect(poll)
+        timer.start(400)
 
     def _save(self) -> None:
         from ..stages.storyboard import names_in, person_names
@@ -293,4 +394,5 @@ class CastDialog(QDialog):
                 return
             if text or ok.isChecked():
                 cast.save(p["person_id"], text, ok.isChecked())
+        self.ep.set_creative(caricature_style=self.trad.currentData())
         self.accept()

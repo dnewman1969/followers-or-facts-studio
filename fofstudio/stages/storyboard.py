@@ -31,12 +31,12 @@ from ..scriptfmt import parse, quotes_in
 from ..util import StageError, normalize_for_match, read_json, utc_now, write_json, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 
-GUARD = ("no text, no letters, no words, no watermark, no logos, "
-         "no recognizable real people, faces turned away or in silhouette")
-CARICATURE_GUARD = ("clearly a cartoon caricature drawing, not a photograph, no text, no letters, no logos, "
-                    "no speech bubbles")
-OWL_SET = ("an EMPTY set, nobody in it: no people, no owls, no birds, no animals, no characters, "
-           "an empty space on one side")
+# Said as things to draw: the turbo image model runs without guidance (cfg 1), so "no text" or "Avoid: X"
+# can't work and may even add X (research "Art styles caricatures and hybrids"). Names and brands are
+# stripped by promptcheck; real enforcement of "no words in the picture" is the checks after painting.
+GUARD = "wordless blank surfaces and unmarked paper, anonymous figures seen from behind or far away"
+CARICATURE_GUARD = "clearly a hand-drawn cartoon caricature with visible drawn lines, wordless blank surfaces"
+OWL_SET = "an empty quiet set with only furniture and props, open floor space on one side"
 OWL_WORDS = re.compile(r"\b(?:professor\s+)?owlbert(?:'s)?\b|\bowls?\b|\bthe professor\b|\bbirds?\b|\bhe\b|\bhis\b|\bhim\b|\bbeaks?\b|\bwings?\b|\bfeathers?\b|\bspectacles\b|\bglasses\b|\bgraduation cap\b",
                        re.IGNORECASE)
 
@@ -108,7 +108,8 @@ def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str
     return out[:n]
 
 
-REAL_SUBJECTS = ["place", "object", "event", "document", "public_figure", "generic", "victim", "private_person"]
+REAL_SUBJECTS = ["place", "object", "event", "document", "public_figure", "generic", "victim", "private_person",
+                 "child"]
 
 
 def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.Style, kinds: list[str],
@@ -143,10 +144,12 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
             + ("'real' = a REAL photo from public archives (Wikimedia Commons, government archives) of a place, "
                "object, document, event or public figure the narration names: give 'search' (3 to 6 words to search "
                "for it, e.g. 'Y2K command center 1999') and 'subject' (what it shows); if no free-to-use photo "
-               "exists it becomes a labelled re-creation. Never 'real' for victims or private people. "
+               "exists it becomes a labelled re-creation. Never 'real' for victims, children or private people. "
                if "real" in kinds else "")
-            + "Never name a real person in an idea. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
-            "Keep each idea short. For every shot also give its look: location (2-4 words), shot_type, angle, "
+            + "Never name a real person in an idea. Never show a real victim or a real child, in any form (show "
+              "places, objects and documents instead). Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
+            "Keep each idea short and describe only what IS in the picture (never write 'no ...' or "
+            "'without ...': the painter can't use them). For every shot also give its look: location (2-4 words), shot_type, angle, "
             "camera movement, the main figure's pose ('none' for objects and places), emotion, lighting, palette "
             "and intensity (0 calm reflection, 4 talk, 5 investigation, 8 action, 10 the biggest moment). Vary them "
             "like a film director: never three close-ups in a row, mix wide, medium and close, move the camera, "
@@ -239,23 +242,29 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         if found:
             return found
     cfg = settings()["comfyui"]
-    from .. import filmstyles
-    genre, _ = filmstyles.chosen(ep.creative())
-    look = f"{style.look}. {genre.look}" if genre and genre.look else style.look
     from .. import director as vd
+    from .. import filmstyles, promptcheck
+    genre, _ = filmstyles.chosen(ep.creative())
+    look = style.look
+    if shot["kind"] == "caricature":
+        from .. import cast
+        look = cast.caricature_look(ep, style)       # the chosen caricature tradition, in this style's medium
+    if genre and genre.look:
+        look = f"{look}. {genre.look}"
     framing = vd.look_words(shot.get("look") or {}, shot["kind"])   # the Virtual Director's framing, light, colour
-    if framing:
-        look = f"{framing}. {look}"
+    idea, _ = promptcheck.clean_prompt(shot["idea"])  # what to draw only; no names, no "no ..."
     if shot["kind"] == "caricature":
         person = people[shot["person_id"]]
-        full = f"{shot['idea']}. The character: {person['design']}. {look}. {CARICATURE_GUARD}"
+        design, _ = promptcheck.clean_prompt(person["design"])
+        parts = [look, framing, idea, f"The character: {design}", style.clean, CARICATURE_GUARD]
     elif shot["kind"] == "owl":
-        full = f"{set_only(shot['idea'])}. {OWL_SET}. {look}. {GUARD}"
+        parts = [look, framing, set_only(idea), OWL_SET, style.clean, GUARD]
     elif shot["kind"] == "real":   # no free-to-use real picture (or the second version): a labelled re-creation
-        full = (f"{shot['idea']}. {look}. An illustrated re-creation, clearly drawn, not a photograph. {GUARD}")
+        parts = [look, framing, idea, "an illustrated re-creation, clearly hand-drawn", style.clean, GUARD]
     else:
-        full = f"{shot['idea']}. {look}. {GUARD}"
-    full += f". Avoid: {style.negative}, washed out, low contrast"
+        parts = [look, framing, idea, style.clean, GUARD]
+    # the medium comes first: a distilled model with a short attention span reads the early words hardest
+    full, _ = promptcheck.strip_watch(". ".join(x.strip(" .") for x in parts if x and x.strip(" .")))
     raw, meta, seed = _comfy_image(ep, name, full)
     picture = raw
     extra: dict[str, Any] = {}

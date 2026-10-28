@@ -1,0 +1,19 @@
+{
+ "_about": "Words that never go into a picture prompt, a LoRA trigger, a title, a description or tags: brand, show, studio and format names (trademarks; false-endorsement risk), plus every 'inspired_by' name in the style data (added automatically). From the research 'Art styles caricatures and hybrids'.",
+ "brands": [
+  "Muppet", "Muppets", "Henson", "Sesame Street", "Fraggle", "Spitting Image", "South Park", "Hanna-Barbera",
+  "Hanna Barbera", "Scooby", "Flintstones", "Jetsons", "New Yorker", "Disney", "Pixar", "DreamWorks", "Aardman",
+  "Wallace and Gromit", "Laika", "Ghibli", "Simpsons", "Looney Tunes", "Fleischer", "Betty Boop", "Mickey Mouse",
+  "Superman", "Marvel", "DC Comics", "Tintin", "Asterix", "Peanuts", "Garfield", "Calvin and Hobbes",
+  "Thunderbirds", "Supermarionation", "Gerry Anderson", "Charlie Hebdo", "MAD magazine", "Mad Magazine",
+  "Monty Python", "Rugrats", "Ren and Stimpy", "SpongeBob", "Adventure Time", "Rick and Morty", "Archer",
+  "Technicolor", "Kodachrome", "Claymation", "Polaroid", "Steadicam", "Panavision", "VHS", "Instagram",
+  "TikTok", "Getty", "Shutterstock", "Pantone"
+ ],
+ "artists": [
+  "Hirschfeld", "Gillray", "Hogarth", "Daumier", "Nast", "Posada", "Norstein", "Petrov", "Reiniger",
+  "Alexeieff", "Caroline Leaf", "Gilliam", "Hergé", "Herge", "Miyazaki", "Rockwell", "Warhol", "Lichtenstein",
+  "Mucha", "Hokusai", "Hiroshige", "Kukryniksy", "Feng Zikai", "Rivera", "Orozco", "Siqueiros", "Wes Anderson",
+  "Tim Burton", "Spielberg", "Nolan", "Kubrick", "Hitchcock", "Tarantino", "Fincher", "Lynch", "Wiene"
+ ]
+}

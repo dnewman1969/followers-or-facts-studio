@@ -1,0 +1,111 @@
+{
+ "metaphors": [
+  {
+   "meaning": "Fake accounts",
+   "image": "Sock puppets, mismatched button eyes",
+   "source": "Sock puppet"
+  },
+  {
+   "meaning": "Coordinated operators",
+   "image": "Black-hooded operators visible behind a figure",
+   "source": "Three-operator theatre"
+  },
+  {
+   "meaning": "A rumour spreading",
+   "image": "A shadow growing as the figure moves away from the screen",
+   "source": "Shadow theatre"
+  },
+  {
+   "meaning": "Claim whack-a-mole",
+   "image": "Figures popping up in a striped booth window",
+   "source": "Glove-puppet booth"
+  },
+  {
+   "meaning": "How a fake was assembled",
+   "image": "Torn paper, tape, mismatched cut-out scale",
+   "source": "Collage"
+  },
+  {
+   "meaning": "A quote cropped out of context",
+   "image": "Clippings sliding by themselves on a desk",
+   "source": "Object animation"
+  },
+  {
+   "meaning": "Piecing the facts together",
+   "image": "Tiles assembling, dots resolving into an image",
+   "source": "Mosaic, pointillism"
+  },
+  {
+   "meaning": "Misleading framing",
+   "image": "Figure-ground flip (one shape, two readings)",
+   "source": "Poster silhouette tricks"
+  },
+  {
+   "meaning": "A lie wearing truth's mask",
+   "image": "One surreal metaphor head",
+   "source": "Metaphor poster"
+  },
+  {
+   "meaning": "Repeated false claims",
+   "image": "The growing nose, the weathervane hat, the megaphone mouth",
+   "source": "Latex-satire signature-gag idea (design proposal)"
+  },
+  {
+   "meaning": "Scale of a problem",
+   "image": "Identical pictograms counted in rows (built in code)",
+   "source": "Isotype"
+  },
+  {
+   "meaning": "\"How it actually works\"",
+   "image": "Exploded blueprint view without numbers",
+   "source": "Technical drawing"
+  },
+  {
+   "meaning": "The reveal and the verdict",
+   "image": "Curtain drop; single spot on a bare stage",
+   "source": "Proscenium, black box"
+  }
+ ],
+ "shape_language": {
+  "believers": "round, soft shapes, storybook warmth; never caricatured, never mocked",
+  "sellers": "angular, sly shapes, each carrying a signature prop tied to the documented claim",
+  "experts_and_records": "upright, square, steady shapes",
+  "owlbert": "his locked silhouette: round body, graduation cap, spectacles"
+ },
+ "colour_script": {
+  "act1": "the style's palette at full strength (the claim)",
+  "act2": "the same hues, cooler and a little less saturated (digging in)",
+  "act3": "the cleanest, brightest frames; the brand accent is kept for the verdict"
+ },
+ "symbols": {
+  "allowed": [
+   "generic props",
+   "blank labels filled by the editor's overlay text",
+   "documents without readable words",
+   "scales, magnifying glasses, receipts, megaphones"
+  ],
+  "restricted": [
+   "party animals",
+   "national personifications",
+   "religious iconography",
+   "skull figures on living people"
+  ],
+  "banned": [
+   "extremist, Nazi or Confederate insignia outside clearly archival context",
+   "the Rising Sun motif",
+   "runes co-opted by extremists",
+   "fake seals or calligraphy",
+   "readable generated text"
+  ]
+ },
+ "cultural": {
+  "papel_picado": "festival colours carry Day of the Dead meaning: never used to mock",
+  "adire": "motifs such as the Ikin Ifa tree carry ceremonial meaning: generic patterns only",
+  "aboriginal_dot": "excluded: dot painting hides sacred designs and needs community permission"
+ },
+ "excluded_styles": [
+  "Aboriginal dot and sacred designs",
+  "crude-line satirical weekly",
+  "latex satire caricature of real people"
+ ]
+}

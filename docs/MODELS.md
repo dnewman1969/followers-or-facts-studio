@@ -7,6 +7,8 @@ Check a model's licence before adding it, and add a line here when you do.
 |-----|-------|---------|---------------|------|------------------------|
 | Script, storyboard, quote finding | Qwen 3 14B (`qwen3:14b`) in Ollama | Apache-2.0 | already installed | ~9 GB | ~30 tokens/s |
 | Checks (a different model) | Qwen 3 8B (`qwen3:8b`) | Apache-2.0 | already installed | ~5 GB | |
+| Caricature references (sees pictures) | Qwen3-VL 8B (`qwen3-vl:8b`) | Apache-2.0 (confirm on the Ollama/HF card before first use) | `ollama pull qwen3-vl:8b` | ~6 GB | only for Cast → Research looks |
+| Clay looks (optional LoRA) | ClayAnimation-Redmond-ZIMAGE | Apache-2.0 | `models/loras` (not wired in yet) | | |
 | Pictures | Z-Image Turbo bf16 | Apache-2.0 | already in ComfyUI | | 8 steps |
 | Animation | Wan 2.2 I2V 14B fp8 (high + low noise) + Lightning 4-step LoRAs | Apache-2.0 | `models/diffusion_models`, `models/loras` | ~2 × 14 GB + 2 × 1.2 GB | ~5–6 min per 5 s clip (reported by another 3060 owner) |
 | ...its text encoder | umt5_xxl fp8 | Apache-2.0 | `models/text_encoders` | ~6.7 GB | |
@@ -82,3 +84,16 @@ with ai-toolkit on 12 GB (768 px, ~2,000 steps, 1–2 hours), or Qwen-Image-Edit
 The worker unloads Ollama's model (`keep_alive: 0`) before a ComfyUI job and asks
 ComfyUI to free its memory before an Ollama job, so the 12 GB card never holds both.
 The 128 GB of system RAM is what lets the 14B Wan models run on a 12 GB card.
+
+## Not allowed on this channel (licences checked 2026-10-28)
+
+- InsightFace pretrained models (antelopev2, buffalo): "non-commercial research purposes only". So InstantID,
+  PuLID, PhotoMaker and IP-Adapter-FaceID are out. The caricature designer never uses face ID or face
+  measurements; a vision model answers plain multiple-choice questions and no photo reaches ComfyUI.
+- Qwen-Image 2.1 (20 Sept 2026) moved to a non-commercial research licence: stay on Qwen-Image / Qwen-Image-Edit
+  up to 2511 if they're ever added.
+- FLUX.1-dev and LoRAs built on it (most felt / sock-puppet / claymation LoRAs): the licence excludes
+  revenue-generating use of the model.
+- Bespoke-MiniCheck-7B (fact checking): CC BY-NC 4.0.
+- Any LoRA whose trigger word is a show, studio or brand name (it puts a trademark into saved metadata).
+

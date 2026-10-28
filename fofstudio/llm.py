@@ -36,6 +36,8 @@ JOBS = {
     "script_write": "Writes each scene's narration",
     "storyboard": "Plans the pictures, the scene instructions and caricature designs",
     "director": "The Virtual Director: repairs shots that repeat the ones before them, before painting",
+    "vision": "Looks at free reference photos to describe a public figure for a caricature (must see pictures)",
+    "claims": "Checks that each fact in the script is backed by its quote (the deep dive)",
     "book": "Plans and writes the book",
     "checks": "Checks done by a different model (empty = [ollama] checker_model)",
 }
@@ -377,6 +379,9 @@ def _as_generate(payload: dict[str, Any]) -> dict[str, Any]:
                               for m in rest)
     out = {k: v for k, v in payload.items() if k != "messages"}
     out["prompt"] = prompt
+    images = [img for m in rest for img in m.get("images", [])]
+    if images:   # pictures for a vision model (base64), e.g. the caricature reference photos
+        out["images"] = images
     if system:
         out["system"] = system
     return out

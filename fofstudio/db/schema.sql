@@ -211,5 +211,7 @@ CREATE TABLE IF NOT EXISTS caricature (
     design TEXT NOT NULL,           -- hair, glasses, build, clothes, props; never the person's name
     approved INTEGER NOT NULL DEFAULT 0,
     approved_at TEXT,
-    notes TEXT
+    notes TEXT,
+    design_json TEXT,               -- the structured design the text was written from
+    references_json TEXT            -- the free-licence photos looked at (audit trail only)
 );

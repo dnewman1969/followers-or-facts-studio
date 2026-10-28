@@ -100,9 +100,10 @@ def test_writer_quotes_are_fixed_while_writing(episode, monkeypatch):
     pipeline.run_now(episode, "script")
     assert calls["rewrites"] >= 1                      # the writer was asked to fix it first
     s = script.load(episode)
-    for sc in s["scenes"]:
-        assert '"Only 10 minutes left' not in sc["narration"] and "Only 10 minutes left" in sc["narration"]
-        assert real[:30] in sc["narration"]           # the real quote keeps its quote marks...
+    assert all('"Only 10 minutes left' not in sc["narration"] for sc in s["scenes"])   # quote marks came off
+    assert any("Only 10 minutes left" in sc["narration"] for sc in s["scenes"])        # (later copies: repeats)
+    # the real quote keeps its quote marks, and lands once: later scenes that repeated it lost that sentence
+    assert sum(real[:30] in sc["narration"] for sc in s["scenes"]) == 1
     blocks = [c.message for c in script.check(episode) if c.level == "block"]
     assert not any("verified quote" in b for b in blocks), blocks   # ...and its E-number got listed
 
@@ -163,7 +164,7 @@ def test_repeating_scenes_go_back_and_are_flagged(episode, monkeypatch):
         text = messages[-1]["content"]
         if "say again what an earlier scene already said" in text:
             asks["repeat"] += 1
-        if "Already said in earlier scenes" in text:
+        if "Already covered in earlier scenes" in text:
             asks["ledger"] += 1
         if "narration" in schema["properties"] and "visual" in schema["properties"]:
             out["narration"] += (" Back in 1999 the radio host Gary North told every listener that the power grid "
@@ -172,9 +173,12 @@ def test_repeating_scenes_go_back_and_are_flagged(episode, monkeypatch):
 
     monkeypatch.setattr(Ollama, "chat_json", echo)
     pipeline.run_now(episode, "script")
-    assert asks["ledger"] >= 1 and asks["repeat"] >= 1
+    assert asks["ledger"] >= 1 and asks["repeat"] >= 1   # the writer was told, and asked to fix it first
+    # what still repeated was then taken out (delete, don't rewrite): the sentence lands once
+    scenes = script.load(episode)["scenes"]
+    assert sum("Back in 1999" in sc["narration"] for sc in scenes) == 1
     warns = [c.message for c in script.check(episode) if c.level == "warn"]
-    assert any("Fix repeats" in w for w in warns)
+    assert not any("Fix repeats" in w for w in warns)
     from fofstudio import channelmemory
     mem = channelmemory.load()[episode.project_id]
     assert mem["opening"] and mem["claims"]

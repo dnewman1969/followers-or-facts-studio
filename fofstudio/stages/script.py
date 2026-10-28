@@ -22,6 +22,7 @@ import re
 from typing import Any
 
 from .. import db
+from ..config import settings
 from ..episode import Episode
 from ..llm import Ollama
 from ..scriptfmt import CHANGES, MOODS, MOVES, PROPS, ROLES, parse, quotes_in, render
@@ -222,9 +223,21 @@ Hard rules (breaking any of them makes the script unusable):
 10. ON_SCREEN_TEXT is at most 8 words (a date, a place, a short label) or empty."""
 
 
-def selected_packet(ep: Episode) -> dict[str, Any]:
+def selected_packet(ep: Episode, check: bool = True) -> dict[str, Any]:
+    """The ticked research. With check=True (the default), claims that don't hold up are left out
+    (claimcheck.py: a primary record, or two independent sources with verified quotes)."""
     from .research import selected
-    return selected(read_json(ep.path("research.json")) or {"claims": [], "evidence": []})
+    packet = selected(read_json(ep.path("research.json")) or {"claims": [], "evidence": []})
+    if not check:
+        return packet
+    from .. import claimcheck
+    return claimcheck.split_packet(packet)[0]
+
+
+def left_out(ep: Episode) -> list[dict[str, Any]]:
+    """Ticked claims that don't hold up (yet), and why."""
+    from .. import claimcheck
+    return claimcheck.split_packet(selected_packet(ep, check=False))[1]
 
 
 def _excerpt_map(packet: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -444,7 +457,9 @@ def _facts_for(scene: dict[str, Any], packet: dict[str, Any]) -> str:
     out = []
     for c in packet["claims"]:
         srcs = [s for s in c["sources"] if s["source_id"] in want_src]
-        quotes = [e for e in c["excerpts"] if int(e["excerpt_id"]) in want_q or e["source_id"] in want_src]
+        # only the quotes the fact budget gave THIS scene: a source shared with other scenes doesn't bring its
+        # quotes along (that's how one quote ended up in six scenes)
+        quotes = [e for e in c["excerpts"] if int(e["excerpt_id"]) in want_q]
         if c["claim_id"] in want_claims or srcs or quotes:
             out.append({"claim_id": c["claim_id"], "claim": c["short_title"], "verdict": c["falsity_status"],
                         "summary": c.get("claim_summary"), "who_benefited": c.get("who_benefited"),
@@ -521,9 +536,103 @@ def tidy_directions(sc: dict[str, Any], creative: dict[str, Any], before: list[d
 def scene_repeats(sc: dict[str, Any], earlier: list[dict[str, Any]], packet: dict[str, Any]) -> list[dict[str, Any]]:
     """Sentences in this scene that say again what an earlier scene said (verified quotes aside)."""
     from ..repeats import find_repeats
-    quotes = [e["text"] for e in _excerpt_map(packet).values()]
     return find_repeats(sc.get("narration", ""), [(e.get("scene_id", "an earlier scene"), e.get("narration", ""))
-                                                    for e in earlier], keep_quotes=quotes)
+                                                    for e in earlier])
+
+
+UNIT_WORDS = 45        # words one fact unit (a source or a verified quote) can honestly fill
+ROLE_WORDS = {"intro": 90, "tell": 130, "toolkit": 110, "verdict": 100, "outro": 50}
+
+
+def material_cap(sc: dict[str, Any]) -> int:
+    """The most words this scene's own material can fill (research: the length follows the material)."""
+    units = len(sc.get("excerpt_ids") or []) + len(sc.get("source_ids") or [])
+    if sc.get("role") in FACT_ROLES:
+        return 50 + UNIT_WORDS * units
+    return ROLE_WORDS.get(sc.get("role", ""), 60) + UNIT_WORDS * units
+
+
+def topic_ledger(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> str:
+    """What earlier scenes covered, as topics and IDs only: giving the writer earlier sentences word for word
+    invites it to copy them (research "AI writer repetition and claim checks")."""
+    titles = {c["claim_id"]: c.get("short_title", "") for c in packet.get("claims", [])}
+    lines = []
+    for sc in scenes:
+        claims = ", ".join(f"{cid} ({titles.get(cid, '')[:50]})" for cid in sc.get("claim_ids") or []) or "no claim"
+        quotes = ", ".join(f"E{e}" for e in sc.get("excerpt_ids") or []) or "none"
+        nums = sorted(set(re.findall(r"\b\d[\d,.]*\d\b|\b\d\b", sc.get("narration", ""))))[:8]
+        lines.append(f"- {sc['scene_id']} ({sc.get('role', '')}): {claims}; quotes used: {quotes}; numbers and dates "
+                     f"already given: {', '.join(nums) or 'none'}")
+    return "\n".join(lines)
+
+
+def _sents(text: str) -> list[str]:
+    return [x.strip() for x in re.split(r"(?<=[.!?])\s+", text or "") if x.strip()]
+
+
+def _has_quote(sentence: str, quote: str) -> bool:
+    """The sentence carries this verified quote (its first 40 characters, or any 6 of its words in a row)."""
+    low, q = normalize_for_match(sentence), normalize_for_match(quote)
+    if q[:40] and q[:40] in low:
+        return True
+    words = q.split()
+    return any(" ".join(words[i:i + 6]) in low for i in range(0, max(0, len(words) - 5)))
+
+
+def dedupe_scenes(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> list[str]:
+    """Delete, don't rewrite: a verified quote stays only in the first scene that uses it, and a sentence that
+    says again what an earlier scene said is taken out (a scene always keeps at least one sentence)."""
+    from ..repeats import find_repeats
+    notes = []
+    quotes = {int(k): v["text"] for k, v in _excerpt_map(packet).items()}
+    owner: dict[int, str] = {}
+    for i, sc in enumerate(scenes):
+        ss = _sents(sc.get("narration", ""))
+        keep = []
+        for idx, snt in enumerate(ss):
+            q = next((k for k, t in quotes.items() if _has_quote(snt, t)), None)
+            left = len(keep) + len(ss) - idx - 1      # sentences this scene would still have
+            if q is not None and owner.get(q, sc["scene_id"]) != sc["scene_id"] and left >= 1:
+                notes.append(f"{sc['scene_id']}: took out a sentence repeating quote E{q} (already in {owner[q]})")
+                sc["excerpt_ids"] = [x for x in sc.get("excerpt_ids") or [] if str(x).lstrip("Ee") != str(q)]
+                continue
+            if q is not None:
+                owner.setdefault(q, sc["scene_id"])
+            keep.append(snt)
+        reps = {r["sentence"] for r in find_repeats(" ".join(keep), [(e["scene_id"], e.get("narration", ""))
+                                                                     for e in scenes[:i]])}
+        if reps and len(keep) - len(reps) >= 1:
+            notes.append(f"{sc['scene_id']}: took out {len(reps)} sentence(s) an earlier scene already said")
+            keep = [x for x in keep if x not in reps]
+        sc["narration"] = " ".join(keep)
+    return notes
+
+
+def _check_facts(ctx: Context, scenes: list[dict[str, Any]], packet: dict[str, Any]) -> None:
+    """Every sentence that states a fact must be backed by its own scene's evidence (claimcheck.py)."""
+    from .. import claimcheck
+    from ..llm import model_for
+    checker = model_for("checks")
+    llm = Ollama(job="claims")
+    excerpts = _excerpt_map(packet)
+    removed = []
+    for n, sc in enumerate(scenes):
+        ctx.check_cancel()
+        ctx.progress(f"Checking the facts in {sc['scene_id']} against its evidence ({n + 1} of {len(scenes)})", 96)
+        quotes = [excerpts[str(e).lstrip("Ee")]["text"] for e in sc.get("excerpt_ids") or []
+                  if str(e).lstrip("Ee") in excerpts]
+        try:
+            text, gone = claimcheck.check_sentences(sc, _facts_for(sc, packet), quotes, llm, checker)
+        except StageError as exc:
+            ctx.log(f"{sc['scene_id']}: the fact check couldn't run ({exc}); nothing was taken out.")
+            continue
+        if gone and text != sc.get("narration"):
+            sc["narration"] = text
+            ctx.log(f"{sc['scene_id']}: took out {len(gone)} sentence(s) its evidence doesn't back: "
+                    + " | ".join(g["sentence"][:90] for g in gone))
+        removed += [{"scene_id": sc["scene_id"], **g} for g in gone]
+    claimcheck.log(ctx.episode, sentences={"checked_by": checker, "removed": removed, "at": utc_now()},
+                   left_out=left_out(ctx.episode))
 
 
 def budget_facts(planned: list[dict[str, Any]], packet: dict[str, Any]) -> list[str]:
@@ -583,9 +692,9 @@ def _problems(sc: dict[str, Any], target: int, packet: dict[str, Any] | None = N
     words = len(sc.get("narration", "").split())
     low = sc.get("narration", "").lower()
     out = []
-    if words < target * 0.75:
-        out.append(f"It's too short: {words} words. Write about {target} words: add the concrete details from "
-                   "the facts (dates, numbers, places, what the documents say), not padding.")
+    if words < target * 0.55:
+        out.append(f"It's too short: {words} words. Write about {target} words by using the facts you left out "
+                   "(dates, numbers, places, what the documents say); never pad or restate.")
     stock = [p for p in STOCK_PHRASES if p in low]
     if stock:
         out.append(f"Remove these stock phrases: {', '.join(stock)}.")
@@ -655,7 +764,15 @@ def run(ctx: Context) -> None:
         raise StageError("Run and approve the Research stage first.")
     packet = selected_packet(ep)
     if not packet["claims"]:
+        weak = left_out(ep)
+        if weak:
+            raise StageError("None of the ticked claims holds up yet, so there's nothing to write from: "
+                             + "; ".join(f"{w['claim_id']} ({w['why']})" for w in weak[:4])
+                             + ". Press Deep dive on the Research page to look for more proof, or tick more.")
         raise StageError("No evidence is ticked on the Research page.")
+    for w in left_out(ep):
+        ctx.log(f"Left out {w['claim_id']} ({w['title'][:60]}): it doesn't hold up yet ({w['why']}). Deep dive on "
+                "the Research page can look for more proof.")
     if ctx.options.get("expand"):
         return _expand(ctx, packet)
     if ctx.options.get("derepeat"):
@@ -724,7 +841,6 @@ def run(ctx: Context) -> None:
     ids = known_ids(packet)
     scene_schema = with_known_ids(SCENE_SCHEMA, ids)
     from .. import channelmemory
-    from ..repeats import ledger_text
 
     # 0. the film treatment: find the story in the research before planning any scene
     from . import treatment as tr
@@ -780,11 +896,14 @@ def run(ctx: Context) -> None:
     for i, plan_sc in enumerate(planned):
         drop_unknown(plan_sc, ids)
         if plan_sc.get("role") in FACT_ROLES and not plan_sc.get("source_ids") and ids["claim_ids"]:
-            # a fact scene with no usable evidence: give it a ticked claim, in turn
+            # a fact scene with no usable evidence: give it a ticked claim, in turn, and a source no other scene
+            # has (sharing sources is how scenes end up telling the same facts)
             cid = plan_sc["claim_ids"][0] if plan_sc.get("claim_ids") else ids["claim_ids"][i % len(ids["claim_ids"])]
             c = next(c for c in packet["claims"] if c["claim_id"] == cid)
+            taken = {x for other in planned if other is not plan_sc for x in other.get("source_ids") or []}
+            free = [x["source_id"] for x in c["sources"] if x["source_id"] not in taken]
             plan_sc["claim_ids"] = [cid]
-            plan_sc["source_ids"] = [x["source_id"] for x in c["sources"]][:2]
+            plan_sc["source_ids"] = free[:1]   # none free: a short bridge scene with no new facts
     if len(planned) < 3:
         raise StageError("The outline came back with fewer than 3 scenes. Press Write it again.")
     budget = budget_facts(planned, packet)
@@ -802,12 +921,20 @@ def run(ctx: Context) -> None:
     write_json(ep.path("script-questions.json"), {"questions": [{"claim_id": "", "question": q} for q in gaps],
                                                   "made_at": utc_now()})
     base = int(words / max(1.0, sum(_words_for(p["role"], 1000) / 1000 for p in planned) - 0.6))
+    # the length follows the material, never the other way round: a scene gets only as many words as its own
+    # facts can fill, so running short means a shorter, honest video, not repeated sentences
+    targets = [min(_words_for(p["role"], base), material_cap(p)) for p in planned]
+    honest = sum(targets)
+    if honest < words * 0.85:
+        ctx.log(f"Honest length: the ticked research fills about {honest / style.wpm:.1f} minutes, not "
+                f"{minutes:g}. The script is written to that, without padding. For a longer video: Look these up "
+                "or Deep dive on the Research page, tick more, then write it again.")
 
     # 2. one scene at a time
     scenes: list[dict[str, Any]] = []
     for n, plan_sc in enumerate(planned, 1):
         ctx.check_cancel()
-        target = _words_for(plan_sc["role"], base)
+        target = targets[n - 1]
         prev = scenes[-1]["narration"] if scenes else ""
         pct0, pct1 = 15 + 80 * (n - 1) / len(planned), 15 + 80 * n / len(planned)
         messages = [
@@ -822,19 +949,19 @@ def run(ctx: Context) -> None:
                 f"It links to the previous scene with '{plan_sc['link']}'. "
                 f"{'Owlbert is on camera. ' if plan_sc.get('owl_on_camera') else ''}"
                 f"Picture idea: {plan_sc.get('visual_idea', '')}\n"
-                f"Write about {target} words of narration (that matters: the video must fill "
-                f"{minutes:g} minutes). Every fact must come from the facts below; list the claim_ids, "
-                "source_ids and excerpt_ids you used. The visual describes the picture for an illustrator in "
-                "this style.\n"
+                f"Write about {target} words of narration, but only as many as the facts below can fill: use each "
+                "fact once, and when they're used up, end the scene. Never restate an earlier scene or pad. Every "
+                "fact must come from the facts below; list the claim_ids, source_ids and excerpt_ids you used. "
+                "The visual describes the picture for an illustrator in this style.\n"
                 + (f"The previous scene ended: \"{' '.join(prev.split()[-40:])}\"\n" if prev else "")
-                + (f"Already said in earlier scenes (never say these again; build on them with new details):\n"
-                   f"{ledger_text([(x['scene_id'], x['narration']) for x in scenes])}\n" if scenes else "")
+                + (f"Already covered in earlier scenes (topics only; never cover them again, give this scene's "
+                   f"NEW facts):\n{topic_ledger(scenes, packet)}\n" if scenes else "")
                 + (f"{memory}\n" if memory and plan_sc["role"] in ("intro", "verdict", "outro") else "")
                 + (f"The music in the previous scene: {json.dumps(scenes[-1].get('music', {}))}\n" if scenes else "")
                 + ("This is a careful topic: no playful music or moves.\n" if creative.get("careful") else "")
                 + f"\nFacts for this scene:\n{_facts_for(plan_sc, packet)}\n\n{DIRECTING}")},
         ]
-        sc = llm.chat_json(messages, scene_schema, lenient=True, temperature=0.75,
+        sc = llm.chat_json(messages, scene_schema, lenient=True, temperature=0.7,
                            on_text=ctx.writing(f"Writing scene {n} of {len(planned)}", pct0, pct1 - 2, target + 60))
         # 3. one fix-up if it's short or full of stock phrases
         fix_refs(sc, packet, fill=False)
@@ -867,6 +994,13 @@ def run(ctx: Context) -> None:
             ctx.log(f"{sc['scene_id']}: {len(left)} sentence(s) still repeat earlier scenes (shown in the checks; "
                     "press Fix repeats)")
         scenes.append(sc)
+    # 4. take out what still repeats (a quote already used, a sentence an earlier scene said), never rewrite it
+    for note in dedupe_scenes(scenes, packet):
+        ctx.log(note)
+    # 5. every sentence that states a fact must be backed by its scene's own evidence (a different model checks;
+    #    it can only take sentences out)
+    if settings().get("claims", {}).get("check_sentences", True):
+        _check_facts(ctx, scenes, packet)
     for sc in scenes:
         sc["est_seconds"] = round(len(sc.get("narration", "").split()) / style.wpm * 60)
     header = {"Episode": ep.project_id, "Arc": (packet.get("arc") or {}).get("arc_id", "-"),
@@ -874,6 +1008,8 @@ def run(ctx: Context) -> None:
               **({"Genre": genre.name} if genre else {}), **({"Director": director.label} if director else {}),
               **({"Film": treat["film_title"]} if treat.get("film_title") else {}),
               "Target": f"{minutes:g} min",
+              **({"Honest length": f"{honest / style.wpm:.1f} min from the ticked research"}
+                 if honest < words * 0.85 else {}),
               "Drafted by": model}
     write_text(ep.path("script.md"), render(title, scenes, header))
     channelmemory.record(ep, scenes, story, title)
@@ -940,6 +1076,15 @@ def check(ep: Episode) -> list[Check]:
     if not scenes:
         return [Check(BLOCK, "script.md has no '## SCENE_###' headings.")]
 
+    weak_claims = left_out(ep)
+    if weak_claims:
+        out.append(Check(WARN, "Left out because they don't hold up yet: " + "; ".join(
+            f"{w['claim_id']} {w['title'][:50]} ({w['why']})" for w in weak_claims[:5])
+            + ". Deep dive on the Research page looks for more proof."))
+    removed = ((read_json(ep.path("claim-check.json"), {}) or {}).get("sentences") or {}).get("removed") or []
+    if removed:
+        out.append(Check(OK, f"The fact check took out {len(removed)} sentence(s) their scene's evidence didn't back "
+                             "(listed in claim-check.json)."))
     claim_sources = {c["claim_id"]: {s["source_id"] for s in c["sources"]} for c in packet["claims"]}
     all_ticked = set().union(*claim_sources.values()) if claim_sources else set()
     excerpts = _excerpt_map(packet)
@@ -952,7 +1097,9 @@ def check(ep: Episode) -> list[Check]:
         fix_refs(sc, packet, fill=False)  # read E-numbers in the sources list as quotes (for hand edits)
         for cid in sc["claim_ids"]:
             if cid not in claim_sources:
-                why = ("has nothing ticked on the Research page" if cid in all_claims
+                weak = next((w for w in weak_claims if w["claim_id"] == cid), None)
+                why = (f"doesn't hold up yet ({weak['why']}): take it out, or Deep dive on the Research page"
+                       if weak else "has nothing ticked on the Research page" if cid in all_claims
                        else "isn't in the database (the AI may have invented it)")
                 out.append(Check(BLOCK, f"{sid}: claim {cid} {why}."))
         for src in sc["source_ids"]:
@@ -998,7 +1145,14 @@ def check(ep: Episode) -> list[Check]:
     style = styles.get(creative["style"])
     target_min = float(creative.get("minutes", 8))
     minutes = words / style.wpm
-    if minutes < target_min * 0.8:
+    honest_m = re.search(r"\*\*Honest length:\*\* ([\d.]+) min", path.read_text(encoding="utf-8"))
+    honest = float(honest_m.group(1)) if honest_m else 0.0
+    if minutes < target_min * 0.8 and honest and minutes >= honest * 0.8:
+        out.append(Check(WARN, f"The script runs about {minutes:.1f} minutes: that's what the ticked research "
+                               f"honestly fills (about {honest:g}), so it isn't padded to {target_min:g}. For a longer "
+                               "video, find more proof (Look these up, Deep dive), tick it and write it again; or "
+                               f"set the Length to {honest:g}."))
+    elif minutes < target_min * 0.8:
         out.append(Check(BLOCK, f"The script runs about {minutes:.1f} minutes but you asked for {target_min:g}. "
                                 "Press Make it longer (or lower the Length and write it again)."))
     elif minutes < target_min * 0.95:
@@ -1059,16 +1213,26 @@ def repeat_checks(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> list[
 
 
 def _derepeat(ctx: Context, packet: dict[str, Any]) -> None:
-    """'Fix repeats': rewrite only the sentences that re-tell what an earlier scene said."""
+    """'Fix repeats': first take out repeated sentences and re-used quotes (delete, don't rewrite); only a scene
+    that would be left too short gets its repeated sentences rewritten from its own facts."""
     from .. import styles
-    from ..repeats import ledger_text
     ep = ctx.episode
     style = styles.get(ep.creative()["style"])
     script = load(ep)
     scenes = script["scenes"]
+    deleted = dedupe_scenes(scenes, packet)
+    for note in deleted:
+        ctx.log(note)
     reps = all_repeats(scenes, packet)
     if not reps:
-        ctx.progress("No scene repeats an earlier one.", 100)
+        text = ep.path("script.md").read_text(encoding="utf-8")
+        header_line = next((ln for ln in text.splitlines() if ln.startswith("**Episode:**")), "")
+        header = dict(re.findall(r"\*\*(.+?):\*\* ([^·]+?)(?: · |$)", header_line)) or {"Episode": ep.project_id}
+        for sc in scenes:
+            sc["est_seconds"] = round(len(sc["narration"].split()) / style.wpm * 60)
+        write_text(ep.path("script.md"), render(script["title"], scenes, {k: v.strip() for k, v in header.items()}))
+        ctx.progress(f"Took out {len(deleted)} repeat(s); nothing repeats now." if deleted else
+                     "No scene repeats an earlier one.", 100)
         return
     llm = Ollama(job="script_write")
     ids = known_ids(packet)
@@ -1085,7 +1249,7 @@ def _derepeat(ctx: Context, packet: dict[str, Any]) -> None:
                 + "\nRewrite ONLY those sentences: replace each with a new detail from this scene's facts that hasn't "
                   "been said yet, or cut it. Keep everything else word for word, keep the length about the same, and "
                   "keep its sources.\n"
-                f"Already said in earlier scenes:\n{ledger_text([(x['scene_id'], x['narration']) for x in scenes[:k]])}\n"
+                f"Already covered in earlier scenes (topics only):\n{topic_ledger(scenes[:k], packet)}\n"
                 f"Scene: {json.dumps({x: sc[x] for x in ('role', 'narration', 'visual', 'on_screen_text', 'claim_ids', 'source_ids', 'excerpt_ids')}, ensure_ascii=False)}\n"
                 f"Facts:\n{_facts_for(sc, packet)}")},
         ], scene_schema, lenient=True, temperature=0.6,

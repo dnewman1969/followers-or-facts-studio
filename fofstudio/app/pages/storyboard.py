@@ -182,12 +182,22 @@ class StoryboardPage(StagePage):
                                    "variety, camera, locations, poses, colour and pacing, and what it changed")
         self.review_btn.clicked.connect(self._show_review)
         row.addWidget(self.review_btn)
+        self.test_btn = QPushButton("Test styles...")
+        self.test_btn.setToolTip("Paint the same test pictures in the new looks and mixes, then Keep or Drop each")
+        self.test_btn.clicked.connect(self._test_styles)
+        row.addWidget(self.test_btn)
         row.addWidget(self.summary, 1)
         self.body.addLayout(row)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.body.addWidget(self.scroll, 1)
         self._sig = None
+
+    def _test_styles(self) -> None:
+        if not self.ep:
+            return
+        from ..styletest_ui import StyleTestDialog
+        StyleTestDialog(self, self).exec()
 
     def _show_review(self) -> None:
         path = self.ep.path("director-review.md") if self.ep else None
@@ -219,12 +229,15 @@ class StoryboardPage(StagePage):
         if self.ep:
             c = self.ep.creative()
             self.style.blockSignals(True)
+            if self.style.findData(c["style"]) < 0:   # a custom mix or a look not in the list: show it as it is
+                self.style.addItem(styles.get(c["style"]).name, c["style"])
             self.style.setCurrentIndex(max(0, self.style.findData(c["style"])))
             self.style.blockSignals(False)
         board = self.ep.storyboard() if self.ep else {}
         n = sum(len(s.get("shots", [])) for s in board.get("scenes", []))
         self.summary.setText(f"{n} shots planned" if n else "")
         self.review_btn.setEnabled(bool(self.ep) and self.ep.path("director-review.md").exists() and not busy)
+        self.test_btn.setEnabled(bool(self.ep) and not busy and not self.busy("styletest"))
         sig = (busy, str(board))
         if sig == self._sig:
             return
@@ -252,4 +265,4 @@ class StoryboardPage(StagePage):
                 self.refresh()
 
     def watched(self) -> list[str]:
-        return ["storyboard", "script"]
+        return ["storyboard", "script", "styletest"]

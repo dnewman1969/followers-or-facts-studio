@@ -55,6 +55,8 @@ DEFAULTS: dict[str, Any] = {
         "script_write": "",
         "storyboard": "",
         "director": "",
+        "vision": "qwen3-vl:8b",      # sees pictures (Apache-2.0); used only to describe caricature references
+        "claims": "",
         "book": "",
         "checks": "",
     },
@@ -118,6 +120,10 @@ DEFAULTS: dict[str, Any] = {
         "animation_level": "balanced",  # fast (1 in 10 shots animated by Wan) | balanced (1 in 3) | full (every shot)
         "parallax": True,               # every other picture moves in 2.5D (depth) instead of a flat zoom
         "t2v_shots_per_scene": 0,       # Wan 2.2 text-to-video b-roll clips per scene (needs the TI2V-5B model)
+    },
+    "claims": {
+        "check_sentences": True,  # after writing, a different model checks every fact sentence against its
+                                  # scene's own evidence and takes out what isn't backed (claimcheck.py)
     },
     "director": {
         "enabled": True,          # the Virtual Director reviews every shot before it's painted (director.py)

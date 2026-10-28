@@ -64,11 +64,25 @@ class ResearchPage(StagePage):
         self.deeper.setToolTip("Send the agents after more documents about the evidence you ticked.")
         self.deeper.clicked.connect(self._dig_deeper)
         row.addWidget(self.deeper)
+        self.dive = QPushButton("Deep dive on weak claims")
+        self.dive.setMinimumHeight(40)
+        self.dive.setToolTip("For each ticked claim that doesn't hold up yet (no primary record, and fewer than two "
+                             "independent sources with verified quotes): plan who/what/when/where questions and "
+                             "search primary records first. Finds arrive NEW and unticked. Claims that still don't "
+                             "hold up stay out of the script.")
+        click_feedback(self.dive, lambda: self.run_stage("deepdive", {}, "Deep dive on the weak claims"))
+        row.addWidget(self.dive)
         row.addStretch(1)
         self.body.addLayout(row)
         self.status = QLabel("")
         self.status.setWordWrap(True)
         self.body.addWidget(self.status)
+        self.hold = QLabel("")
+        self.hold.setWordWrap(True)
+        self.hold.setStyleSheet(f"background:{tint(GOLD, 0.12)}; border:1px solid {GOLD}; border-radius:6px; "
+                                "padding:6px;")
+        self.hold.hide()
+        self.body.addWidget(self.hold)
         # the script uses evidence that isn't ticked: say so, and offer to tick it
         want = QHBoxLayout()
         self.want_text = QLabel("")
@@ -152,12 +166,14 @@ class ResearchPage(StagePage):
         if not self.ep:
             super().refresh()
             self.subject.setText("Choose a story on the Database page first.")
-            for b in (self.start, self.deeper):
+            for b in (self.start, self.deeper, self.dive):
                 b.setEnabled(False)
+            self.hold.hide()
             self._fill([])
             return
         busy = self.busy("research")
         st = self.stage_status("research")["status"]
+        self._show_hold()
         if not busy and st != "approved":
             # list what's on file straight away (no internet), keeping your ticks
             rs.prepare(self.ep)
@@ -321,6 +337,27 @@ class ResearchPage(StagePage):
                                 "links.</p>")
         self._update_count()
 
+    def _show_hold(self) -> None:
+        """Ticked claims that don't hold up (yet): they stay out of the script until a deep dive proves them."""
+        from ...stages.script import left_out
+        from ...util import read_json
+        weak = left_out(self.ep) if self.ep.path("research.json").exists() else []
+        dive = ((read_json(self.ep.path("claim-check.json"), {}) or {}).get("deep_dive") or {}).get("claims") or []
+        busy = self.busy("deepdive") or self.busy("research") or self.busy("lookup")
+        self.dive.setEnabled(bool(weak) and not busy)
+        self.dive.setText(f"Deep dive on weak claims ({len(weak)})" if weak else "Deep dive on weak claims")
+        if not weak:
+            self.hold.hide()
+            return
+        lines = [f"<b>{len(weak)} ticked claim(s) don't hold up yet, so they stay out of the script</b> (a claim needs "
+                 "a primary record, or two independent sources with verified quotes):"]
+        last = {d["claim_id"]: d for d in dive}
+        for w in weak[:6]:
+            note = f" Deep dive: {last[w['claim_id']]['result']}." if w["claim_id"] in last else ""
+            lines.append(f"• {w['claim_id']} {w['title'][:70]}: {w['why']}.{note}")
+        self.hold.setText("<br>".join(lines))
+        self.hold.show()
+
     def _update_count(self) -> None:
         ticked = sum(1 for e in self._evidence if e.get("include"))
         shown = len(self._shown)
@@ -424,3 +461,6 @@ class ResearchPage(StagePage):
         super().poll()
         if self.ep and self.busy("research"):
             self._progress(True)
+
+    def watched(self) -> list[str]:
+        return ["research", "lookup", "deepdive"]

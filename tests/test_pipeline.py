@@ -80,6 +80,7 @@ def fake_llm(get_packet):
                         messages[-1]["content"])
             import json as _j
             import re as _re
+            role_guess = (_re.search(r"Role: (\w+)\.", text) or _re.search(r"(x)", "x")).group(1)
             m = _re.search(r"about (\d+) words", text)
             target = int(m.group(1)) if m else 40
             facts = text.split("Facts for this scene:\n", 1)[-1] if "Facts for this scene:" in text else \
@@ -90,8 +91,20 @@ def fake_llm(get_packet):
                 fl = []
             cids = [fl[0]["claim_id"]] if fl else []
             sids = [x["source_id"] for x in fl[0]["sources"]][:2] if fl else []
-            sentence = "People were scared, and someone sold that fear for money. "
-            words = (sentence * (target // 10 + 1)).split()[:target]
+            # varied sentences, like a real writer (the same sentence in every scene would be taken out as repeats)
+            vocab = ("radio bunker canned beans generator ledger receipt broadcast catalog warehouse invoice clock "
+                     "midnight county courthouse jury verdict sponsor pamphlet mailbox headline rumor caller "
+                     "studio microphone flashlight battery candle shelf price discount coupon order truck "
+                     "harbor bridge tower siren winter calendar ticket booth stage audience letter stamp").split()
+            seed = sum(map(ord, role_guess)) + 7 * len(text)
+            sents = []
+            for k in range(target // 9 + 1):
+                pick = [vocab[(seed * (k + 3) + j * 11 + k * k) % len(vocab)] for j in range(7)]
+                sents.append(f"The {pick[0]} and the {pick[1]} met a {pick[2]} near the {pick[3]} by the "
+                             f"{pick[4]}, {pick[5]} and {pick[6]}.")
+            words = " ".join(sents).split()[:target]
+            if words and not words[-1].endswith("."):
+                words[-1] += "."
             role_m = _re.search(r"Role: (\w+)\.", text)
             role = role_m.group(1) if role_m else "record"
             # the writer directs the music and Owlbert too (some of it breaks the rules on purpose)
@@ -101,20 +114,33 @@ def fake_llm(get_packet):
                      "toolkit": ("encouraging", 3, "crossfade"), "verdict": ("resolved", 3, "crossfade")}
             mood, energy, change = music.get(role, ("investigative", 2, "continue"))
             moves = {"intro": [{"move": "fly_in", "prop": "", "at": ""}],
-                     "record": [{"move": "hat_trick", "prop": "document", "at": "someone sold that fear"},
+                     "record": [{"move": "hat_trick", "prop": "document", "at": "Someone sold that fear"},
                                 {"move": "point", "prop": "", "at": "not in the narration at all"}],
                      "harm": [{"move": "surprised", "prop": "", "at": "People were scared"},
                               {"move": "solemn", "prop": "", "at": "People were scared"}],
                      "tell": [{"move": "hat_trick", "prop": "card", "at": "sold that fear"}],
                      "verdict": [{"move": "stamp", "prop": "", "at": "for money"},
                                  {"move": "fly_in", "prop": "", "at": ""}]}.get(role, [])
-            return {"narration": "This part is short and plain. " + " ".join(words),
+            hook = {"record": "Someone sold that fear by mail order.", "harm": "People were scared in their homes.",
+                    "tell": "They sold that fear with a ticking clock.",
+                    "verdict": "It was all for money, the receipts say."}.get(role, "")
+            return {"narration": "This part is short and plain. " + (hook + " " if hook else "") + " ".join(words),
                     "visual": "An old desk with a newspaper and a clock",
                     "on_screen_text": "December 31, 1999" if not cids else "",
                     "claim_ids": cids, "source_ids": sids, "excerpt_ids": [],
                     "music": {"mood": mood, "energy": energy, "change": change, "drop_before": "",
                               "sting_at": "sold that fear" if change == "sting" else ""},
                     "owlbert": moves}
+        if "verdicts" in props:   # the fact check: a sentence with "invented" in it isn't backed by the evidence
+            import re as _re
+            text = messages[-1]["content"].split("SENTENCES:\n", 1)[-1]
+            return {"verdicts": [{"sentence": int(n), "verdict": "not_supported" if "invented" in body.lower()
+                                  else "supported", "why": "not in the evidence" if "invented" in body.lower() else ""}
+                                 for n, body in _re.findall(r"\[(\d+)\] (.*)", text)]}
+        if "questions" in props and len(props) == 1:   # the deep dive plans questions
+            return {"questions": ["Which court ruled on the survival supply sales?",
+                                  "How much money did the sellers make from the supplies?",
+                                  "When did the radio show first sell the supplies?"]}
         if "why" in props and "shot_type" in props:   # the Virtual Director rewrites a repeated shot
             import re as _re
             n = int(_re.search(r"repair \(SCENE_(\d+)-s(\d+)", messages[-1]["content"]).group(2))
