@@ -77,6 +77,26 @@ def test_stuck_answer_is_stopped_and_tried_again(data):
     assert seen[1]["temperature"] > seen[0]["temperature"] and "stuck" in client.retries[0]
 
 
+def test_a_thinking_model_is_not_mistaken_for_a_stuck_one(data):
+    """Dave's caricature research: qwen3-vl streamed its reasoning as 'thinking' with empty content, and the
+    Studio called that 'stuck writing blank space' and gave up on every photo."""
+    import fofstudio.llm as llm
+    thinking = [{"message": {"content": "", "thinking": "Looking at the face. "}, "done": False}
+                for _ in range(400)]
+    answer = thinking + [{"message": {"content": '{"is_portrait": true}'}, "done": True, "done_reason": "stop"}]
+    srv, seen = _server([answer])
+    client = _client(srv)
+    out = llm.Ollama.chat(client, [{"role": "user", "content": "x", "images": ["abc"]}])
+    srv.shutdown()
+    assert out == '{"is_portrait": true}' and len(seen) == 1 and not client.retries
+    only = [{"message": {"content": "", "thinking": 'The answer: {"is_portrait": true, "nose": "long"}'},
+             "done": True, "done_reason": "stop"}]
+    srv, seen = _server([only])
+    out = llm.Ollama.chat(_client(srv), [{"role": "user", "content": "x"}])
+    srv.shutdown()
+    assert '"nose": "long"' in out          # an answer left only in its thinking is still used
+
+
 # ---------------------------------------------------------------- v0.5.5: answer formats and models per job
 def test_schema_problems_catch_what_ollama_let_through():
     import fofstudio.llm as llm

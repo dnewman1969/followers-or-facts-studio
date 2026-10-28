@@ -196,7 +196,7 @@ def test_caricature_research_follows_the_five_steps_and_deletes_the_photos(data,
     monkeypatch.setattr(cast, "find_references", lambda p, limit=16: refs[:1])
     assert cast.research_design(person)["warnings"]
     monkeypatch.setattr(Ollama, "chat", lambda self, m, model=None, **kw: '{"is_portrait": false}')
-    with pytest.raises(StageError, match="clear face in none"):
+    with pytest.raises(StageError, match="none shows a clear face"):
         cast.research_design(person)
     monkeypatch.setattr(cast, "find_references", lambda p, limit=16: [])
     with pytest.raises(StageError, match="found no photos"):

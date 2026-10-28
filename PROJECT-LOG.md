@@ -611,6 +611,15 @@ artwork, 3 alternate styles).
 - One clear photo now works with a warning (the design is words, never a copy of a photo); none = a plain error
   saying how many were found and downloaded.
 
+## 2026-10-28 — v0.7.3: a thinking model isn't a stuck one
+
+Dave's third run: 16 of 16 photos downloaded for everyone, but "no clear face" in all of them. Cause: qwen3-vl
+streams its reasoning in message.thinking with empty content; `_stream` counted 150 empty chunks as "stuck
+writing blank space", retried, gave up, and the caricature research skipped the photo silently (so the message
+blamed the photos). Fixes: thinking counts as progress; an answer left only in the thinking is used; the
+research stops after 3 failed photos with the real error; every photo's raw answer or error goes to
+<data>/logs/vision-log.json.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

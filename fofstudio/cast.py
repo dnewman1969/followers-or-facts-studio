@@ -352,10 +352,12 @@ def research_design(person: dict[str, Any], tradition_key: str | None = None, on
     folder = data_dir() / "caricature-refs" / person["person_id"]
     vision = model_for("vision")
     llm = Ollama(job="vision")
-    answers, records, failed = [], [], 0
+    answers, records, failed, errors, log = [], [], 0, [], []
     try:
         for n, ref in enumerate(refs, 1):
             if sum(1 for a in answers if a.get("is_portrait")) >= MAX_LOOKS:
+                break
+            if len(errors) >= 3 and not answers:   # the model isn't answering at all: say why now
                 break
             say(f"Step 2: looking at photo {n} of up to {len(refs)} (from {ref['from']})")
             path = _fetch_small(ref, folder / f"look{n}.jpg")
@@ -370,18 +372,26 @@ def research_design(person: dict[str, Any], tradition_key: str | None = None, on
                 if "not found" in str(exc).lower() or "pull" in str(exc).lower():
                     raise StageError(f"The vision model {vision} isn't installed. In a command window run: "
                                      f"ollama pull {vision}") from exc
+                errors.append(str(exc))
+                log.append({"photo": ref["page"], "error": str(exc)})
                 continue
             a = parse_vision(text)
+            log.append({"photo": ref["page"], "answer": text[:1500], "read_as": a})
             answers.append(a)
             records.append({"page": ref["page"], "from": ref["from"], "title": ref["title"][:120],
                             "clear_face": a["is_portrait"]})
     finally:
         shutil.rmtree(folder, ignore_errors=True)   # only looked at: nothing is kept
+        from .util import write_json
+        write_json(data_dir() / "logs" / "vision-log.json", {"person": name, "model": vision, "at": utc_now(),
+                                                             "photos": log})
     clear = [a for a in answers if a.get("is_portrait")]
     if not clear:
-        raise StageError(f"Found {len(refs)} photos of {name}, downloaded {len(refs) - failed}, and the vision model "
-                         f"saw a clear face in none of them. Try again, or write the design yourself, using looks "
-                         "only.")
+        if errors and not answers:
+            raise StageError(f"The vision model {vision} didn't answer for any photo of {name}: {errors[0]} "
+                             "(details in the logs folder, vision-log.json). Check Settings → models → vision.")
+        raise StageError(f"Found {len(refs)} photos of {name}; the vision model answered for {len(answers)} and "
+                         "said none shows a clear face (its answers are in the logs folder, vision-log.json).")
     face, votes = vote(answers)
     if not face and clear:                    # one photo: its answers are the best we have
         face = {f: clear[0][f] for f in FACE_FIELDS if clear[0].get(f) not in ("", "can't tell")}

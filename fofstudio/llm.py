@@ -143,7 +143,7 @@ class Ollama:
     def _stream(self, payload: dict[str, Any], on_text: Callable[[str], None], path: str = "/api/chat") -> dict[str, Any]:
         """Like _post, but the answer arrives a few words at a time; on_text gets the text so far
         (about once a second) so the window can show that something is happening."""
-        text, last, final = "", 0.0, {}
+        text, thinking, last, final = "", "", 0.0, {}
         solid_at, chunks = 0, 0
         with requests.Session() as s:
             s.trust_env = False
@@ -164,9 +164,13 @@ class Ollama:
                     if chunk.get("error"):
                         raise StageError(f"Ollama error: {chunk['error']}")
                     piece = (chunk.get("message") or {}).get("content", "") or chunk.get("response", "")
+                    # a "thinking" model streams its reasoning separately (content stays empty meanwhile):
+                    # that's work being done, not a stuck answer of blank space
+                    thought = (chunk.get("message") or {}).get("thinking", "") or chunk.get("thinking", "")
                     text += piece
+                    thinking += thought
                     chunks += 1
-                    if piece.strip():
+                    if piece.strip() or thought.strip():
                         solid_at = chunks
                     # stuck: a long run of nothing but spaces and new lines (a known local-AI habit with
                     # JSON answers). Stop now rather than waiting for it to fill the whole answer room.
@@ -182,6 +186,7 @@ class Ollama:
                         final = chunk
                         break
         final["message"] = {"content": text}
+        final["thinking"] = thinking
         return final
 
     def chat(self, messages: list[dict[str, str]], model: str | None = None,
@@ -226,6 +231,9 @@ class Ollama:
                     on_text("")
                 continue
             if data.get("done_reason") != "length":
+                if not content and (data.get("thinking") or "").strip():
+                    # it only "thought" (some models do even with thinking off): use the last part of that
+                    return data["thinking"].strip()[-4000:]
                 if not content:
                     raise StageError("The local AI returned an empty answer.")
                 return content
