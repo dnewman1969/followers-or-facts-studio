@@ -628,6 +628,13 @@ digest); it isn't a hybrid model, so "think": false is ignored and it can spend 
 `qwen3-vl:8b-instruct` (6.2 GB, Ollama 0.12.7+). Default changed; `cast.vision_model()` swaps any bare or
 -thinking Qwen3-VL tag in old settings for the -instruct one. Dave needs: ollama pull qwen3-vl:8b-instruct.
 
+## 2026-10-28 — v0.7.5: backup vision models
+
+The photos are downloaded once; each model in the chain looks at the same photos: the main vision model, then
+Settings → models → vision_backups (default gemma4:e4b, then qwen2.5vl:7b), skipping ones Ollama says aren't
+installed. A model that fails 3 photos in a row hands over to the next. Order from the research "Local vision
+model face reading" (reasoned, not measured on Dave's PC); Llama 3.2 Vision ruled out (worst at faces).
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

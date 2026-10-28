@@ -337,6 +337,27 @@ def vision_model() -> str:
     return m
 
 
+def vision_models() -> list[str]:
+    """The main vision model, then the backups (Settings → models → vision_backups), skipping ones not installed
+    when Ollama can say which are. From the research "Local vision model face reading": Gemma 4 (a different
+    maker, so different mistakes), then Qwen2.5-VL 7B; never Llama 3.2 Vision (worst at faces)."""
+    from .config import settings
+    backups = list((settings().get("models") or {}).get("vision_backups") or [])
+    chain = list(dict.fromkeys([vision_model()] + backups))
+    try:
+        import requests
+        with requests.Session() as sess:
+            sess.trust_env = False
+            r = sess.get(settings()["ollama"]["url"].rstrip("/") + "/api/tags", timeout=4)
+            have = {m["name"] for m in r.json().get("models", [])}
+    except Exception:  # noqa: BLE001 - can't list them: try each in turn
+        have = set()
+    if have:
+        installed = [m for m in chain if m in have or f"{m}:latest" in have]
+        return installed or chain[:1]
+    return chain
+
+
 def research_design(person: dict[str, Any], tradition_key: str | None = None, on_progress=None) -> dict[str, Any]:
     """Dave's five steps (2026-10-28):
     1 research: a normal image search for the person, several photos (only looked at, then deleted);
@@ -361,40 +382,54 @@ def research_design(person: dict[str, Any], tradition_key: str | None = None, on
         raise StageError(f"The image search found no photos of {name} (the search may be offline or busy). Try "
                          "again in a minute, or write the design yourself, using looks only.")
     folder = data_dir() / "caricature-refs" / person["person_id"]
-    vision = vision_model()
+    chain = vision_models()
     llm = Ollama(job="vision")
-    answers, records, failed, errors, log = [], [], 0, [], []
+    answers, records, failed, errors, log, vision = [], [], 0, [], [], chain[0]
     try:
+        photos = []                      # download once; every model in the chain looks at the same photos
         for n, ref in enumerate(refs, 1):
-            if sum(1 for a in answers if a.get("is_portrait")) >= MAX_LOOKS:
+            if len(photos) >= MAX_LOOKS * 2:
                 break
-            if len(errors) >= 3 and not answers:   # the model isn't answering at all: say why now
-                break
-            say(f"Step 2: looking at photo {n} of up to {len(refs)} (from {ref['from']})")
+            say(f"Step 1: getting photo {n} of up to {len(refs)} (from {ref['from']})")
             path = _fetch_small(ref, folder / f"look{n}.jpg")
-            if not path:
+            if path:
+                photos.append((ref, base64.b64encode(path.read_bytes()).decode()))
+            else:
                 failed += 1
-                continue
-            img = base64.b64encode(path.read_bytes()).decode()
-            try:   # plain text, no answer format: some vision models get stuck on a forced format
-                text = llm.chat([{"role": "user", "content": VISION_PROMPT, "images": [img]}], model=vision,
-                                temperature=0.1)
-            except StageError as exc:
-                if "not found" in str(exc).lower() or "pull" in str(exc).lower():
-                    raise StageError(f"The vision model {vision} isn't installed. In a command window run: "
-                                     f"ollama pull {vision}") from exc
-                errors.append(str(exc))
-                log.append({"photo": ref["page"], "error": str(exc)})
-                continue
-            a = parse_vision(text)
-            log.append({"photo": ref["page"], "answer": text[:1500], "read_as": a})
-            answers.append(a)
-            records.append({"page": ref["page"], "from": ref["from"], "title": ref["title"][:120],
-                            "clear_face": a["is_portrait"]})
+        missing = []
+        for vision in chain:             # the main vision model, then the backups you have installed
+            answers, records, errors = [], [], []
+            for n, (ref, img) in enumerate(photos, 1):
+                if sum(1 for a in answers if a.get("is_portrait")) >= MAX_LOOKS:
+                    break
+                if len(errors) >= 3 and not answers:   # this model isn't answering: try the next one
+                    break
+                say(f"Step 2: {vision} is looking at photo {n} of {len(photos)}")
+                try:   # plain text, no answer format: some vision models get stuck on a forced format
+                    text = llm.chat([{"role": "user", "content": VISION_PROMPT, "images": [img]}], model=vision,
+                                    temperature=0.1)
+                except StageError as exc:
+                    if "not found" in str(exc).lower() or "pull" in str(exc).lower():
+                        missing.append(vision)
+                        errors.append(f"{vision} isn't installed")
+                        break
+                    errors.append(str(exc))
+                    log.append({"model": vision, "photo": ref["page"], "error": str(exc)})
+                    continue
+                a = parse_vision(text)
+                log.append({"model": vision, "photo": ref["page"], "answer": text[:1500], "read_as": a})
+                answers.append(a)
+                records.append({"page": ref["page"], "from": ref["from"], "title": ref["title"][:120],
+                                "clear_face": a["is_portrait"]})
+            if any(a.get("is_portrait") for a in answers):
+                break
+        if missing and not answers:
+            raise StageError(f"No vision model is installed ({', '.join(missing)}). In a command window run: "
+                             f"ollama pull {chain[0]}")
     finally:
         shutil.rmtree(folder, ignore_errors=True)   # only looked at: nothing is kept
         from .util import write_json
-        write_json(data_dir() / "logs" / "vision-log.json", {"person": name, "model": vision, "at": utc_now(),
+        write_json(data_dir() / "logs" / "vision-log.json", {"person": name, "models": chain, "at": utc_now(),
                                                              "photos": log})
     clear = [a for a in answers if a.get("is_portrait")]
     if not clear:

@@ -57,6 +57,7 @@ DEFAULTS: dict[str, Any] = {
         "director": "",
         "vision": "qwen3-vl:8b-instruct",   # sees pictures (Apache-2.0); describes caricature references.
                                             # (plain "qwen3-vl:8b" is the thinking version: it never just answers)
+        "vision_backups": ["gemma4:e4b", "qwen2.5vl:7b"],   # tried in turn if the vision model fails
         "claims": "",
         "book": "",
         "checks": "",

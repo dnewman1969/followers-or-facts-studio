@@ -271,3 +271,32 @@ def test_the_thinking_qwen3_vl_is_swapped_for_the_instruct_one(data, monkeypatch
                         ("qwen3-vl:8b-instruct", "qwen3-vl:8b-instruct"), ("gemma3:12b", "gemma3:12b")):
         monkeypatch.setattr(llm, "model_for", lambda job, g=given: g)
         assert cast.vision_model() == used
+
+
+def test_a_backup_vision_model_takes_over_when_the_first_fails(data, monkeypatch):
+    from PIL import Image
+
+    from fofstudio.llm import Ollama
+    person = {"person_id": "P-2", "name": "Gary Northman", "role_types": "Radio host"}
+    refs = [{"url": f"https://img/{i}", "thumb": "", "page": f"https://p/{i}", "title": "", "from": "image search"}
+            for i in range(6)]
+    monkeypatch.setattr(cast, "find_references", lambda p, limit=16: refs)
+
+    def fake_fetch(ref, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (64, 64)).save(dest, "JPEG")
+        return dest
+    monkeypatch.setattr(cast, "_fetch_small", fake_fetch)
+    monkeypatch.setattr(cast, "vision_models", lambda: ["qwen3-vl:8b-instruct", "gemma4:e4b"])
+    calls = []
+
+    def flaky(self, messages, model=None, **kw):
+        calls.append(model)
+        if model == "qwen3-vl:8b-instruct":
+            raise StageError("The local AI returned an empty answer.")
+        return '{"is_portrait": true, "head_shape": "round", "hair_volume": "bald", "glasses": "round frames"}'
+    monkeypatch.setattr(Ollama, "chat", flaky)
+    monkeypatch.setattr(Ollama, "chat_json", lambda self, m, schema, **kw: {})
+    res = cast.research_design(person)
+    assert calls[:3] == ["qwen3-vl:8b-instruct"] * 3 and "gemma4:e4b" in calls   # 3 failures, then the backup
+    assert "bald head" in res["design"]
