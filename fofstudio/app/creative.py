@@ -309,11 +309,12 @@ class CastDialog(QDialog):
             design.setFixedHeight(64)
             bl.addWidget(design)
             r = QHBoxLayout()
-            suggest = QPushButton("Research looks from free photos")
-            suggest.setToolTip("Finds 3-6 free-licence photos on Wikimedia Commons, has the vision model describe "
-                               "the face (multiple choice, majority vote) and writes a kind cartoon design that "
-                               "pushes the 1-3 most recognisable features. You edit and approve it. The photos "
-                               "are never sent to the picture maker.")
+            suggest = QPushButton("Research looks from photos")
+            suggest.setToolTip("Searches the web for photos of this person (like an image search), has the local "
+                               "vision model describe the face in 3-6 of them (multiple choice, majority vote) and "
+                               "writes a kind cartoon design that pushes the 1-3 most recognisable features. You "
+                               "edit and approve it. The photos are only looked at, then deleted: never used in a "
+                               "video or sent to the picture maker.")
             ok = QCheckBox("Approved: OK to draw this person in this style")
             ok.setChecked(p["approved"])
             note = QLabel("")
@@ -347,7 +348,7 @@ class CastDialog(QDialog):
 
         from PySide6.QtCore import QTimer
         button.setEnabled(False)
-        note.setText("Looking for free-licence photos...")
+        note.setText("Searching for photos...")
         box: dict = {}
 
         def work() -> None:
@@ -371,7 +372,9 @@ class CastDialog(QDialog):
                 res = box["result"]
                 cast.save_research(person["person_id"], res)
                 edit.setPlainText(res["design"])
-                note.setText(f"From {len(res['references'])} free photos ({', '.join(sorted({r['licence'] for r in res['references']}))}). "
+                clear = sum(1 for r in res["references"] if r["clear_face"])
+                note.setText(f"Looked at {clear} photos with a clear face (from "
+                             f"{', '.join(sorted({r['from'] for r in res['references']}))}), then deleted them. "
                              f"Pushed: {', '.join(f.replace('_', ' ') for f in res['push']) or 'nothing stood out'}. "
                              + (f"The photos didn't agree on: {', '.join(res['unsure'])}; add those yourself if they "
                                 "matter. " if res["unsure"] else "")

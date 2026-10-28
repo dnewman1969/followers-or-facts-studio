@@ -579,6 +579,19 @@ Dave's requests on 28 Oct.
 - Prose temperature 0.7 (Qwen's recommendation).
 Tested with the fake AI only (170 tests).
 
+## 2026-10-28 — v0.7.1: caricature looks from a normal image search
+
+Dave's first run: Commons had only 1 free photo of Francis Boyle, and the vision model got stuck writing blank
+space for Alex Jones. Dave: the photos are only for the AI to look at, not for the videos, so any photo will do.
+- `cast.find_references` now does a normal web image search (the `ddgs` package the research agents already use:
+  "<name> <role>" and "<name> portrait"), plus the Wikipedia lead image and Commons, any licence. Photos are
+  shrunk to 768 px, looked at by the vision model, then the folder is deleted. Never used in a video or sent to
+  ComfyUI; still at least 3 clear faces and a majority vote, so no single photo is copied.
+- The vision call no longer forces an answer format (that made qwen3-vl write only blank space): plain text,
+  read by `parse_vision` (JSON or "key: value" lines, matched to the allowed words). A missing model says
+  "ollama pull qwen3-vl:8b".
+- Editorial rule row updated. Couldn't test the live image search from the cloud workspace (blocked there).
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

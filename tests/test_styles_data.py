@@ -144,39 +144,51 @@ def test_caricature_design_is_kind_and_pushes_only_a_few_features():
     assert not any(f in cast.FACE_FIELDS for f in ("skin", "weight", "ethnicity", "build"))
 
 
-def test_caricature_research_needs_three_free_photos_and_never_names_the_person(data, monkeypatch, tmp_path):
+def test_caricature_research_looks_at_photos_then_deletes_them(data, monkeypatch):
     from PIL import Image
 
-    from fofstudio import mediafinder
+    from fofstudio.config import data_dir
     from fofstudio.llm import Ollama
-    person = {"person_id": "P-1", "name": "Gary Northman"}
-    few = [mediafinder.Candidate("Gary Northman 2019.jpg", f"https://x/{i}.jpg", f"https://c/{i}", "CC BY 4.0",
-                                 "", "A", "Wikimedia Commons", 1200, 900) for i in range(2)]
-    monkeypatch.setattr(cast, "find_references", lambda name, limit=6: few)
-    with pytest.raises(StageError, match="3 are"):
-        cast.research_design(person)
-    many = few + [mediafinder.Candidate("Gary Northman portrait.jpg", "https://x/9.jpg", "https://c/9", "Public domain",
-                                        "", "B", "Wikimedia Commons", 1200, 900)]
-    monkeypatch.setattr(cast, "find_references", lambda name, limit=6: many)
+    person = {"person_id": "P-1", "name": "Gary Northman", "role_types": "Radio host / seller"}
+    refs = [{"url": f"https://img.example/{i}.jpg", "page": f"https://news.example/{i}", "title": "Gary Northman",
+             "from": "image search"} for i in range(5)]
+    monkeypatch.setattr(cast, "find_references", lambda p, limit=12: refs)
 
-    def fake_download(c, dest):
+    def fake_fetch(url, dest):
         dest.parent.mkdir(parents=True, exist_ok=True)
-        path = dest.with_suffix(".jpg")
-        Image.new("RGB", (64, 64)).save(path)
-        return {"path": str(path)}
-    monkeypatch.setattr(mediafinder, "download", fake_download)
+        Image.new("RGB", (64, 64)).save(dest, "JPEG")
+        return dest
+    monkeypatch.setattr(cast, "_fetch_small", fake_fetch)
     seen = []
 
-    def fake_chat_json(self, messages, schema, model=None, **kw):
+    def fake_chat(self, messages, model=None, **kw):   # plain text, no forced format (that got stuck)
+        assert "schema" not in kw or kw["schema"] is None
         seen.append((model, messages[-1].get("images")))
-        return {"is_portrait": True, "head_shape": "square", "hair_volume": "bald", "jaw": "wide",
-                "glasses": "thick dark frames", "expression": "smug", **{f: "can't tell" for f in ("nose", "chin")}}
-    monkeypatch.setattr(Ollama, "chat_json", fake_chat_json)
+        n = len(seen)
+        if n == 2:
+            return '{"is_portrait": false}'                         # a book cover, say
+        return ('Sure: {"is_portrait": true, "head_shape": "Square", "hair_volume": "bald", "jaw": "wide", '
+                '"glasses": "thick dark frames", "expression": "smug", "nose": "can\'t tell"}')
+    monkeypatch.setattr(Ollama, "chat", fake_chat)
     res = cast.research_design(person)
-    assert len(seen) == 3 and all(images for _, images in seen) and seen[0][0] == "qwen3-vl:8b"
+    assert len(seen) == 5 and all(images for _, images in seen) and seen[0][0] == "qwen3-vl:8b"
     assert "Northman" not in res["design"] and "bald head" in res["design"] and "glasses" in res["design"]
-    assert {r["licence"] for r in res["references"]} <= {"CC BY 4.0", "Public domain"}
-    assert "nose" in res["unsure"]
+    assert sum(r["clear_face"] for r in res["references"]) == 4 and "nose" in res["unsure"]
+    assert not (data_dir() / "caricature-refs" / "P-1").exists()    # only looked at, then deleted
+    # too few clear faces: say so plainly
+    monkeypatch.setattr(cast, "find_references", lambda p, limit=12: refs[:2])
+    with pytest.raises(StageError, match="3 are needed"):
+        cast.research_design(person)
+    monkeypatch.setattr(cast, "find_references", lambda p, limit=12: [])
+    with pytest.raises(StageError, match="found no photos"):
+        cast.research_design(person)
+
+
+def test_vision_answers_are_read_even_when_untidy():
+    a = cast.parse_vision('Here you go: {"is_portrait": true, "head_shape": "Square", "nose": "a long one"}')
+    assert a["head_shape"] == "square" and a["nose"] == "long" and a["chin"] == "can't tell"
+    b = cast.parse_vision("is_portrait: true\nhead shape: oval\nhair volume: bald")
+    assert b["head_shape"] == "oval" and b["hair_volume"] == "bald" and b["is_portrait"]
 
 
 def test_pictures_go_to_the_vision_model_on_either_route():

@@ -14,6 +14,8 @@ Guardrails (from the research report "Creative styles and studio polish"; not le
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 from typing import Any
 
 from . import db
@@ -129,28 +131,102 @@ VISION_SCHEMA = {"type": "object", "properties": {
     "is_portrait": {"type": "boolean"},
     **{k: {"type": "string", "enum": v + ["can't tell"]} for k, v in FACE_FIELDS.items()}},
     "required": ["is_portrait", *FACE_FIELDS]}
-REFERENCE_LICENCES = ("Public domain", "CC0", "CC BY", "CC BY SA")
+MAX_LOOKS = 6     # photos the vision model looks at
+MIN_LOOKS = 3     # never fewer: no single photo, so no one photographer's picture is copied
 
 
-def find_references(name: str, limit: int = 6) -> list[Any]:
-    """Free-licence portraits of a public figure from Wikimedia Commons (public domain, CC0, CC BY, CC BY-SA;
-    never news-agency photos). Only to look at; they never reach the image model."""
-    from . import mediafinder
-    out, seen = [], set()
-    for query in (f"{name} portrait", name, f"{name} official photo"):
-        try:
-            found = mediafinder.search_commons(query, limit=15)
-        except Exception:  # noqa: BLE001 - a failed search just finds nothing; the caller says so
-            continue
-        for c in found:
-            ok, _ = mediafinder.usable(c)
-            last = name.split()[-1].lower()
-            if ok and last in (c.title + " " + " ".join(c.notes)).lower() and c.file_url not in seen:
-                seen.add(c.file_url)
-                out.append(c)
-        if len(out) >= limit:
-            break
+def find_references(person: dict[str, Any], limit: int = 12) -> list[dict[str, str]]:
+    """Photos of a public figure to LOOK AT, from a normal web image search (like typing the name into an image
+    search), plus their Wikipedia and Wikimedia Commons pictures. They're only looked at by the local vision
+    model to describe the face in words; they're never used in a video, never sent to the picture maker, and
+    deleted straight after."""
+    name = person["name"]
+    role = (person.get("role_types") or "").split("/")[0].strip()
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def add(url: str, page: str, title: str, where: str) -> None:
+        if url and url not in seen and not re.search(r"\.(svg|gif)(\?|$)", url, re.I):
+            seen.add(url)
+            out.append({"url": url, "page": page or url, "title": title or "", "from": where})
+
+    try:   # the same free search package the research agents use (DuckDuckGo, Bing...)
+        from ddgs import DDGS
+        for query in (f"{name} {role}".strip(), f"{name} portrait"):
+            for r in DDGS().images(query, max_results=12, safesearch="moderate"):
+                add(r.get("image", ""), r.get("url", ""), r.get("title", ""), r.get("source") or "image search")
+            if len(out) >= limit:
+                break
+    except Exception:  # noqa: BLE001 - search blocked or offline: the other finders still run
+        pass
+    try:
+        from .agents import web
+        data = web.get_json("https://en.wikipedia.org/w/api.php", {
+            "action": "query", "format": "json", "generator": "search", "gsrsearch": f"{name} {role}".strip(),
+            "gsrlimit": 1, "prop": "pageimages", "piprop": "original"})
+        for pg in (data.get("query") or {}).get("pages", {}).values():
+            if name.split()[-1].lower() in pg.get("title", "").lower():
+                add((pg.get("original") or {}).get("source", ""), "https://en.wikipedia.org/wiki/" +
+                    pg["title"].replace(" ", "_"), pg["title"], "Wikipedia")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from . import mediafinder
+        for c in mediafinder.search_commons(name, limit=8):
+            if name.split()[-1].lower() in c.title.lower():
+                add(c.file_url, c.page_url, c.title, "Wikimedia Commons")
+    except Exception:  # noqa: BLE001
+        pass
     return out[:limit]
+
+
+def _fetch_small(url: str, dest: Path) -> Path | None:
+    """Download one photo and shrink it (the vision model only needs a face, and it's faster small)."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    from .agents import web
+    try:
+        r = web.session().get(url, timeout=20)
+        r.raise_for_status()
+        img = Image.open(BytesIO(r.content)).convert("RGB")
+    except Exception:  # noqa: BLE001 - a photo that won't load is skipped
+        return None
+    if min(img.size) < 160:
+        return None
+    img.thumbnail((768, 768))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    img.save(dest, "JPEG", quality=88)
+    return dest
+
+
+VISION_PROMPT = ("Look at the main person in this photo, as a cartoonist would. Answer with ONE JSON object and "
+                 "nothing else. For each key pick one of the listed words, or \"can't tell\". Set is_portrait to "
+                 "false if no single face is clearly visible. Describe what you see; don't guess who it is.\n"
+                 + "\n".join(f"{k}: {' | '.join(v)}" for k, v in FACE_FIELDS.items())
+                 + '\nExample: {"is_portrait": true, "head_shape": "oval", ...}')
+
+
+def parse_vision(text: str) -> dict[str, Any]:
+    """Read the vision model's answer (JSON if it gave JSON, else 'key: value' lines) into the allowed words."""
+    raw: dict[str, Any] = {}
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if m:
+        try:
+            raw = json.loads(m.group(0))
+        except ValueError:
+            raw = {}
+    if not raw:
+        for line in (text or "").splitlines():
+            k, _, v = line.partition(":")
+            raw[k.strip().strip('"').lower().replace(" ", "_")] = v.strip().strip('",')
+    out: dict[str, Any] = {"is_portrait": str(raw.get("is_portrait", "true")).lower() not in ("false", "no", "0")}
+    for field, allowed in FACE_FIELDS.items():
+        v = str(raw.get(field, "")).strip().lower()
+        hit = next((a for a in allowed if a == v), None) or next((a for a in allowed if a in v or v and v in a), None)
+        out[field] = hit or "can't tell"
+    return out
 
 
 def vote(answers: list[dict[str, Any]]) -> tuple[dict[str, str], dict[str, dict[str, int]]]:
@@ -205,47 +281,57 @@ def compose_design(face: dict[str, str], cap: int = 3) -> tuple[str, list[str]]:
 
 
 def research_design(person: dict[str, Any], on_progress=None) -> dict[str, Any]:
-    """Look at 3-6 free photos with the vision model and write a design for you to edit and approve."""
+    """Look at 3-6 photos of the person with the local vision model and write a design for you to edit and
+    approve. The photos are only looked at, then deleted."""
     import base64
+    import shutil
 
-    from . import mediafinder
     from .config import data_dir
     from .llm import Ollama, model_for
     from .util import StageError
     say = on_progress or (lambda *_: None)
-    say(f"Looking for free-licence photos of {person['name']} on Wikimedia Commons")
-    refs = find_references(person["name"])
-    if len(refs) < 3:
-        raise StageError(f"Only {len(refs)} free-licence photo(s) of {person['name']} on Wikimedia Commons (3 are "
-                         "needed so no single photographer's picture is copied). Write the design yourself from "
-                         "what you know, using looks only.")
+    say(f"Searching for photos of {person['name']}")
+    refs = find_references(person)
+    if not refs:
+        raise StageError(f"The image search found no photos of {person['name']} (it may be offline or busy). Try "
+                         "again in a minute, or write the design yourself, using looks only.")
     folder = data_dir() / "caricature-refs" / person["person_id"]
+    vision = model_for("vision")
     llm = Ollama(job="vision")
     answers, records = [], []
-    for n, c in enumerate(refs, 1):
-        say(f"Looking at photo {n} of {len(refs)} ({c.licence})")
-        try:
-            rec = mediafinder.download(c, folder / f"ref{n}")
-        except Exception:  # noqa: BLE001 - a photo that won't download is skipped
-            continue
-        img = base64.b64encode(open(rec["path"], "rb").read()).decode()
-        a = llm.chat_json([
-            {"role": "system", "content": (
-                "You help a cartoonist. Look at the photo and answer each question with one of the allowed "
-                "words about the main person's visible features, or \"can't tell\". Describe, don't judge. "
-                "is_portrait is false if the main face isn't clearly visible.")},
-            {"role": "user", "content": "Describe the main person's visible features.", "images": [img]},
-        ], VISION_SCHEMA, model=model_for("vision"), lenient=True, temperature=0.1)
-        answers.append(a)
-        records.append({"url": c.page_url, "licence": c.licence, "author": c.author, "title": c.title})
+    try:
+        for n, ref in enumerate(refs, 1):
+            if sum(1 for a in answers if a.get("is_portrait")) >= MAX_LOOKS:
+                break
+            say(f"Looking at photo {n} of up to {len(refs)} (from {ref['from']})")
+            path = _fetch_small(ref["url"], folder / f"look{n}.jpg")
+            if not path:
+                continue
+            img = base64.b64encode(path.read_bytes()).decode()
+            try:   # plain text, no answer format: some vision models get stuck on a forced format
+                text = llm.chat([{"role": "user", "content": VISION_PROMPT, "images": [img]}], model=vision,
+                                temperature=0.1)
+            except StageError as exc:
+                if "not found" in str(exc).lower() or "pull" in str(exc).lower():
+                    raise StageError(f"The vision model {vision} isn't installed. In a command window run: "
+                                     f"ollama pull {vision}") from exc
+                continue
+            a = parse_vision(text)
+            answers.append(a)
+            records.append({"page": ref["page"], "from": ref["from"], "title": ref["title"][:120],
+                            "clear_face": a["is_portrait"]})
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)   # only looked at: nothing is kept
+    seen = sum(1 for a in answers if a.get("is_portrait"))
+    if seen < MIN_LOOKS:
+        raise StageError(f"The vision model saw a clear face in only {seen} of {len(answers)} photo(s) of "
+                         f"{person['name']} ({MIN_LOOKS} are needed so the design isn't copied from one picture). "
+                         "Try again, or write the design yourself, using looks only.")
     face, votes = vote(answers)
-    if sum(1 for a in answers if a.get("is_portrait")) < 3:
-        raise StageError("The vision model couldn't see a clear face in at least 3 photos. Write the design "
-                         "yourself, using looks only.")
     design, push = compose_design(face)
     unsure = [f.replace("_", " ") for f in FACE_FIELDS if f not in face]
     return {"design": design, "face": face, "votes": votes, "push": push, "unsure": unsure,
-            "references": records, "model": model_for("vision")}
+            "references": records, "model": vision}
 
 
 def save_research(person_id: str, result: dict[str, Any]) -> None:
