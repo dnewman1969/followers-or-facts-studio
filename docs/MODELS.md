@@ -7,7 +7,7 @@ Check a model's licence before adding it, and add a line here when you do.
 |-----|-------|---------|---------------|------|------------------------|
 | Script, storyboard, quote finding | Qwen 3 14B (`qwen3:14b`) in Ollama | Apache-2.0 | already installed | ~9 GB | ~30 tokens/s |
 | Checks (a different model) | Qwen 3 8B (`qwen3:8b`) | Apache-2.0 | already installed | ~5 GB | |
-| Caricature references (sees pictures) | Qwen3-VL 8B (`qwen3-vl:8b`) | Apache-2.0 (confirm on the Ollama/HF card before first use) | `ollama pull qwen3-vl:8b` | ~6 GB | only for Cast → Research looks |
+| Caricature references (sees pictures) | Qwen3-VL 8B Instruct (`qwen3-vl:8b-instruct`; plain `qwen3-vl:8b` is the thinking version and is switched to instruct automatically) | Apache-2.0 | `ollama pull qwen3-vl:8b-instruct` (Ollama 0.12.7+) | 6.2 GB | only for Cast → Research looks |
 | Clay looks (optional LoRA) | ClayAnimation-Redmond-ZIMAGE | Apache-2.0 | `models/loras` (not wired in yet) | | |
 | Pictures | Z-Image Turbo bf16 | Apache-2.0 | already in ComfyUI | | 8 steps |
 | Animation | Wan 2.2 I2V 14B fp8 (high + low noise) + Lightning 4-step LoRAs | Apache-2.0 | `models/diffusion_models`, `models/loras` | ~2 × 14 GB + 2 × 1.2 GB | ~5–6 min per 5 s clip (reported by another 3060 owner) |

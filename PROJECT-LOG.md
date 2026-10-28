@@ -620,6 +620,14 @@ blamed the photos). Fixes: thinking counts as progress; an answer left only in t
 research stops after 3 failed photos with the real error; every photo's raw answer or error goes to
 <data>/logs/vision-log.json.
 
+## 2026-10-28 — v0.7.4: the vision model that just answers
+
+Research (notes "Local vision model face reading"): on Ollama `qwen3-vl:8b` IS `qwen3-vl:8b-thinking` (same
+digest); it isn't a hybrid model, so "think": false is ignored and it can spend the whole answer reasoning
+(Ollama issues #12837, #12906, #13353, #14798, #16945; maintainers won't change it). The answer-only model is
+`qwen3-vl:8b-instruct` (6.2 GB, Ollama 0.12.7+). Default changed; `cast.vision_model()` swaps any bare or
+-thinking Qwen3-VL tag in old settings for the -instruct one. Dave needs: ollama pull qwen3-vl:8b-instruct.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

@@ -55,7 +55,8 @@ DEFAULTS: dict[str, Any] = {
         "script_write": "",
         "storyboard": "",
         "director": "",
-        "vision": "qwen3-vl:8b",      # sees pictures (Apache-2.0); used only to describe caricature references
+        "vision": "qwen3-vl:8b-instruct",   # sees pictures (Apache-2.0); describes caricature references.
+                                            # (plain "qwen3-vl:8b" is the thinking version: it never just answers)
         "claims": "",
         "book": "",
         "checks": "",

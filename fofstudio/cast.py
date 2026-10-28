@@ -326,6 +326,17 @@ def _no_name(text: str, name: str) -> str:
     return text
 
 
+def vision_model() -> str:
+    """The model that looks at the photos. A bare Qwen3-VL size tag ("qwen3-vl:8b") is the THINKING version:
+    it ignores "think: false" and can spend its whole answer reasoning (Ollama issues #12837, #13353, #14798),
+    so the instruct version of the same size is used instead."""
+    from .llm import model_for
+    m = model_for("vision")
+    if re.fullmatch(r"qwen3-vl:\d+b(-thinking)?", m or ""):
+        m = re.sub(r"(-thinking)?$", "-instruct", m, count=1)
+    return m
+
+
 def research_design(person: dict[str, Any], tradition_key: str | None = None, on_progress=None) -> dict[str, Any]:
     """Dave's five steps (2026-10-28):
     1 research: a normal image search for the person, several photos (only looked at, then deleted);
@@ -350,7 +361,7 @@ def research_design(person: dict[str, Any], tradition_key: str | None = None, on
         raise StageError(f"The image search found no photos of {name} (the search may be offline or busy). Try "
                          "again in a minute, or write the design yourself, using looks only.")
     folder = data_dir() / "caricature-refs" / person["person_id"]
-    vision = model_for("vision")
+    vision = vision_model()
     llm = Ollama(job="vision")
     answers, records, failed, errors, log = [], [], 0, [], []
     try:

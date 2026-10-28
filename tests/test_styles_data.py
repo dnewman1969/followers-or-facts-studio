@@ -182,7 +182,7 @@ def test_caricature_research_follows_the_five_steps_and_deletes_the_photos(data,
     monkeypatch.setattr(Ollama, "chat", fake_chat)
     monkeypatch.setattr(Ollama, "chat_json", fake_design)
     res = cast.research_design(person, "theme_park_live_caricature")
-    assert len(seen) == 5 and all(images for _, images in seen) and seen[0][0] == "qwen3-vl:8b"
+    assert len(seen) == 5 and all(images for _, images in seen) and seen[0][0] == "qwen3-vl:8b-instruct"
     assert fetched[0].startswith("https://tse.")
     assert "huge dark glasses" in asked[0] and "black t-shirt" in asked[0] and "heavy" not in asked[0]
     assert "Northman" not in res["design"] and "enormous dark glasses" in res["design"]
@@ -263,3 +263,11 @@ def test_titles_and_tags_never_name_a_brand(episode):
         "chapters": [1, 2, 3], "video": "x.mp4"})
     msgs = [c.message for c in publish.check_package(episode) if c.level == "block"]
     assert any("brand, show or artist" in m for m in msgs)
+
+
+def test_the_thinking_qwen3_vl_is_swapped_for_the_instruct_one(data, monkeypatch):
+    import fofstudio.llm as llm
+    for given, used in (("qwen3-vl:8b", "qwen3-vl:8b-instruct"), ("qwen3-vl:4b-thinking", "qwen3-vl:4b-instruct"),
+                        ("qwen3-vl:8b-instruct", "qwen3-vl:8b-instruct"), ("gemma3:12b", "gemma3:12b")):
+        monkeypatch.setattr(llm, "model_for", lambda job, g=given: g)
+        assert cast.vision_model() == used
