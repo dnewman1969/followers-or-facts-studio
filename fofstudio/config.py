@@ -54,6 +54,7 @@ DEFAULTS: dict[str, Any] = {
         "script_plan": "",
         "script_write": "",
         "storyboard": "",
+        "director": "",
         "book": "",
         "checks": "",
     },
@@ -117,6 +118,11 @@ DEFAULTS: dict[str, Any] = {
         "animation_level": "balanced",  # fast (1 in 10 shots animated by Wan) | balanced (1 in 3) | full (every shot)
         "parallax": True,               # every other picture moves in 2.5D (depth) instead of a flat zoom
         "t2v_shots_per_scene": 0,       # Wan 2.2 text-to-video b-roll clips per scene (needs the TI2V-5B model)
+    },
+    "director": {
+        "enabled": True,          # the Virtual Director reviews every shot before it's painted (director.py)
+        "ai_repairs": 30,         # most shots per run the director AI rewrites; after that the program reframes
+        "tries": 2,               # AI rewrites per failing shot before the program reframes it itself
     },
     "media": {
         "enabled": True,          # the storyboard may use real, free-licence pictures (mediafinder.py)

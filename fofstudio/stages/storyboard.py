@@ -28,7 +28,7 @@ from ..config import settings
 from ..episode import Episode
 from ..llm import Ollama
 from ..scriptfmt import parse, quotes_in
-from ..util import StageError, normalize_for_match, read_json, utc_now
+from ..util import StageError, normalize_for_match, read_json, utc_now, write_json, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 
 GUARD = ("no text, no letters, no words, no watermark, no logos, "
@@ -94,13 +94,13 @@ SHOTS_PER_REQUEST = 6   # ask for a few shots at a time so every answer fits com
 
 
 def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str], people: list[dict[str, Any]],
-                restrictions: list[str], on_text=None, film: str = "") -> list[dict[str, Any]]:
+                restrictions: list[str], on_text=None, film: str = "", careful: bool = False) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     size = SHOTS_PER_REQUEST
     while len(out) < n:
         k = min(size, n - len(out))
         try:
-            out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text, film)
+            out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text, film, careful)
         except StageError:
             if k <= 2:
                 raise
@@ -113,8 +113,10 @@ REAL_SUBJECTS = ["place", "object", "event", "document", "public_figure", "gener
 
 def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.Style, kinds: list[str],
                 people: list[dict[str, Any]], restrictions: list[str], so_far: list[dict[str, Any]],
-                on_text=None, film: str = "") -> list[dict[str, Any]]:
-    item = {"kind": {"type": "string", "enum": kinds}, "idea": {"type": "string"}, "person_id": {"type": "string"}}
+                on_text=None, film: str = "", careful: bool = False) -> list[dict[str, Any]]:
+    from .. import director as vd
+    item = {"kind": {"type": "string", "enum": kinds}, "idea": {"type": "string"}, "person_id": {"type": "string"},
+            **vd.look_schema(careful)}
     if "real" in kinds:
         item["search"] = {"type": "string"}
         item["subject"] = {"type": "string", "enum": REAL_SUBJECTS}
@@ -144,7 +146,12 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
                "exists it becomes a labelled re-creation. Never 'real' for victims or private people. "
                if "real" in kinds else "")
             + "Never name a real person in an idea. Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
-            "Keep each idea short." + (f"\n{film}\nUse that genre look and directing style for every shot: "
+            "Keep each idea short. For every shot also give its look: location (2-4 words), shot_type, angle, "
+            "camera movement, the main figure's pose ('none' for objects and places), emotion, lighting, palette "
+            "and intensity (0 calm reflection, 4 talk, 5 investigation, 8 action, 10 the biggest moment). Vary them "
+            "like a film director: never three close-ups in a row, mix wide, medium and close, move the camera, "
+            "give the audience calm moments between intense ones, and keep the scene's place and time of day."
+            + (f"\n{film}\nUse that genre look and directing style for every shot: "
                                          "framing, lighting, palette, camera." if film else ""))},
         {"role": "user", "content": f"Style: {style.look}\nOwlbert's scenes look like: {style.owl_look}\n"
                                     f"Scene visual note: {sc['visual']}\nNarration: {sc['narration']}\n"
@@ -159,6 +166,7 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
             kind, pid = "broll", ""
         shot = {"kind": kind, "idea": (x.get("idea") or "").strip() or sc["visual"],
                 "person_id": pid if kind == "caricature" else ""}
+        shot["look"] = vd.infer_look(shot["idea"], x)
         if kind == "real":
             shot["search"] = (x.get("search") or "").strip() or shot["idea"][:60]
             shot["subject"] = x.get("subject") if x.get("subject") in REAL_SUBJECTS else "generic"
@@ -234,6 +242,10 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
     from .. import filmstyles
     genre, _ = filmstyles.chosen(ep.creative())
     look = f"{style.look}. {genre.look}" if genre and genre.look else style.look
+    from .. import director as vd
+    framing = vd.look_words(shot.get("look") or {}, shot["kind"])   # the Virtual Director's framing, light, colour
+    if framing:
+        look = f"{framing}. {look}"
     if shot["kind"] == "caricature":
         person = people[shot["person_id"]]
         full = f"{shot['idea']}. The character: {person['design']}. {look}. {CARICATURE_GUARD}"
@@ -319,6 +331,7 @@ def run(ctx: Context) -> None:
     redo_ids = set(ctx.options.get("remake") or [])   # ["SCENE_002-s03:1", ...] or whole shots "SCENE_002-s03"
     replan = set(ctx.options.get("replan") or [])     # scene ids to plan again
     scenes: list[dict[str, Any]] = []
+    planned: list[dict[str, Any]] = []
     total = len(script["scenes"])
     for n, sc in enumerate(script["scenes"]):
         ctx.check_cancel()
@@ -349,10 +362,34 @@ def run(ctx: Context) -> None:
                                 director.average_shot if director else None)
             ctx.progress(f"Planning {need} shots for {sid} ({n + 1}/{total})", 100 * n / total)
             ideas = _plan_shots(sc, need, style, kinds, scene_people, restrictions,
-                                on_text=ctx.writing(f"Planning {need} shots for {sid}", 100 * n / total,
-                                                    100 * (n + 0.1) / total, need * 30), film=film)
+                                on_text=ctx.writing(f"Planning {need} shots for {sid}", 30 * n / total,
+                                                    30 * (n + 0.5) / total, need * 30), film=film,
+                                careful=bool(creative.get("careful")))
             entry["shots"] = [{"shot_id": f"{sid}-s{i + 1:02d}", **idea, "candidates": [None] * n_cands, "pick": 0}
                               for i, idea in enumerate(ideas)]
+        planned.append(entry)
+
+    # the Virtual Director: the quality gate before anything is painted (director.py)
+    if settings().get("director", {}).get("enabled", True):
+        from .. import director as vd
+        ctx.progress("Virtual Director: reviewing every shot for variety, camera, pacing and continuity", 30)
+        only_remake = bool(redo_ids) and not replan and not ctx.options.get("style")
+        review = vd.direct(planned, film=film, careful=bool(creative.get("careful")), style_name=style.name,
+                           names=person_names(), log=ctx.log, repair=not only_remake,
+                           on_progress=lambda m, pct: ctx.progress(m, 30 + 0.1 * pct))
+        for entry in planned:
+            for shot in entry["shots"]:
+                if shot.pop("directed_from", None) is not None:   # a changed shot is painted again
+                    shot["candidates"] = [None] * len(shot["candidates"])
+        write_json(ep.path("director-review.json"), {**review, "made_at": utc_now()})
+        write_text(ep.path("director-review.md"), vd.to_markdown(review))
+        sm = review["summary"]
+        ctx.log(f"Virtual Director: {sm['APPROVED']} approved, {sm['REPAIRED']} repaired, {sm['REJECTED']} rejected; "
+                f"variety {sm['variety']}/100.")
+
+    # painting (the prompt builder adds each shot's framing, light and colour)
+    for n, entry in enumerate(planned):
+        sc = script["scenes"][n]
         shots = entry["shots"]
         for j, shot in enumerate(shots):
             while len(shot["candidates"]) < n_cands:
@@ -370,7 +407,7 @@ def run(ctx: Context) -> None:
                                               if set(p["claims"]) & set(sc.get("claim_ids", []))])
                 ctx.progress(f"Painting {shot['shot_id']} ({shot['kind']}), version {k + 1} of {len(shot['candidates'])} "
                              f"- scene {n + 1} of {total}",
-                             100 * (n + (j + (k + 1) / len(shot['candidates'])) / max(1, len(shots))) / total)
+                             40 + 60 * (n + (j + (k + 1) / len(shot['candidates'])) / max(1, len(shots))) / total)
                 shot["candidates"][k] = _paint(ep, shot, k, style, people)
         scenes.append(entry)
         rest = [old[x["scene_id"]] for x in script["scenes"][n + 1:] if x["scene_id"] in old]
@@ -404,6 +441,9 @@ def set_idea(ep: Episode, shot_id: str, idea: str) -> None:
     for s in board.get("scenes", []):
         for shot in s.get("shots", []):
             if shot["shot_id"] == shot_id:
+                if idea != shot["idea"]:
+                    shot["by_hand"] = True   # your words: the Virtual Director scores them but never rewrites them
+                    shot.pop("look", None)   # worked out again from your words
                 shot["idea"] = idea
     ep.save_storyboard(board)
 
@@ -437,7 +477,7 @@ def shots(ep: Episode) -> list[dict[str, Any]]:
                     item = {"shot_id": shot["shot_id"], "scene_id": s["scene_id"], "type": "ai_image",
                             "kind": shot["kind"], "image": c, "prompt": c["prompt"],
                             "seconds": styles.get(s.get("style")).shot_seconds,
-                            "person_id": shot.get("person_id", "")}
+                            "person_id": shot.get("person_id", ""), "look": shot.get("look") or {}}
                     if shot["kind"] == "owl" and c.get("set"):    # the empty set; Owlbert is added live
                         item["image"] = {**c, "path": c["set"], "raw": c["set_raw"]}
                         if settings()["owl"].get("in_scenes"):
@@ -535,6 +575,7 @@ def check(ep: Episode) -> list[Check]:
                 e = excerpts.get(card.get("excerpt_id"))
                 if not e or normalize_for_match(card["text"]) not in normalize_for_match(e["text"]):
                     out.append(Check(BLOCK, f"{s['scene_id']}: a quote card doesn't match its verified quote."))
+    out += director_checks(board)
     need = sum(s.get("seconds", 0) for s in board["scenes"])
     if covered < need * 0.8:
         out.append(Check(WARN, f"The pictures cover about {covered / 60:.1f} of the {need / 60:.1f} minutes of "
@@ -549,4 +590,35 @@ def check(ep: Episode) -> list[Check]:
     if real_used:
         out.append(Check(WARN, f"{len(real_used)} real picture(s) from free archives (credited on screen and in the "
                                "description). Look at each one: right subject, right licence?"))
+    return out
+
+
+def director_checks(board: dict[str, Any]) -> list[Check]:
+    """The Virtual Director's verdicts (director.py): a shot it still rejects blocks approval."""
+    if not settings().get("director", {}).get("enabled", True):
+        return []
+    used = [sh for s in board.get("scenes", []) for sh in s.get("shots", []) if not sh.get("skip")]
+    if not used:
+        return []
+    unreviewed = [sh["shot_id"] for sh in used if not sh.get("review")]
+    if unreviewed:
+        return [Check(WARN, f"The Virtual Director hasn't reviewed {len(unreviewed)} shot(s) (made before it "
+                            "existed). Press Make pictures: it reviews every shot and only changed shots are "
+                            "painted again.")]
+    out = []
+    rejected = [sh for sh in used if sh["review"]["decision"] == "REJECTED"]
+    mine = [sh for sh in rejected if sh.get("by_hand")]
+    theirs = [sh for sh in rejected if not sh.get("by_hand")]
+    if theirs:
+        out.append(Check(BLOCK, f"The Virtual Director rejected {len(theirs)} shot(s) as repeats of the shots just "
+                                "before: " + "; ".join(f"{sh['shot_id']} ({', '.join(sh['review']['issues'][:2]) or str(sh['review']['similarity']) + '% alike'})"
+                                                       for sh in theirs[:5])
+                                + ". Remake it with a new idea, untick it, or press Make pictures to try again."))
+    if mine:
+        out.append(Check(WARN, f"Your own shot idea(s) look a lot like the shots before them: "
+                               f"{', '.join(sh['shot_id'] for sh in mine[:5])} (kept as you wrote them)."))
+    rep = sum(1 for sh in used if sh["review"]["decision"] == "REPAIRED")
+    var = round(sum(sh["review"]["variety"] for sh in used) / len(used))
+    out.append(Check(OK, f"Virtual Director: {len(used) - rep - len(rejected)} approved, {rep} repaired, "
+                         f"{len(rejected)} rejected; variety {var}/100 (Director's review shows each shot)."))
     return out

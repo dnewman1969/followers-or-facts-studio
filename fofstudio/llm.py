@@ -35,6 +35,7 @@ JOBS = {
     "script_plan": "Plans the script's scenes and scans the length",
     "script_write": "Writes each scene's narration",
     "storyboard": "Plans the pictures, the scene instructions and caricature designs",
+    "director": "The Virtual Director: repairs shots that repeat the ones before them, before painting",
     "book": "Plans and writes the book",
     "checks": "Checks done by a different model (empty = [ollama] checker_model)",
 }

@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
-                               QPushButton, QScrollArea, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog,
+                               QLabel, QPushButton, QScrollArea, QTextBrowser, QVBoxLayout, QWidget)
 
+from ... import director as vd
 from ... import styles
 from ...stages import storyboard as sb
-from ..common import GOLD, MUTED, PANEL, RED, cached_pixmap
+from ..common import GOLD, GREEN, MUTED, PANEL, RED, cached_pixmap
 from ..widgets import StagePage, click_feedback
 
 THUMB_W, THUMB_H = 240, 135
@@ -34,7 +35,13 @@ class ShotTile(QFrame):
         v.setContentsMargins(6, 6, 6, 6)
         kind = KIND_NAMES.get(shot["kind"], shot["kind"])
         color = {"owl": "#6b9bd8", "caricature": RED}.get(shot["kind"], MUTED)
-        v.addWidget(QLabel(f"<b>{shot['shot_id'].split('-')[-1]}</b> <span style='color:{color}'>{kind}</span>"))
+        rv = shot.get("review") or {}
+        dec = rv.get("decision", "")
+        dcol = {"APPROVED": GREEN, "REPAIRED": GOLD, "REJECTED": RED}.get(dec, MUTED)
+        badge = f" <span style='color:{dcol}'>{dec.lower()}</span>" if dec else ""
+        head = QLabel(f"<b>{shot['shot_id'].split('-')[-1]}</b> <span style='color:{color}'>{kind}</span>{badge}")
+        head.setToolTip(vd.tooltip(rv or None))
+        v.addWidget(head)
         pic = QLabel()
         pic.setFixedSize(THUMB_W, THUMB_H)
         pic.setAlignment(Qt.AlignCenter)
@@ -148,8 +155,10 @@ class OldSceneRow(QFrame):
 class StoryboardPage(StagePage):
     TITLE = "Storyboard"
     HELP = ("Step 5. The program works out how many different pictures each scene needs to cover Owlbert's narration "
-            "(so nothing repeats), the AI plans them in order, and ComfyUI paints a couple of versions of each. The "
-            "gold one is used: click a small version to switch, untick a shot to leave it out, or remake it.")
+            "(so nothing repeats), the AI plans them in order, the Virtual Director checks every shot against the "
+            "ones before it (camera, place, pose, light, colour, pacing) and repairs repeats, then ComfyUI paints a "
+            "couple of versions of each. The gold one is used: click a small version to switch, untick a shot to "
+            "leave it out, or remake it. Hover a shot's verdict to see why.")
     APPROVE_STAGE = "storyboard"
     CLEAR_STAGE = "storyboard"
 
@@ -168,12 +177,33 @@ class StoryboardPage(StagePage):
         row.addWidget(QLabel("Style"))
         row.addWidget(self.style)
         row.addWidget(self.make_btn)
+        self.review_btn = QPushButton("Director's review")
+        self.review_btn.setToolTip("The Virtual Director's verdict on every shot: similarity to the shots before it, "
+                                   "variety, camera, locations, poses, colour and pacing, and what it changed")
+        self.review_btn.clicked.connect(self._show_review)
+        row.addWidget(self.review_btn)
         row.addWidget(self.summary, 1)
         self.body.addLayout(row)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.body.addWidget(self.scroll, 1)
         self._sig = None
+
+    def _show_review(self) -> None:
+        path = self.ep.path("director-review.md") if self.ep else None
+        if not path or not path.exists():
+            return
+        d = QDialog(self)
+        d.setWindowTitle("Virtual Director review")
+        d.resize(760, 640)
+        lay = QVBoxLayout(d)
+        text = QTextBrowser()
+        text.setMarkdown(path.read_text(encoding="utf-8"))
+        lay.addWidget(text)
+        close = QPushButton("Close")
+        close.clicked.connect(d.accept)
+        lay.addWidget(close)
+        d.exec()
 
     def refresh_checks_only(self) -> None:
         super().refresh()
@@ -194,6 +224,7 @@ class StoryboardPage(StagePage):
         board = self.ep.storyboard() if self.ep else {}
         n = sum(len(s.get("shots", [])) for s in board.get("scenes", []))
         self.summary.setText(f"{n} shots planned" if n else "")
+        self.review_btn.setEnabled(bool(self.ep) and self.ep.path("director-review.md").exists() and not busy)
         sig = (busy, str(board))
         if sig == self._sig:
             return

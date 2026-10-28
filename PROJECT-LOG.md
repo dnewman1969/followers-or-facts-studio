@@ -503,6 +503,34 @@ resolution → future implications; tell it like a documentary in the director's
 - Fixed a flaky book test (it assumed the default chapter order; the book follows the story type's shape).
 Tested with the fake AI only (137 tests).
 
+## 2026-10-28 — v0.6.2: the Virtual Director (quality gate before painting)
+
+Dave's pipeline: Research → Story Writer → Storyboard → **Virtual Director (quality gate)** → Prompt Builder →
+ComfyUI → Video → Editor → Final movie, with a long brief for the director (attached to the chat).
+
+- `director.py`. The storyboard now plans every shot of every scene first, then the director reviews the whole
+  list in order, then painting starts.
+  - Each shot has a look: location, shot type (16), angle, camera move (13), pose, emotion, lighting (13), palette
+    (10), intensity 0-10. The planner fills these in; anything missing is read from the idea's own words.
+  - Similarity to shots N-1..N-5 and N-10 (weighted fields plus how alike the ideas are): 90%+ REJECT, 70-89%
+    REPAIR, under 70 APPROVE. Rules: 3 close-ups, 4 medium, 4 same angle, 5 static, the same move 3 times;
+    place, pose (4), light and colour (5) fatigue; pacing (5 high-intensity shots, or 6 at the same level).
+  - Scores per shot: similarity, variety, location, camera, pose, colour, pacing (Dave's output format) in
+    director-review.json / .md.
+  - Repairs: up to 2 tries with the director AI (new job "director", Settings → models), at most 30 shots per run
+    (Settings → director); continuity guard (no new place the scene doesn't mention, no day/night flip inside a
+    scene, no real names); then the program reframes the shot itself (shot type, angle and move not used just
+    before). Your own ideas (Remake with new words) are scored, never rewritten; remaking one shot only re-scores.
+  - A shot still REJECTED blocks Storyboard approval; your own near-repeats only warn.
+- Prompt Builder: each shot's framing, light, colour and mood go into the picture prompt. The Video plan uses
+  the director's camera move (mapped to the render's moves, with words for Wan) instead of the AI's guess.
+- Storyboard page: approved / repaired / rejected on every shot (hover for the scores and what changed) and a
+  "Director's review" button.
+- Not done from the brief: switching the picture style mid-video (one style per video keeps continuity; it's
+  chosen on the Script page) and the brand-named modes (South Park, Hanna-Barbera, Muppet...): the existing
+  directors are described by traits only, per the director policy.
+Tested with the fake AI only (146 tests).
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

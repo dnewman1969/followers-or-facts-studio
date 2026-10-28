@@ -115,6 +115,15 @@ def fake_llm(get_packet):
                     "music": {"mood": mood, "energy": energy, "change": change, "drop_before": "",
                               "sting_at": "sold that fear" if change == "sting" else ""},
                     "owlbert": moves}
+        if "why" in props and "shot_type" in props:   # the Virtual Director rewrites a repeated shot
+            import re as _re
+            n = int(_re.search(r"repair \(SCENE_(\d+)-s(\d+)", messages[-1]["content"]).group(2))
+            types = props["shot_type"]["enum"]
+            return {"idea": f"A different view number {n}: the old desk and its clock, seen from a new place",
+                    "why": "breaks the repeat", "location": "desk", "shot_type": types[n % len(types)],
+                    "angle": props["angle"]["enum"][n % len(props["angle"]["enum"])],
+                    "movement": props["movement"]["enum"][n % len(props["movement"]["enum"])], "pose": "none",
+                    "emotion": "uneasy", "lighting": "natural daylight", "palette": "gold", "intensity": 3 + n % 5}
         if "shots" in props:   # storyboard shot ideas
             n = props["shots"].get("minItems", 3)
             kinds = props["shots"]["items"]["properties"]["kind"]["enum"]
@@ -246,6 +255,10 @@ def test_full_episode(episode):
         pipeline.approve(ep, "video")
     plan = video.load_plan(ep)
     assert {"animate", "camera_move"} <= {s["method"] for s in plan["shots"]}
+    from fofstudio import director as vd
+    moved = [s for s in plan["shots"] if s.get("director_move")]   # the Virtual Director's camera moves
+    assert moved and all(s["camera"] in vd.MOVE_TO_CAMERA.values() and vd.MOVE_WORDS[s["director_move"]]
+                         in s["motion_prompt"] for s in moved)
     for s in plan["shots"]:
         video.update_shot(ep, s["shot_id"], approved=True)
     pipeline.approve(ep, "video")

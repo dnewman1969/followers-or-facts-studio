@@ -101,6 +101,12 @@ def plan(ctx: Context) -> None:
             entry = {"how_it_plays": p["how_it_plays"], "motion_prompt": p["motion_prompt"],
                      "camera": p["camera"] if p["camera"] in CAMERA_MOVES else "zoom_in",
                      "seconds": max(2.0, min(10.0, seconds)), "method": method, "kind": kind}
+            from .. import director as vd
+            cam, words = vd.camera_for(shot.get("look") or {}, out[-1]["camera"] if out else "")
+            if cam:   # the Virtual Director chose this shot's camera move on the Storyboard
+                entry["camera"] = cam
+                entry["motion_prompt"] = f"{entry['motion_prompt'].rstrip('. ')}. {words}"
+                entry["director_move"] = shot["look"]["movement"]
         else:
             entry = {"how_it_plays": f"{shot['type'].replace('_', ' ')} holds on screen: \"{shot.get('text', '')[:80]}\"",
                      "motion_prompt": "", "camera": "zoom_in" if shot["type"] != "title_card" else "static",
