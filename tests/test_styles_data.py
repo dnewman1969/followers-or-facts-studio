@@ -144,44 +144,71 @@ def test_caricature_design_is_kind_and_pushes_only_a_few_features():
     assert not any(f in cast.FACE_FIELDS for f in ("skin", "weight", "ethnicity", "build"))
 
 
-def test_caricature_research_looks_at_photos_then_deletes_them(data, monkeypatch):
+def test_caricature_research_follows_the_five_steps_and_deletes_the_photos(data, monkeypatch):
     from PIL import Image
 
     from fofstudio.config import data_dir
     from fofstudio.llm import Ollama
-    person = {"person_id": "P-1", "name": "Gary Northman", "role_types": "Radio host / seller"}
-    refs = [{"url": f"https://img.example/{i}.jpg", "page": f"https://news.example/{i}", "title": "Gary Northman",
-             "from": "image search"} for i in range(5)]
-    monkeypatch.setattr(cast, "find_references", lambda p, limit=12: refs)
+    person = {"person_id": "P-1", "name": "Gary Northman", "role_types": "Radio host / seller", "roles": "said_it"}
+    refs = [{"url": f"https://img.example/{i}.jpg", "thumb": f"https://tse.example/{i}", "page": f"https://n/{i}",
+             "title": "Gary Northman", "from": "image search"} for i in range(5)]
+    monkeypatch.setattr(cast, "find_references", lambda p, limit=16: refs)
+    fetched = []
 
-    def fake_fetch(url, dest):
+    def fake_fetch(ref, dest):
+        fetched.append(ref["thumb"])                          # the search engine's thumbnail comes first
         dest.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (64, 64)).save(dest, "JPEG")
         return dest
     monkeypatch.setattr(cast, "_fetch_small", fake_fetch)
-    seen = []
+    seen, asked = [], []
 
-    def fake_chat(self, messages, model=None, **kw):   # plain text, no forced format (that got stuck)
-        assert "schema" not in kw or kw["schema"] is None
+    def fake_chat(self, messages, model=None, **kw):     # step 2: plain text, no forced format (that got stuck)
+        assert kw.get("schema") is None
         seen.append((model, messages[-1].get("images")))
-        n = len(seen)
-        if n == 2:
-            return '{"is_portrait": false}'                         # a book cover, say
+        if len(seen) == 2:
+            return '{"is_portrait": false}'                   # a book cover, say
         return ('Sure: {"is_portrait": true, "head_shape": "Square", "hair_volume": "bald", "jaw": "wide", '
-                '"glasses": "thick dark frames", "expression": "smug", "nose": "can\'t tell"}')
+                '"glasses": "thick dark frames", "expression": "smug", "nose": "can\'t tell", '
+                '"distinctive": "huge dark glasses", "clothing": "black t-shirt", "posture": "leans into the mic", '
+                '"weight": "heavy"}')
+
+    def fake_design(self, messages, schema, **kw):          # step 3: the writer designs from the agreed features
+        asked.append(messages[-1]["content"])
+        return {"key_features": ["bald square head", "thick dark glasses"],
+                "exaggerations": [{"feature": "glasses", "how": "twice as thick", "percent": 40}],
+                "design": "Gary Northman as a bald, square-headed figure with enormous dark glasses, leaning into a "
+                          "giant microphone in a black t-shirt, big head on a small body."}
     monkeypatch.setattr(Ollama, "chat", fake_chat)
-    res = cast.research_design(person)
+    monkeypatch.setattr(Ollama, "chat_json", fake_design)
+    res = cast.research_design(person, "theme_park_live_caricature")
     assert len(seen) == 5 and all(images for _, images in seen) and seen[0][0] == "qwen3-vl:8b"
-    assert "Northman" not in res["design"] and "bald head" in res["design"] and "glasses" in res["design"]
-    assert sum(r["clear_face"] for r in res["references"]) == 4 and "nose" in res["unsure"]
+    assert fetched[0].startswith("https://tse.")
+    assert "huge dark glasses" in asked[0] and "black t-shirt" in asked[0] and "heavy" not in asked[0]
+    assert "Northman" not in res["design"] and "enormous dark glasses" in res["design"]
+    assert res["exaggerations"][0]["percent"] == 40 and res["key_features"]
+    assert res["tradition"].startswith("Theme-park") and res["image_prompt"].endswith(res["design"])
+    assert len(res["variations"]) == 3 and all(v["prompt"].endswith(res["design"]) for v in res["variations"])
+    assert sum(r["clear_face"] for r in res["references"]) == 4 and not res["warnings"]
     assert not (data_dir() / "caricature-refs" / "P-1").exists()    # only looked at, then deleted
-    # too few clear faces: say so plainly
-    monkeypatch.setattr(cast, "find_references", lambda p, limit=12: refs[:2])
-    with pytest.raises(StageError, match="3 are needed"):
+    # one clear photo still gives a design, with a warning to check it
+    seen.clear()
+    monkeypatch.setattr(cast, "find_references", lambda p, limit=16: refs[:1])
+    assert cast.research_design(person)["warnings"]
+    monkeypatch.setattr(Ollama, "chat", lambda self, m, model=None, **kw: '{"is_portrait": false}')
+    with pytest.raises(StageError, match="clear face in none"):
         cast.research_design(person)
-    monkeypatch.setattr(cast, "find_references", lambda p, limit=12: [])
+    monkeypatch.setattr(cast, "find_references", lambda p, limit=16: [])
     with pytest.raises(StageError, match="found no photos"):
         cast.research_design(person)
+
+
+def test_previews_paint_the_design_in_four_styles(episode):
+    res = {"tradition": "Urbane", "design": "a bald figure", "image_prompt": "ink wash, cartoon caricature. a bald figure",
+           "variations": [{"style": f"S{i}", "prompt": f"style {i}, a bald figure"} for i in range(3)]}
+    out = cast.paint_previews(episode, "P-1", res)
+    assert len(out) == 4 and all(Path(o["path"]).exists() for o in out)
+    assert all("caricature" in o["prompt"] and " no " not in o["prompt"] for o in out)
 
 
 def test_vision_answers_are_read_even_when_untidy():

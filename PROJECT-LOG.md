@@ -592,6 +592,25 @@ space for Alex Jones. Dave: the photos are only for the AI to look at, not for t
   "ollama pull qwen3-vl:8b".
 - Editorial rule row updated. Couldn't test the live image search from the cloud workspace (blocked there).
 
+## 2026-10-28 — v0.7.2: caricatures in Dave's five steps, with previews
+
+Dave's second run: "0 of 0 photos" for Alex Jones, "0 of 1" for Francis Boyle. The photo sites refused the
+Studio's downloader (it says it's a research program). Dave's brief: research → feature analysis → design
+(exaggerate key features ~25-50%, respectful) → art direction → output (features, exaggerations, prompt,
+artwork, 3 alternate styles).
+- Photos: the image search's own thumbnail is fetched first (search-engine thumbnails load fine), then the photo
+  with an image Accept header and the page as Referer; DuckDuckGo then Bing; 15 results for "<name> <role>" and
+  "<name> face". Still only looked at, then deleted.
+- Vision step also gives free notes: what you'd notice first, clothing, posture (kind words only: notes about
+  skin, weight, age, race, religion or disability are dropped).
+- Design: the writer AI picks the 1-3 recognisable features and exaggerates them 25-50%, in the chosen
+  caricature tradition, with the agreed features, notes and vote counts; the name is never written (replaced
+  if it slips in); falls back to the plain composed design.
+- Output in the Cast window: key features, exaggerations with percentages, the design; "Paint previews" paints
+  it in the chosen style and 3 alternate traditions with ComfyUI (<data>/caricature-previews/).
+- One clear photo now works with a warning (the design is words, never a copy of a photo); none = a plain error
+  saying how many were found and downloaded.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

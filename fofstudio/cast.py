@@ -132,10 +132,10 @@ VISION_SCHEMA = {"type": "object", "properties": {
     **{k: {"type": "string", "enum": v + ["can't tell"]} for k, v in FACE_FIELDS.items()}},
     "required": ["is_portrait", *FACE_FIELDS]}
 MAX_LOOKS = 6     # photos the vision model looks at
-MIN_LOOKS = 3     # never fewer: no single photo, so no one photographer's picture is copied
+MIN_LOOKS = 3     # fewer clear photos still works, with a warning to check the design
 
 
-def find_references(person: dict[str, Any], limit: int = 12) -> list[dict[str, str]]:
+def find_references(person: dict[str, Any], limit: int = 16) -> list[dict[str, str]]:
     """Photos of a public figure to LOOK AT, from a normal web image search (like typing the name into an image
     search), plus their Wikipedia and Wikimedia Commons pictures. They're only looked at by the local vision
     model to describe the face in words; they're never used in a video, never sent to the picture maker, and
@@ -145,20 +145,30 @@ def find_references(person: dict[str, Any], limit: int = 12) -> list[dict[str, s
     out: list[dict[str, str]] = []
     seen: set[str] = set()
 
-    def add(url: str, page: str, title: str, where: str) -> None:
+    def add(url: str, page: str, title: str, where: str, thumb: str = "") -> None:
         if url and url not in seen and not re.search(r"\.(svg|gif)(\?|$)", url, re.I):
             seen.add(url)
-            out.append({"url": url, "page": page or url, "title": title or "", "from": where})
+            out.append({"url": url, "thumb": thumb, "page": page or url, "title": title or "", "from": where})
 
     try:   # the same free search package the research agents use (DuckDuckGo, Bing...)
         from ddgs import DDGS
-        for query in (f"{name} {role}".strip(), f"{name} portrait"):
-            for r in DDGS().images(query, max_results=12, safesearch="moderate"):
-                add(r.get("image", ""), r.get("url", ""), r.get("title", ""), r.get("source") or "image search")
-            if len(out) >= limit:
+    except ImportError:
+        DDGS = None
+    for query in (f"{name} {role}".strip(), f"{name} face"):
+        for backend in ("auto", "bing", "duckduckgo"):   # one engine busy or refusing: try the next
+            if DDGS is None:
                 break
-    except Exception:  # noqa: BLE001 - search blocked or offline: the other finders still run
-        pass
+            try:
+                hits = DDGS().images(query, max_results=15, safesearch="moderate", backend=backend)
+            except Exception:  # noqa: BLE001
+                continue
+            for r in hits:
+                add(r.get("image", ""), r.get("url", ""), r.get("title", ""), r.get("source") or "image search",
+                    r.get("thumbnail", ""))
+            if hits:
+                break
+        if len(out) >= limit:
+            break
     try:
         from .agents import web
         data = web.get_json("https://en.wikipedia.org/w/api.php", {
@@ -180,32 +190,49 @@ def find_references(person: dict[str, Any], limit: int = 12) -> list[dict[str, s
     return out[:limit]
 
 
-def _fetch_small(url: str, dest: Path) -> Path | None:
-    """Download one photo and shrink it (the vision model only needs a face, and it's faster small)."""
+def _fetch_small(ref: dict[str, str] | str, dest: Path) -> Path | None:
+    """Download one photo, small (the vision model only needs the face). The image search's own thumbnail comes
+    first: many photo sites refuse programs, but the search engine's thumbnail copy loads fine."""
     from io import BytesIO
 
     from PIL import Image
 
     from .agents import web
-    try:
-        r = web.session().get(url, timeout=20)
-        r.raise_for_status()
-        img = Image.open(BytesIO(r.content)).convert("RGB")
-    except Exception:  # noqa: BLE001 - a photo that won't load is skipped
-        return None
-    if min(img.size) < 160:
-        return None
-    img.thumbnail((768, 768))
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    img.save(dest, "JPEG", quality=88)
-    return dest
+    if isinstance(ref, str):
+        ref = {"url": ref}
+    s = web.session()
+    for url, extra in ((ref.get("thumb"), {}),
+                       (ref.get("url"), {"Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+                                         "Referer": ref.get("page") or ""})):
+        if not url:
+            continue
+        try:
+            r = s.get(url, timeout=20, headers={k: v for k, v in extra.items() if v})
+            r.raise_for_status()
+            img = Image.open(BytesIO(r.content)).convert("RGB")
+        except Exception:  # noqa: BLE001 - try the next copy
+            continue
+        if min(img.size) < 120:
+            continue
+        img.thumbnail((768, 768))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        img.save(dest, "JPEG", quality=88)
+        return dest
+    return None
 
 
 VISION_PROMPT = ("Look at the main person in this photo, as a cartoonist would. Answer with ONE JSON object and "
                  "nothing else. For each key pick one of the listed words, or \"can't tell\". Set is_portrait to "
                  "false if no single face is clearly visible. Describe what you see; don't guess who it is.\n"
                  + "\n".join(f"{k}: {' | '.join(v)}" for k, v in FACE_FIELDS.items())
-                 + '\nExample: {"is_portrait": true, "head_shape": "oval", ...}')
+                 + "\nAlso these, in a few plain words each (looks only, nothing about skin, weight, race or "
+                   "religion): distinctive (the one thing you'd notice first), clothing (what they're wearing), "
+                   "posture (how they hold themselves)."
+                 + '\nExample: {"is_portrait": true, "head_shape": "oval", ..., "distinctive": "...", '
+                   '"clothing": "...", "posture": "..."}')
+NOTE_FIELDS = ("distinctive", "clothing", "posture")
+NEVER_WORDS = re.compile(r"\b(skin|complexion|weight|fat|obese|overweight|chubby|thin|skinny|race|racial|ethnic\w*|"
+                         r"religio\w*|disab\w*|wrinkl\w*|old|elderly|ugly)\b", re.I)
 
 
 def parse_vision(text: str) -> dict[str, Any]:
@@ -226,6 +253,9 @@ def parse_vision(text: str) -> dict[str, Any]:
         v = str(raw.get(field, "")).strip().lower()
         hit = next((a for a in allowed if a == v), None) or next((a for a in allowed if a in v or v and v in a), None)
         out[field] = hit or "can't tell"
+    for field in NOTE_FIELDS:   # free notes, kind ones only
+        v = re.sub(r"\s+", " ", str(raw.get(field, "") or "")).strip(" .")[:80]
+        out[field] = "" if (not v or NEVER_WORDS.search(v) or "can't tell" in v.lower()) else v
     return out
 
 
@@ -280,9 +310,32 @@ def compose_design(face: dict[str, str], cap: int = 3) -> tuple[str, list[str]]:
     return design, push
 
 
-def research_design(person: dict[str, Any], on_progress=None) -> dict[str, Any]:
-    """Look at 3-6 photos of the person with the local vision model and write a design for you to edit and
-    approve. The photos are only looked at, then deleted."""
+DESIGN_JSON = {"type": "object", "properties": {
+    "key_features": {"type": "array", "minItems": 2, "maxItems": 6, "items": {"type": "string"}},
+    "exaggerations": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"type": "object", "properties": {
+        "feature": {"type": "string"}, "how": {"type": "string"},
+        "percent": {"type": "integer", "minimum": 25, "maximum": 50}},
+        "required": ["feature", "how", "percent"]}},
+    "design": {"type": "string"}},
+    "required": ["key_features", "exaggerations", "design"]}
+
+
+def _no_name(text: str, name: str) -> str:
+    for part in [name] + [w for w in name.split() if len(w) > 2]:
+        text = re.sub(rf"\b{re.escape(part)}(?:'s)?\b", "the figure", text, flags=re.I)
+    return text
+
+
+def research_design(person: dict[str, Any], tradition_key: str | None = None, on_progress=None) -> dict[str, Any]:
+    """Dave's five steps (2026-10-28):
+    1 research: a normal image search for the person, several photos (only looked at, then deleted);
+    2 feature analysis: the local vision model describes each photo (face shape, hair, eyes, nose, mouth, jaw,
+      chin, glasses, expression, plus what stands out, clothing and posture); what most photos agree on is kept;
+    3 caricature design: the writer AI picks the 1-3 features that make the person recognisable and exaggerates
+      them by about 25-50%, kindly (never skin, weight, race, religion, disability or age);
+    4 art direction: in the chosen caricature tradition, with the person's usual expression, clothing and pose;
+    5 output: the key features, the exaggerations and why, the picture prompt, and 3 alternate styles
+      (paint them with Paint previews). Nothing is drawn in a video until you approve the design."""
     import base64
     import shutil
 
@@ -290,22 +343,24 @@ def research_design(person: dict[str, Any], on_progress=None) -> dict[str, Any]:
     from .llm import Ollama, model_for
     from .util import StageError
     say = on_progress or (lambda *_: None)
-    say(f"Searching for photos of {person['name']}")
+    name = person["name"]
+    say(f"Step 1: searching for photos of {name}")
     refs = find_references(person)
     if not refs:
-        raise StageError(f"The image search found no photos of {person['name']} (it may be offline or busy). Try "
+        raise StageError(f"The image search found no photos of {name} (the search may be offline or busy). Try "
                          "again in a minute, or write the design yourself, using looks only.")
     folder = data_dir() / "caricature-refs" / person["person_id"]
     vision = model_for("vision")
     llm = Ollama(job="vision")
-    answers, records = [], []
+    answers, records, failed = [], [], 0
     try:
         for n, ref in enumerate(refs, 1):
             if sum(1 for a in answers if a.get("is_portrait")) >= MAX_LOOKS:
                 break
-            say(f"Looking at photo {n} of up to {len(refs)} (from {ref['from']})")
-            path = _fetch_small(ref["url"], folder / f"look{n}.jpg")
+            say(f"Step 2: looking at photo {n} of up to {len(refs)} (from {ref['from']})")
+            path = _fetch_small(ref, folder / f"look{n}.jpg")
             if not path:
+                failed += 1
                 continue
             img = base64.b64encode(path.read_bytes()).decode()
             try:   # plain text, no answer format: some vision models get stuck on a forced format
@@ -322,23 +377,90 @@ def research_design(person: dict[str, Any], on_progress=None) -> dict[str, Any]:
                             "clear_face": a["is_portrait"]})
     finally:
         shutil.rmtree(folder, ignore_errors=True)   # only looked at: nothing is kept
-    seen = sum(1 for a in answers if a.get("is_portrait"))
-    if seen < MIN_LOOKS:
-        raise StageError(f"The vision model saw a clear face in only {seen} of {len(answers)} photo(s) of "
-                         f"{person['name']} ({MIN_LOOKS} are needed so the design isn't copied from one picture). "
-                         "Try again, or write the design yourself, using looks only.")
+    clear = [a for a in answers if a.get("is_portrait")]
+    if not clear:
+        raise StageError(f"Found {len(refs)} photos of {name}, downloaded {len(refs) - failed}, and the vision model "
+                         f"saw a clear face in none of them. Try again, or write the design yourself, using looks "
+                         "only.")
     face, votes = vote(answers)
-    design, push = compose_design(face)
-    unsure = [f.replace("_", " ") for f in FACE_FIELDS if f not in face]
-    return {"design": design, "face": face, "votes": votes, "push": push, "unsure": unsure,
-            "references": records, "model": vision}
+    if not face and clear:                    # one photo: its answers are the best we have
+        face = {f: clear[0][f] for f in FACE_FIELDS if clear[0].get(f) not in ("", "can't tell")}
+    from collections import Counter
+    notes = {f: [v for v, _ in Counter(a[f] for a in clear if a.get(f)).most_common(3)] for f in NOTE_FIELDS}
+    warnings = [] if len(clear) >= MIN_LOOKS else [
+        f"only {len(clear)} clear photo(s): check the design against what you know of {name}"]
+
+    # 3-4: design with art direction
+    say("Step 3: designing the caricature")
+    trad = {t["key"]: t for t in traditions()}.get(tradition_key or DEFAULT_TRADITION) or \
+        {t["key"]: t for t in traditions()}[DEFAULT_TRADITION]
+    fallback, push = compose_design(face)
+    result = {"key_features": [f"{v} {k.replace('_', ' ')}" for k, v in face.items() if v not in AVERAGE][:6],
+              "exaggerations": [{"feature": f.replace("_", " "), "how": f"pushed ({face[f]})", "percent": 35}
+                                for f in push], "design": fallback}
+    try:
+        ans = Ollama(job="storyboard").chat_json([
+            {"role": "system", "content": (
+                "You are a professional caricature artist designing an editorial cartoon of a public figure for a "
+                "fact-check video. From the agreed features below, pick the 1-3 that make this person instantly "
+                "recognisable and exaggerate ONLY those, by about 25-50%; simplify the rest. Keep the likeness, "
+                "keep it respectful and kind: exaggerate hair, head shape, brows, glasses, jaw, chin, smile, "
+                "expression, posture, clothing and a signature prop, never skin, weight, body size, age, race, "
+                "ethnicity, religion or disability. Never write the person's name. Write 'design' as 2-4 sentences "
+                "an illustrator can draw from: the head and face (with the exaggerations), the expression, the "
+                "clothing and the pose, with a big head on a smaller body.")},
+            {"role": "user", "content": json.dumps({
+                "public_role": person.get("role_types") or "", "what_they_did": person.get("roles") or "",
+                "agreed_features": face, "how_many_photos_agreed": {k: v for k, v in votes.items() if v},
+                "noticed_first": notes["distinctive"], "usual_clothing": notes["clothing"],
+                "posture": notes["posture"], "caricature_style": trad["name"],
+                "style_rules": trad.get("face_body", "")}, ensure_ascii=False)}],
+            DESIGN_JSON, lenient=True, temperature=0.5)
+        design = _no_name((ans.get("design") or "").strip(), name)
+        if design and not NEVER_WORDS.search(design):
+            result = {"key_features": [_no_name(k, name) for k in ans.get("key_features") or []][:6],
+                      "exaggerations": ans.get("exaggerations") or result["exaggerations"], "design": design}
+    except Exception:  # noqa: BLE001 - the plain design from the agreed features is used instead
+        warnings.append("the writer AI couldn't write the design, so it was put together from the agreed features")
+
+    # 5: the picture prompt and three alternate styles
+    others = [t for t in traditions() if t["tier"] in ("A", "B") and t["key"] != trad["key"]][:3]
+    look = lambda t: ", ".join(t["prompt_elements"][:4])  # noqa: E731
+    result.update(
+        image_prompt=f"{look(trad)}, cartoon caricature. {result['design']}",
+        variations=[{"style": t["name"], "key": t["key"], "prompt": f"{look(t)}, cartoon caricature. {result['design']}"}
+                    for t in others],
+        tradition=trad["name"], face=face, votes=votes, push=push, notes=notes, warnings=warnings,
+        unsure=[f.replace("_", " ") for f in FACE_FIELDS if f not in face], references=records, model=vision)
+    return result
+
+
+def paint_previews(ep, person_id: str, result: dict[str, Any]) -> list[dict[str, str]]:
+    """Paint the design in the chosen style and the 3 alternates, so you can see it before approving."""
+    from . import promptcheck
+    from .config import data_dir
+    from .stages.storyboard import CARICATURE_GUARD, _comfy_image
+    out = []
+    jobs = [{"style": result.get("tradition", ""), "prompt": result["image_prompt"]}] + list(result.get("variations") or [])
+    dest = data_dir() / "caricature-previews" / person_id
+    dest.mkdir(parents=True, exist_ok=True)
+    for n, job in enumerate(jobs):
+        prompt, _ = promptcheck.clean_prompt(f"{job['prompt']}. {CARICATURE_GUARD}")
+        raw, _, _ = _comfy_image(ep, f"caricature-{person_id}-{n}", prompt)
+        path = dest / f"preview{n}.png"
+        from PIL import Image
+        Image.open(raw).convert("RGB").save(path)
+        out.append({"style": job["style"], "path": str(path), "prompt": prompt})
+    return out
 
 
 def save_research(person_id: str, result: dict[str, Any]) -> None:
     db.execute("""INSERT INTO caricature(person_id, design, approved, design_json, references_json)
                   VALUES (?,?,0,?,?) ON CONFLICT(person_id) DO UPDATE SET design_json=excluded.design_json,
                   references_json=excluded.references_json""",
-               (person_id, result["design"], json.dumps({k: result[k] for k in ("face", "votes", "push", "unsure")}),
+               (person_id, result["design"], json.dumps({k: result.get(k) for k in (
+                   "face", "votes", "push", "unsure", "key_features", "exaggerations", "image_prompt", "variations",
+                   "notes", "tradition")}),
                 json.dumps(result["references"])))
 
 

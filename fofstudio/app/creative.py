@@ -285,6 +285,7 @@ class CastDialog(QDialog):
         trow.addWidget(self.trad, 1)
         v.addLayout(trow)
         self.rows = []
+        self._research: dict = {}
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         holder = QWidget()
@@ -320,12 +321,22 @@ class CastDialog(QDialog):
             note = QLabel("")
             note.setWordWrap(True)
             note.setObjectName("muted")
-            suggest.clicked.connect(lambda _=False, pp=p, d=design, n=note, b=suggest: self._suggest(pp, d, n, b))
+            paint = QPushButton("Paint previews")
+            paint.setToolTip("Paint this design in the chosen caricature style and 3 other styles (about a minute "
+                             "with ComfyUI), to see it before you approve")
+            paint.setEnabled(False)
+            pics = QHBoxLayout()
+            suggest.clicked.connect(lambda _=False, pp=p, d=design, n=note, b=suggest, pb=paint:
+                                    self._suggest(pp, d, n, b, pb))
+            paint.clicked.connect(lambda _=False, pp=p, d=design, n=note, pb=paint, pl=pics:
+                                  self._paint(pp, d, n, pb, pl))
             r.addWidget(suggest)
+            r.addWidget(paint)
             r.addWidget(ok)
             r.addStretch(1)
             bl.addLayout(r)
             bl.addWidget(note)
+            bl.addLayout(pics)
             hl.addWidget(box)
             self.rows.append((p, design, ok))
         hl.addStretch(1)
@@ -342,22 +353,20 @@ class CastDialog(QDialog):
         buttons.addWidget(save)
         v.addLayout(buttons)
 
-    def _suggest(self, person, edit, note, button) -> None:
-        """Runs in the background (photos to download, the vision model to ask); the window stays usable."""
+    def _background(self, work, note, done) -> None:
+        """Run work() in the background, show its progress messages in `note`, then call done(result, error)."""
         import threading
 
         from PySide6.QtCore import QTimer
-        button.setEnabled(False)
-        note.setText("Searching for photos...")
         box: dict = {}
 
-        def work() -> None:
+        def run() -> None:
             try:
-                box["result"] = cast.research_design(person, on_progress=lambda m: box.__setitem__("msg", m))
-            except Exception as exc:  # noqa: BLE001 - shown in plain words below
+                box["result"] = work(lambda m: box.__setitem__("msg", m))
+            except Exception as exc:  # noqa: BLE001 - shown in plain words
                 box["error"] = str(exc)
 
-        threading.Thread(target=work, daemon=True).start()
+        threading.Thread(target=run, daemon=True).start()
         timer = QTimer(self)
 
         def poll() -> None:
@@ -365,23 +374,79 @@ class CastDialog(QDialog):
                 note.setText(box.pop("msg"))
             if "result" in box or "error" in box:
                 timer.stop()
-                button.setEnabled(True)
-                if "error" in box:
-                    note.setText(f"Couldn't research a design: {box['error']}")
-                    return
-                res = box["result"]
-                cast.save_research(person["person_id"], res)
-                edit.setPlainText(res["design"])
-                clear = sum(1 for r in res["references"] if r["clear_face"])
-                note.setText(f"Looked at {clear} photos with a clear face (from "
-                             f"{', '.join(sorted({r['from'] for r in res['references']}))}), then deleted them. "
-                             f"Pushed: {', '.join(f.replace('_', ' ') for f in res['push']) or 'nothing stood out'}. "
-                             + (f"The photos didn't agree on: {', '.join(res['unsure'])}; add those yourself if they "
-                                "matter. " if res["unsure"] else "")
-                             + "Write in the prop tied to what they're documented doing, then approve.")
+                done(box.get("result"), box.get("error"))
 
         timer.timeout.connect(poll)
         timer.start(400)
+
+    def _suggest(self, person, edit, note, button, paint) -> None:
+        """Dave's five steps: research photos, analyse the features, design, art direction, output."""
+        button.setEnabled(False)
+        note.setText("Step 1: searching for photos...")
+        tradition = self.trad.currentData()
+
+        def done(res, err) -> None:
+            button.setEnabled(True)
+            if err:
+                note.setText(f"Couldn't research a design: {err}")
+                return
+            cast.save_research(person["person_id"], res)
+            self._research[person["person_id"]] = res
+            edit.setPlainText(res["design"])
+            paint.setEnabled(True)
+            clear = sum(1 for r in res["references"] if r["clear_face"])
+            ex = "; ".join(f"{e.get('feature', '')} +{e.get('percent', 35)}%: {e.get('how', '')}"
+                           for e in res.get("exaggerations") or [])
+            note.setText(
+                f"<b>Key features:</b> {', '.join(res.get('key_features') or []) or '-'}<br>"
+                f"<b>Exaggerated:</b> {ex or '-'}<br>"
+                f"<span style='color:{MUTED}'>Looked at {clear} photo(s) with a clear face (from "
+                f"{', '.join(sorted({r['from'] for r in res['references']}))}), then deleted them. Style: "
+                f"{res.get('tradition', '')}. Alternates: {', '.join(v['style'] for v in res.get('variations') or [])}."
+                + (f" Note: {'; '.join(res['warnings'])}." if res.get("warnings") else "")
+                + " Write in the prop tied to what they're documented doing, press Paint previews to see it, then "
+                  "approve.</span>")
+
+        self._background(lambda say: cast.research_design(person, tradition, on_progress=say), note, done)
+
+    def _paint(self, person, edit, note, paint, pics) -> None:
+        res = dict(self._research.get(person["person_id"]) or {})
+        if not res:
+            return
+        text = edit.toPlainText().strip()      # your edits to the design are what gets painted
+        if text and text != res["design"]:
+            res["image_prompt"] = res["image_prompt"].replace(res["design"], text)
+            res["variations"] = [{**v, "prompt": v["prompt"].replace(res["design"], text)} for v in res["variations"]]
+            res["design"] = text
+        paint.setEnabled(False)
+        note.setText("Painting 4 previews with ComfyUI (about a minute)...")
+
+        def done(out, err) -> None:
+            paint.setEnabled(True)
+            if err:
+                note.setText(f"Couldn't paint the previews: {err}. Is ComfyUI running?")
+                return
+            while pics.count():
+                w = pics.takeAt(0).widget()
+                if w:
+                    w.deleteLater()
+            from .common import cached_pixmap
+            for item in out:
+                lab = QLabel()
+                lab.setPixmap(cached_pixmap(item["path"], 220, 124))
+                lab.setToolTip(f"{item['style']}\n\n{item['prompt']}")
+                col = QVBoxLayout()
+                cap = QLabel(item["style"])
+                cap.setObjectName("muted")
+                w = QWidget()
+                col.addWidget(lab)
+                col.addWidget(cap)
+                w.setLayout(col)
+                pics.addWidget(w)
+            note.setText("Previews painted (first one is the chosen style). If the likeness is off, edit the design "
+                         "and paint again; approve when it looks right.")
+
+        self._background(lambda say: cast.paint_previews(self.ep, person["person_id"], res), note, done)
 
     def _save(self) -> None:
         from ..stages.storyboard import names_in, person_names
