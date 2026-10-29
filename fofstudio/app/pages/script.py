@@ -225,8 +225,16 @@ class ScriptPage(StagePage):
         self.toast(f"Ticked {len(w)} piece(s) of evidence on the Research page.")
         self.refresh()
 
+    def _open_questions(self) -> tuple[list[dict], list[dict]]:
+        """(questions not looked up yet, results of the ones that were)."""
+        qs = (read_json(self.ep.path("script-questions.json")) or {}).get("questions", []) if self.ep else []
+        done = (read_json(self.ep.path("lookup-results.json"), {}) or {}).get("questions", []) if self.ep else []
+        asked = {d["question"] for d in done}
+        return [q for q in qs if q["question"] not in asked], [d for d in done if d["question"] in
+                                                                {q["question"] for q in qs}]
+
     def _lookup(self) -> None:
-        qs = (read_json(self.ep.path("script-questions.json")) or {}).get("questions", [])
+        qs, _ = self._open_questions()
         self.run_stage("lookup", {"questions": qs}, f"Looking up {len(qs)} question(s)")
 
     def _repair(self) -> None:
@@ -295,12 +303,20 @@ class ScriptPage(StagePage):
         self.repair_btn.setVisible(bool(self.ep) and invented and not busy)
         repeats = any("Fix repeats" in self.checks.item(i).text() for i in range(self.checks.count()))
         self.repeat_btn.setVisible(bool(self.ep) and repeats and not busy)
-        qs = (read_json(self.ep.path("script-questions.json")) or {}).get("questions", []) if self.ep else []
+        qs, done = self._open_questions()
         self.lookup_btn.setVisible(bool(qs) and not busy and not self.busy("lookup"))
-        self.lookup_btn.setText(f"Look these up ({len(qs)})")
-        self.lookup_btn.setToolTip("Questions the writer couldn't answer from the research. The agents search for "
-                                   "documents; finds arrive on the Research page as NEW and unticked:\n- "
+        self.lookup_btn.setText(f"Look up {len(qs)} open question(s)")
+        self.lookup_btn.setToolTip("Questions about the record that the research couldn't answer yet (when and where "
+                                   "it was said, what courts or regulators found, who profited). They are NOT in the "
+                                   "script: the writer never guesses. The agents search for documents; finds "
+                                   "arrive on the Research page as NEW and unticked:\n- "
                                    + "\n- ".join(q["question"] for q in qs))
+        if done and not self.busy("lookup"):
+            hits = sum(d["new_finds"] for d in done)
+            empty = [d["question"] for d in done if not d["new_finds"]]
+            self.help.setText(self.help.text() + f"  Last look-up: {len(done)} question(s) searched, {hits} new "
+                              "find(s) marked NEW on the Research page (tick the right ones, then Write it again)"
+                              + (f"; nothing new for {len(empty)} of them." if empty else "."))
 
     def watched(self) -> list[str]:
         return ["script", "stories", "scan", "lookup"]

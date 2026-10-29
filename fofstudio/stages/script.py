@@ -870,8 +870,11 @@ def run(ctx: Context) -> None:
                if treat else "")
             + (f"\n{channelmemory.for_prompt(ep)}\n" if channelmemory.for_prompt(ep) else "")
             + "Give each scene its OWN facts (each quote in one scene only); never plan two scenes that say the "
-              "same thing. gap_questions: up to 6 questions a viewer would ask that the research packet can't answer "
-              "(they become 'look it up' tasks; never guess the answers).\n"
+              "same thing. gap_questions: up to 6 questions about the RECORD that the research packet can't answer: "
+              "when and where it was said or sold (a date, a show, an archived page), what courts, regulators or "
+              "experts found, who profited and how much. Never ask whether the false claim is true: the people who "
+              "sold it are known to lie, so we check the record, not their story. They become 'look it up' tasks; "
+              "never guess the answers, and never put them in the script.\n"
             + f"\nResearch packet:\n{_packet_for_prompt(packet)}")},
     ]
     outline = llm.chat_json(outline_msgs, outline_schema, model=planner, lenient=True, temperature=0.6,

@@ -122,3 +122,13 @@ def test_claims_that_dont_hold_up_stay_out_and_get_a_deep_dive(episode, monkeypa
     pipeline.run_now(ep, "deepdive")
     dive = read_json(ep.path("claim-check.json"))["deep_dive"]["claims"]
     assert dive and all(len(d["questions"]) >= 3 and d["result"] for d in dive)
+
+
+def test_two_sources_from_your_own_database_hold_up():
+    vetted = claim(sources=[src("S-7", "https://www.nytimes.com/a", found_by="database"),
+                            src("S-8", "https://www.mediamatters.org/b", found_by="database")])
+    assert claimcheck.assess(vetted)["rule"] == "C"
+    one = claim(sources=[src("S-7", "https://www.nytimes.com/a", found_by="database")])
+    assert claimcheck.assess(one)["status"] == "weak"
+    agents = claim(sources=[src("S-9", "https://a.example/x"), src("S-10", "https://b.example/y")])
+    assert claimcheck.assess(agents)["status"] == "weak"       # an agent's finds still need checked quotes

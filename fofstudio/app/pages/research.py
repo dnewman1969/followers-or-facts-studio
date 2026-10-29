@@ -83,6 +83,13 @@ class ResearchPage(StagePage):
                                 "padding:6px;")
         self.hold.hide()
         self.body.addWidget(self.hold)
+        self.tick_dive = QPushButton("")
+        self.tick_dive.setObjectName("primary")
+        self.tick_dive.setToolTip("Tick everything the deep dive found (each quote was checked word for word against "
+                                  "the saved page). Read them first if you like; untick any that are wrong.")
+        self.tick_dive.clicked.connect(self._tick_dive)
+        self.tick_dive.hide()
+        self.body.addWidget(self.tick_dive)
         # the script uses evidence that isn't ticked: say so, and offer to tick it
         want = QHBoxLayout()
         self.want_text = QLabel("")
@@ -346,6 +353,11 @@ class ResearchPage(StagePage):
         busy = self.busy("deepdive") or self.busy("research") or self.busy("lookup")
         self.dive.setEnabled(bool(weak) and not busy)
         self.dive.setText(f"Deep dive on weak claims ({len(weak)})" if weak else "Deep dive on weak claims")
+        evidence = {e["id"]: e for e in (read_json(self.ep.path("research.json"), {}) or {}).get("evidence", [])}
+        untick = [i for d in dive for i in d.get("found") or [] if i in evidence and not evidence[i].get("include")]
+        self._dive_ids = untick
+        self.tick_dive.setVisible(bool(untick) and not busy)
+        self.tick_dive.setText(f"Tick the {len(untick)} deep-dive find(s)")
         if not weak:
             self.hold.hide()
             return
@@ -357,6 +369,13 @@ class ResearchPage(StagePage):
             lines.append(f"• {w['claim_id']} {w['title'][:70]}: {w['why']}.{note}")
         self.hold.setText("<br>".join(lines))
         self.hold.show()
+
+    def _tick_dive(self) -> None:
+        ids = list(getattr(self, "_dive_ids", []) or [])
+        if ids:
+            self._save_ticks(ids, True)
+            self.toast(f"Ticked {len(ids)} deep-dive find(s). Claims they prove now hold up; write the script again.")
+            self.refresh()
 
     def _update_count(self) -> None:
         ticked = sum(1 for e in self._evidence if e.get("include"))

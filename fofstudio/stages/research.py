@@ -530,6 +530,7 @@ def lookup(ctx: Context) -> None:
     if not claims:
         raise StageError("This episode has no claims to look things up for.")
     found = kept = rejected = 0
+    results: list[dict[str, Any]] = []
     for n, q in enumerate(questions):
         ctx.check_cancel()
         c = claims.get(q.get("claim_id")) or next(iter(claims.values()))
@@ -538,6 +539,7 @@ def lookup(ctx: Context) -> None:
         f, k, r = _hunt(ctx, llm, c, about, 3, 3, 5 + 80 * n / len(questions), 80 / len(questions),
                         f"question {n + 1} of {len(questions)}")
         found, kept, rejected = found + f, kept + k, rejected + r
+        results.append({"question": q["question"], "claim_id": c["claim_id"], "new_finds": k, "at": utc_now()})
     packet = build_packet(ep)
     claim_by_id = {c["claim_id"]: c for c in packet["claims"]}
     done = {r["source_id"] for r in db.rows("SELECT source_id FROM source WHERE summary IS NOT NULL AND summary != ''")}
@@ -561,6 +563,9 @@ def lookup(ctx: Context) -> None:
         "quotes_kept": kept, "quotes_thrown_out": rejected, "new_evidence": len(new_ids)}]
     write_json(ep.path("research.json"), packet)
     write_text(ep.path("research.md"), render_markdown(packet))
+    done_before = (read_json(ep.path("lookup-results.json"), {}) or {}).get("questions", [])
+    write_json(ep.path("lookup-results.json"), {"questions": done_before + results, "new_ids": new_ids,
+                                                 "at": utc_now()})
     ctx.progress(f"Looked up {len(questions)} question(s): {len(new_ids)} new piece(s) of evidence, marked NEW on the "
                  "Research page. Tick the ones to use, then write again.", 100)
 

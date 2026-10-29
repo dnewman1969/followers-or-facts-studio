@@ -655,6 +655,28 @@ the name plus "Host"). Now:
 - If fewer than 3 pages name who we mean, the search's best guesses are used, marked "not confirmed", and the
   design carries a warning to sharpen the description.
 
+## 2026-10-29 — v0.7.8: names out of pictures, caricatures in drawn styles, record-first checks
+
+Dave: the storyboard blocked on "the picture idea names a real person (Alex Jones)" and used no caricatures; the
+script's 6 "unverified" items came back the same after Look these up; and why check claims by known liars as if
+they might be true? (Research "Verifying claims from known liars".)
+- Storyboard: `unname_shot` runs on every planned shot: a named person becomes their approved caricature when the
+  scene cites their claim and the style is a cartoon one; otherwise "an anonymous figure seen from behind". Changed
+  shots are repainted; a last guard in `_paint` strips any name left. Comic, cartoon, courtroom and noir now carry
+  caricatures (they're drawn looks).
+- The "6 unverified" were the writer's open questions (script-questions.json), which were never in the script.
+  They now ask about the RECORD only (when/where it was said, what courts or regulators found, who profited),
+  never whether the lie is true. The button says "Look up N open question(s)"; the look-up writes
+  lookup-results.json, answered questions drop off the count, and the page says how many finds arrived.
+- Claims: rule C, two independent sources from the research database hold up (Dave vetted them); agent finds still
+  need checked quotes. The deep dive plans attribution + record questions, never "prove the claim". Research page:
+  "Tick the N deep-dive finds" button.
+- Research notes: InfoWars went offline about May 2026 (use Wayback copies); Knowledge Fight ended May 18, 2026;
+  the April 2020 FDA/FTC warning letter quotes Jones word for word with dates and minute marks (primary record).
+- Next (from the research): split "holds up" into attribution AND record, each required; point the agents at
+  Wayback copies of infowars.com, FDA/FTC letters, CourtListener (FSS bankruptcy 22-60043) and the Lafferty
+  decisions.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

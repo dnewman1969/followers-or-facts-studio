@@ -223,7 +223,7 @@ def test_long_progress_text_never_pushes_the_bar_off_the_window(app, episode):
 
 def test_caricature_box_offers_the_satire_style(app, episode):
     from fofstudio.app.creative import CreativePanel
-    episode.set_creative(style="cartoon")
+    episode.set_creative(style="newscast")           # a look that doesn't carry caricatures
     p = CreativePanel()
     p.set_episode(episode)
     assert p.caric.isEnabled() and not p.caric.isChecked()
@@ -231,6 +231,10 @@ def test_caricature_box_offers_the_satire_style(app, episode):
     c = episode.creative()
     assert c["style"] == "satire" and c["caricatures"] and p.caric.isChecked()
     assert not app.problems, app.problems
+    # the drawn house styles carry caricatures themselves now (Dave: caricatures in the Comic book storyboard)
+    episode.set_creative(style="comic", caricatures=True)
+    p.set_episode(episode)
+    assert episode.creative()["style"] == "comic" and p.caric.isChecked()
 
 
 def test_a_new_project_starts_with_clean_pages(app, episode):

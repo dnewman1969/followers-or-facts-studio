@@ -3,7 +3,8 @@
 From the research "AI writer repetition and claim checks" (fact-checking pipelines and professional standards):
   * a claim is used only if its debunk is SUPPORTED: rule A, a primary record (court, government, the
     subject's own official statement) from your research database or with a word-for-word verified quote;
-    or rule B, at least two INDEPENDENT sources each with a verified quote. Independent means a different
+    or rule B, at least two INDEPENDENT sources each with a verified quote; or rule C, two independent sources
+    from your own research database (you checked those yourself). Independent means a different
     website and publisher, and quotes that aren't near-copies of each other (wire copy counts once);
   * a claim whose own verdict is "unverified" or "contested" doesn't hold up either;
   * a claim that falls short gets a DEEP DIVE (hidden stage `deepdive`): who/what/when/where/which-document
@@ -83,6 +84,13 @@ def assess(claim: dict[str, Any]) -> dict[str, Any]:
     if len(groups) >= 2:
         return {**base, "status": "supported", "rule": "B",
                 "why": f"{len(groups)} independent sources with verified quotes"}
+    # rule C: your own research database was checked by you, so two independent sources from it count, quoted or
+    # not (an agent's find still needs its words checked against the saved page)
+    vetted = [s for s in srcs if (s.get("found_by") or "database") == "database" and s.get("source_type") != "kf_index"]
+    vetted_groups = independent_groups(vetted + [s for s in srcs if s["source_id"] in quoted and s not in vetted], ex)
+    if len(vetted_groups) >= 2 and vetted:
+        return {**base, "status": "supported", "rule": "C",
+                "why": f"{len(vetted_groups)} independent sources, from your research database"}
     return {**base, "status": "weak", "rule": "",
             "why": (f"only {len(groups)} independent source with a verified quote and no primary record"
                     if groups else "no verified quote and no primary record")}
@@ -129,10 +137,13 @@ def deep_dive(ctx) -> None:
         ctx.progress(f"Planning the deep dive for {w['claim_id']} ({n + 1} of {len(weak)})", 5 + 10 * n / len(weak))
         ans = llm.chat_json([
             {"role": "system", "content": (
-                "You plan a fact-checker's deep dive. Write 3 to 6 short questions whose answers would prove or "
-                "disprove the claim's record from PRIMARY documents: who said or sold it, when and where, how much "
-                "money, which court case, filing, regulator action or official statement. One fact per question. "
-                "Never assume the answer.")},
+                "You plan a fact-checker's deep dive on a FALSE claim sold by people who are known to lie (for "
+                "example a conspiracy broadcaster and his guests). Never try to prove the claim itself true. Write "
+                "3 to 6 short questions that check the RECORD from primary documents: (1) attribution: when and "
+                "where exactly did they say or sell it (show date, episode, archived web page, transcript, court "
+                "exhibit or deposition); (2) what courts, regulators, official records or independent experts "
+                "found; (3) who profited and how, as documented (sales pages, filings, judgments). One fact per "
+                "question. Never assume the answer.")},
             {"role": "user", "content": f"Claim: {c['short_title']}\nWhat we have: {c.get('claim_summary') or ''}\n"
                                         f"Why it doesn't hold up yet: {w['why']}"}],
             QUESTION_SCHEMA, lenient=True, temperature=0.3)

@@ -67,6 +67,30 @@ def names_in(text: str, names: list[str]) -> list[str]:
     return sorted({n for n in names if normalize_for_match(n) in low})
 
 
+def unname_shot(shot: dict[str, Any], names: list[str], people: dict[str, dict[str, Any]],
+                scene_people: list[dict[str, Any]], style: styles.Style) -> str:
+    """A shot idea that names a real person never goes to the painter with the name in it. If that person has
+    an approved caricature that this scene may show (it cites what they did, in a cartoon style), the shot
+    becomes their caricature; otherwise they become an anonymous figure seen from behind. Returns a note, or ""."""
+    found = names_in(shot["idea"], names)
+    if not found:
+        return ""
+    by_name = {p["name"].lower(): p for p in scene_people}
+    who = next((by_name[n.lower()] for n in found if n.lower() in by_name), None)
+    idea = shot["idea"]
+    for n in sorted(found, key=len, reverse=True):
+        pattern = re.compile(rf"\b{re.escape(n)}(?:'s)?\b", re.I)
+        idea = pattern.sub("the character" if who and n.lower() == who["name"].lower() else
+                           "an anonymous figure seen from behind", idea)
+    shot["idea"] = idea
+    if who and style.caricature and shot["kind"] != "real":
+        shot["kind"], shot["person_id"] = "caricature", who["person_id"]
+        return f"{shot.get('shot_id', '')}: {who['name']} is drawn as their approved caricature"
+    if shot["kind"] == "real" and shot.get("subject") == "public_figure":
+        shot["search"] = pattern.sub("", shot.get("search") or "").strip() or shot["idea"][:60]
+    return f"{shot.get('shot_id', '')}: took the name {', '.join(found)} out of the picture idea"
+
+
 def _excerpts(ep: Episode) -> dict[int, dict[str, Any]]:
     packet = read_json(ep.path("research.json")) or {}
     out = {}
@@ -265,6 +289,8 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         parts = [look, framing, idea, style.clean, GUARD]
     # the medium comes first: a distilled model with a short attention span reads the early words hardest
     full, _ = promptcheck.strip_watch(". ".join(x.strip(" .") for x in parts if x and x.strip(" .")))
+    for n in names_in(full, person_names()):   # last guard: a real person's name never reaches the painter
+        full = re.sub(rf"\b{re.escape(n)}(?:'s)?\b", "an anonymous figure", full, flags=re.I)
     raw, meta, seed = _comfy_image(ep, name, full)
     picture = raw
     extra: dict[str, Any] = {}
@@ -377,6 +403,21 @@ def run(ctx: Context) -> None:
             entry["shots"] = [{"shot_id": f"{sid}-s{i + 1:02d}", **idea, "candidates": [None] * n_cands, "pick": 0}
                               for i, idea in enumerate(ideas)]
         planned.append(entry)
+
+    # real people's names never reach the painter: approved caricature, or an anonymous figure
+    names = person_names()
+    for entry, sc in zip(planned, script["scenes"]):
+        scene_people = [p for p in people.values() if set(p["claims"]) & set(sc.get("claim_ids", []))] \
+            if sc.get("source_ids") else []
+        for shot in entry["shots"]:
+            if shot.get("by_hand"):
+                continue
+            before = shot["idea"]
+            note = unname_shot(shot, names, people, scene_people, style)
+            if note:
+                ctx.log(note)
+                if shot["idea"] != before:
+                    shot["candidates"] = [None] * len(shot["candidates"])   # painted again without the name
 
     # the Virtual Director: the quality gate before anything is painted (director.py)
     if settings().get("director", {}).get("enabled", True):
@@ -556,9 +597,10 @@ def check(ep: Episode) -> list[Check]:
             if c.get("real"):      # a real archival picture: its licence and credit are on record (mediafinder)
                 real_used.append(c)
             elif names_in(c.get("full_prompt", c["prompt"]) if sh["kind"] != "caricature" else c["prompt"], names):
-                out.append(Check(BLOCK, f"{sh['shot_id']}: the picture idea names a real person "
-                                        f"({', '.join(names_in(c['prompt'], names))}). Real people only appear as "
-                                        "approved caricatures, drawn from their design."))
+                out.append(Check(BLOCK, f"{sh['shot_id']}: the picture was painted from an idea naming a real "
+                                        f"person ({', '.join(names_in(c['prompt'], names))}). Press Make pictures: "
+                                        "names are now taken out automatically (approved caricatures are used where "
+                                        "the scene allows), and only those shots are painted again."))
             key = normalize_for_match(c["prompt"])
             if key in seen_prompts:
                 out.append(Check(WARN, f"{sh['shot_id']} repeats the idea of {seen_prompts[key]}. Change one."))

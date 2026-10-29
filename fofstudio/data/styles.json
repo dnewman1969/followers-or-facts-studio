@@ -101,12 +101,13 @@
    "owl_look": "Owlbert in a bright cartoon studio with gears and arrows floating behind him",
    "sample": "Picture a machine. You pour worry in the top, and out the bottom drops a forty-dollar bucket of freeze-dried beans. Today we take the cover off and look at every gear.",
    "humor": 2,
-   "caricature": false,
+   "caricature": true,
    "cartoon": true,
    "shot_types": [
     "broll",
     "owl",
-    "metaphor"
+    "metaphor",
+    "caricature"
    ],
    "status": "live",
    "tier": "A",
@@ -275,12 +276,13 @@
    "owl_look": "Owlbert as counsel at a courtroom lectern, sketched in pastel",
    "sample": "The court did not have to guess. It had the emails. Exhibit B, read into the record on the second day, settles the question in a single sentence.",
    "humor": 0,
-   "caricature": false,
+   "caricature": true,
    "cartoon": true,
    "shot_types": [
     "broll",
     "owl",
-    "detail"
+    "detail",
+    "caricature"
    ],
    "status": "live",
    "tier": "A",
@@ -317,12 +319,13 @@
    "owl_look": "Owlbert in a fedora at a detective's desk, blinds casting stripes across him",
    "sample": "The claim walked into my office on a Tuesday. Nice suit, big promises, no paperwork. In my line of work, that's the first thing you notice.",
    "humor": 1,
-   "caricature": false,
+   "caricature": true,
    "cartoon": true,
    "shot_types": [
     "broll",
     "owl",
-    "detail"
+    "detail",
+    "caricature"
    ],
    "status": "live",
    "tier": "A",
@@ -361,12 +364,13 @@
    "owl_look": "Owlbert as a comic-book hero landing on a rooftop, cape-like wings spread",
    "sample": "Meet the Cherry Picker. He keeps the one number that scares you and quietly drops the other ninety-nine. His weakness? Anyone who asks to see the whole basket.",
    "humor": 2,
-   "caricature": false,
+   "caricature": true,
    "cartoon": true,
    "shot_types": [
     "broll",
     "owl",
-    "metaphor"
+    "metaphor",
+    "caricature"
    ],
    "status": "live",
    "tier": "A",

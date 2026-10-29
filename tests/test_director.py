@@ -146,3 +146,19 @@ def test_storyboard_goes_through_the_director(episode):
     shot = next(sh for s in ep.storyboard()["scenes"] for sh in s["shots"] if sh["shot_id"] == used[2]["shot_id"])
     assert shot["by_hand"] and "look" not in shot
 
+
+
+def test_named_people_become_caricatures_or_anonymous_figures():
+    from fofstudio import styles
+    people = {"P-1": {"person_id": "P-1", "name": "Gary Northman", "claims": ["C-1"]}}
+    names = ["Gary Northman", "Ann Example"]
+    shot = {"shot_id": "s1", "kind": "broll", "idea": "Gary Northman shouts into a microphone", "person_id": ""}
+    note = storyboard.unname_shot(shot, names, people, list(people.values()), styles.get("comic"))
+    assert shot["kind"] == "caricature" and shot["person_id"] == "P-1" and "Northman" not in shot["idea"]
+    assert "caricature" in note
+    other = {"shot_id": "s2", "kind": "broll", "idea": "Ann Example reads a letter", "person_id": ""}
+    storyboard.unname_shot(other, names, people, list(people.values()), styles.get("comic"))
+    assert other["kind"] == "broll" and "anonymous figure" in other["idea"] and "Ann" not in other["idea"]
+    plain = {"shot_id": "s3", "kind": "broll", "idea": "Gary Northman at a desk", "person_id": ""}
+    storyboard.unname_shot(plain, names, people, list(people.values()), styles.get("documentary"))
+    assert plain["kind"] == "broll" and "Northman" not in plain["idea"]   # not a cartoon look: no caricature
