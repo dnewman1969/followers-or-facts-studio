@@ -252,3 +252,45 @@ def test_browser_publish_kit(episode):
     info = publishkit.record_upload(ep, "https://youtu.be/abcDEF12345")
     assert read_json(ep.path("publish", "upload.json"))["via"] == "browser" and info["youtube_id"] == "abcDEF12345"
     assert ep.stage_status("upload")["status"] == "approved"
+
+
+def test_an_approved_caricature_stays_with_the_person_for_later_videos(episode, monkeypatch):
+    """Dave (2026-10-29): once a caricature is approved, keep it with the person so any other video about them
+    already has it."""
+    from PIL import Image
+
+    from tests.test_pipeline import research_and_story
+    ep = episode
+    research_and_story(ep)
+    ep.set_creative(style="satire", caricatures=True)
+    person = cast.eligible(ep)[0]
+    preview = ep.path("preview.png")
+    Image.new("RGB", (64, 36), "orange").save(preview)
+    cast.save(person["person_id"], "a stocky man shouting into a huge radio microphone", True,
+              tradition="classic_newspaper_editorial_cartoon", ep=ep, picture=preview)
+    kept = cast.record(person["person_id"])
+    assert kept["approved"] and kept["approved_in"] == ep.project_id and kept["tradition"] == "classic_newspaper_editorial_cartoon"
+    assert kept["picture"].endswith("approved.png") and "caricatures" in kept["picture"]
+    preview.unlink()                                  # previews are scratch; the approved picture is a copy
+    assert cast.record(person["person_id"])["picture"]
+
+    # a second video with the same people starts with the approval, the picture and the style
+    claims = [c["claim_id"] for c in script_stage.selected_packet(ep)["claims"]]
+    later = Episode.create("S01E02", "Another look", "A-Y2K-FEAR-INDUSTRY", claims)
+    again = next(p for p in cast.eligible(later, claims) if p["person_id"] == person["person_id"])
+    assert again["approved"] and again["design"].startswith("a stocky man") and again["picture"]
+    assert again["approved_in_title"] == ep.title
+    monkeypatch.setattr(cast, "approved", lambda e, c=None: [again])
+    assert cast.tradition(later)["key"] == "classic_newspaper_editorial_cartoon"     # drawn the same way
+    later.set_creative(caricature_style="urbane_magazine_editorial_illustration")
+    assert cast.tradition(later)["key"] == "urbane_magazine_editorial_illustration"   # unless you pick another
+
+    # saving it again unchanged in the later video keeps the original approval; using it is noted
+    cast.save(person["person_id"], again["design"], True, tradition="urbane_magazine_editorial_illustration",
+              ep=later)
+    kept = cast.record(person["person_id"])
+    assert kept["approved_in"] == ep.project_id and kept["picture"] and kept["tradition"] == "classic_newspaper_editorial_cartoon"
+    cast.mark_used(later, [person["person_id"], ""])
+    cast.mark_used(later, [person["person_id"]])
+    assert cast.record(person["person_id"])["used_in"] == [later.project_id]
+    assert [p["person_id"] for p in cast.library()] == [person["person_id"]]

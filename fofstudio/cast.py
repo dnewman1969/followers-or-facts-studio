@@ -55,10 +55,12 @@ def eligible(ep: Episode, claim_ids: list[str] | None = None) -> list[dict[str, 
     for r in rows:
         if _never(r):
             continue
-        d = db.one("SELECT design, approved, search_hint FROM caricature WHERE person_id=?", (r["person_id"],)) or {}
+        d = record(r["person_id"])
         r["search_hint"] = d.get("search_hint") or default_hint(r)
         out.append({**r, "claims": (r["claims"] or "").split(","), "design": d.get("design") or "",
-                    "approved": bool(d.get("approved")), "deceased": (r.get("status") or "") == "deceased"})
+                    "approved": bool(d.get("approved")), "deceased": (r.get("status") or "") == "deceased",
+                    **{k: d.get(k) for k in ("approved_at", "approved_in", "approved_in_title", "tradition",
+                                             "picture", "used_in")}})
     return out
 
 
@@ -66,11 +68,88 @@ def approved(ep: Episode, claim_ids: list[str] | None = None) -> list[dict[str, 
     return [p for p in eligible(ep, claim_ids) if p["approved"] and p["design"]]
 
 
-def save(person_id: str, design: str, ok: bool) -> None:
-    db.execute("""INSERT INTO caricature(person_id, design, approved, approved_at) VALUES (?,?,?,?)
+# ------------------------------------------------------------------ the caricature library (Dave, 2026-10-29)
+# An approved caricature belongs to the PERSON, not the video: it's kept with their database record (design,
+# the style it was approved in, the approved picture and where it was approved), so any later video about
+# them starts with it already approved and draws them the same way. Previews are scratch; the approved
+# picture is copied to <data>/caricatures/<person_id>/approved.png and only changes when you approve again.
+def library_dir(person_id: str) -> Path:
+    from .config import data_dir
+    return data_dir() / "caricatures" / re.sub(r"[^A-Za-z0-9_-]", "_", person_id)
+
+
+def record(person_id: str) -> dict[str, Any]:
+    """Everything saved about how this person is drawn (empty if nothing yet)."""
+    from .config import data_dir
+    d = dict(db.one("SELECT * FROM caricature WHERE person_id=?", (person_id,)) or {})
+    if not d:
+        return {}
+    pic = d.get("picture")
+    d["picture"] = str(data_dir() / pic) if pic and (data_dir() / pic).exists() else ""
+    try:
+        d["used_in"] = json.loads(d.get("used_in") or "[]")
+    except ValueError:
+        d["used_in"] = []
+    d["approved_in_title"] = ""
+    if d.get("approved_in"):
+        row = db.one("SELECT title FROM project WHERE project_id=?", (d["approved_in"],)) or {}
+        d["approved_in_title"] = row.get("title") or d["approved_in"]
+    return d
+
+
+def library() -> list[dict[str, Any]]:
+    """Every approved caricature, across all videos."""
+    rows = db.rows("""SELECT c.person_id, p.name, p.role_types FROM caricature c JOIN person p
+                      ON p.person_id = c.person_id WHERE c.approved=1 ORDER BY p.name""")
+    return [{**record(r["person_id"]), "name": r["name"], "role_types": r["role_types"]} for r in rows]
+
+
+def save(person_id: str, design: str, ok: bool, tradition: str | None = None, ep: Episode | None = None,
+         picture: str | Path | None = None) -> None:
+    """Save the design. Approving it keeps it with the person for every later video: the style, the video it
+    was approved in and (if you painted previews) the picture you picked. Saving an already-approved design
+    unchanged keeps its original approval."""
+    import shutil
+    old = record(person_id)
+    design = design.strip()
+    same = bool(old.get("approved")) and ok and (old.get("design") or "").strip() == design
+    fields = {"design": design, "approved": int(ok),
+              "approved_at": (old.get("approved_at") if same else utc_now()) if ok else None,
+              # the person's style only changes when you approve a new design or pick a new picture
+              "tradition": ((old.get("tradition") if same and not picture else tradition) or old.get("tradition"))
+                           if ok else old.get("tradition"),
+              "approved_in": (old.get("approved_in") if same and old.get("approved_in")
+                              else (ep.project_id if ep else old.get("approved_in"))) if ok else old.get("approved_in"),
+              "picture": None}
+    rel = None
+    if ok and picture and Path(picture).exists():
+        from .config import data_dir
+        dest = library_dir(person_id) / "approved.png"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if Path(picture).resolve() != dest.resolve():
+            shutil.copyfile(picture, dest)
+        rel = dest.relative_to(data_dir()).as_posix()
+    elif ok and same and old.get("picture"):
+        from .config import data_dir
+        rel = Path(old["picture"]).relative_to(data_dir()).as_posix()
+    elif not ok and old.get("picture"):
+        from .config import data_dir
+        rel = Path(old["picture"]).relative_to(data_dir()).as_posix()   # kept on file; not used until approved
+    fields["picture"] = rel
+    db.execute("""INSERT INTO caricature(person_id, design, approved, approved_at, tradition, approved_in, picture)
+                  VALUES (:person_id,:design,:approved,:approved_at,:tradition,:approved_in,:picture)
                   ON CONFLICT(person_id) DO UPDATE SET design=excluded.design, approved=excluded.approved,
-                  approved_at=excluded.approved_at""",
-               (person_id, design.strip(), int(ok), utc_now() if ok else None))
+                  approved_at=excluded.approved_at, tradition=excluded.tradition,
+                  approved_in=excluded.approved_in, picture=excluded.picture""",
+               {"person_id": person_id, **fields})
+
+
+def mark_used(ep: Episode, person_ids) -> None:
+    """Note which videos drew each person (shown in the Cast window)."""
+    for pid in {p for p in person_ids if p}:
+        used = record(pid).get("used_in") or []
+        if ep.project_id not in used:
+            db.execute("UPDATE caricature SET used_in=? WHERE person_id=?", (json.dumps(used + [ep.project_id]), pid))
 
 
 # ------------------------------------------------------------------ caricature traditions
@@ -84,8 +163,19 @@ def traditions(include_excluded: bool = False) -> list[dict[str, Any]]:
 
 
 def tradition(ep: Episode) -> dict[str, Any]:
-    key = ep.creative().get("caricature_style") or DEFAULT_TRADITION
+    """The video's caricature style; if you haven't picked one, the style the cast was approved in (so a
+    person approved in an earlier video is drawn the same way), else the house default."""
     ts = {t["key"]: t for t in traditions()}
+    key = ep.creative().get("caricature_style")
+    if not key:
+        from collections import Counter
+
+        from .util import StageError
+        try:
+            used = Counter(p["tradition"] for p in approved(ep) if p.get("tradition") in ts)
+        except StageError:
+            used = Counter()
+        key = used.most_common(1)[0][0] if used else DEFAULT_TRADITION
     return ts.get(key) or ts[DEFAULT_TRADITION]
 
 
@@ -552,7 +642,7 @@ def research_design(person: dict[str, Any], tradition_key: str | None = None, on
         image_prompt=f"{look(trad)}, cartoon caricature. {result['design']}",
         variations=[{"style": t["name"], "key": t["key"], "prompt": f"{look(t)}, cartoon caricature. {result['design']}"}
                     for t in others],
-        tradition=trad["name"], face=face, votes=votes, push=push, notes=notes, warnings=warnings,
+        tradition=trad["name"], tradition_key=trad["key"], face=face, votes=votes, push=push, notes=notes, warnings=warnings,
         unsure=[f.replace("_", " ") for f in FACE_FIELDS if f not in face], references=records, model=vision)
     return result
 
@@ -563,7 +653,8 @@ def paint_previews(ep, person_id: str, result: dict[str, Any]) -> list[dict[str,
     from .config import data_dir
     from .stages.storyboard import CARICATURE_GUARD, _comfy_image
     out = []
-    jobs = [{"style": result.get("tradition", ""), "prompt": result["image_prompt"]}] + list(result.get("variations") or [])
+    jobs = ([{"style": result.get("tradition", ""), "key": result.get("tradition_key", ""),
+              "prompt": result["image_prompt"]}] + list(result.get("variations") or []))
     dest = data_dir() / "caricature-previews" / person_id
     dest.mkdir(parents=True, exist_ok=True)
     for n, job in enumerate(jobs):
@@ -572,7 +663,7 @@ def paint_previews(ep, person_id: str, result: dict[str, Any]) -> list[dict[str,
         path = dest / f"preview{n}.png"
         from PIL import Image
         Image.open(raw).convert("RGB").save(path)
-        out.append({"style": job["style"], "path": str(path), "prompt": prompt})
+        out.append({"style": job["style"], "key": job.get("key", ""), "path": str(path), "prompt": prompt})
     return out
 
 
@@ -582,7 +673,7 @@ def save_research(person_id: str, result: dict[str, Any]) -> None:
                   references_json=excluded.references_json""",
                (person_id, result["design"], json.dumps({k: result.get(k) for k in (
                    "face", "votes", "push", "unsure", "key_features", "exaggerations", "image_prompt", "variations",
-                   "notes", "tradition")}),
+                   "notes", "tradition", "tradition_key")}),
                 json.dumps(result["references"])))
 
 

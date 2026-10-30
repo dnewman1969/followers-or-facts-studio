@@ -214,5 +214,9 @@ CREATE TABLE IF NOT EXISTS caricature (
     notes TEXT,
     design_json TEXT,               -- the structured design the text was written from
     references_json TEXT,           -- the photos looked at (audit trail only)
-    search_hint TEXT                -- who this is, for the photo search ("InfoWars conspiracy radio host")
+    search_hint TEXT,               -- who this is, for the photo search ("InfoWars conspiracy radio host")
+    tradition TEXT,                 -- the caricature style it was approved in
+    picture TEXT,                   -- the approved picture, relative to the data folder (caricatures/<id>/)
+    approved_in TEXT,               -- the video (project id) it was approved in
+    used_in TEXT                    -- JSON list of the videos that drew this person
 );

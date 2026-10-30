@@ -298,3 +298,26 @@ def test_youtube_setup_and_browser_upload_windows(app, episode, monkeypatch):
     k._done()
     assert read_json(ep.path("publish", "upload.json"))["youtube_id"] == "abcDEF12345"
     assert not app.problems, app.problems
+
+
+def test_cast_window_shows_a_kept_caricature(app, episode):
+    from PIL import Image
+
+    from fofstudio import cast
+    from fofstudio.app.creative import CaricatureLibraryDialog, CastDialog
+    ep = episode
+    research_and_story(ep)
+    ep.set_creative(style="satire", caricatures=True)
+    person = cast.eligible(ep)[0]
+    Image.new("RGB", (64, 36), "orange").save(ep.path("pick.png"))
+    cast.save(person["person_id"], "a stocky man shouting into a huge radio microphone", True,
+              tradition="classic_newspaper_editorial_cartoon", ep=ep, picture=ep.path("pick.png"))
+    d = CastDialog(ep)
+    from PySide6.QtWidgets import QLabel
+    texts = " ".join(lab.text() for lab in d.findChildren(QLabel))
+    assert "Already approved" in texts
+    d._save()                                    # saving unchanged keeps the original approval
+    assert cast.record(person["person_id"])["approved_in"] == ep.project_id
+    lib = CaricatureLibraryDialog()
+    assert "1 approved caricature" in " ".join(lab.text() for lab in lib.findChildren(QLabel))
+    assert not app.problems, app.problems

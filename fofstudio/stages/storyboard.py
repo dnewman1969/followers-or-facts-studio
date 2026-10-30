@@ -464,6 +464,7 @@ def run(ctx: Context) -> None:
         ep.save_storyboard({"version": VERSION, "style": style.key, "scenes": scenes + rest,
                             "built_at": utc_now(), "partial": True})
     ep.save_storyboard({"version": VERSION, "style": style.key, "scenes": scenes, "built_at": utc_now()})
+    cast.mark_used(ep, {sh.get("person_id") for s in scenes for sh in s["shots"] if sh["kind"] == "caricature"})
     n_shots = sum(len(s["shots"]) for s in scenes)
     ctx.progress(f"{n_shots} shots painted. Look them over; pick a different version or remake any.", 100)
 

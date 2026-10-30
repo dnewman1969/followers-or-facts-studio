@@ -677,6 +677,21 @@ they might be true? (Research "Verifying claims from known liars".)
   Wayback copies of infowars.com, FDA/FTC letters, CourtListener (FSS bankruptcy 22-60043) and the Lafferty
   decisions.
 
+## 2026-10-29 — v0.7.9: approved caricatures stay with the person
+
+- Dave: "Once the Local AI has an approved caricature for a person save it with the person's data so if any other
+  videos are made with them we already have an approved caricature for them."
+- The caricature table (keyed by person) now also keeps the style it was approved in, the approved picture
+  (`<data>/caricatures/<person_id>/approved.png`, a copy: previews are scratch) and the video it was approved in;
+  the storyboard notes which videos drew each person (`used_in`). New columns via MIGRATIONS.
+- `cast.save(..., tradition, ep, picture)`: saving an approved design unchanged keeps its original approval, video
+  and style. `cast.record`, `cast.library`, `cast.mark_used`. `cast.tradition(ep)` falls back to the style the
+  cast was approved in when the video hasn't picked one.
+- Cast window: "Already approved ... in <video>, in the <style> style" with the kept picture; previews have
+  "Keep this one" so you pick which picture is saved; "All approved caricatures..." lists everyone.
+- Research "Multi agent writers room studio" (multi-agent writing workflow and the Creative Studio screens) sent
+  and saved to the project.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

@@ -4,12 +4,12 @@ plus the Cast window where you approve how each caricatured public figure is dra
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFrame, QHBoxLayout,
                                QLabel, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from .. import cast, storytypes, styles
-from .common import GOLD, MUTED, PANEL, error
+from .common import GOLD, GREEN, MUTED, PANEL, error
 
 HUMOR = ["No jokes", "A light touch", "Some gentle humor", "Full satire (punching up only)"]
 
@@ -287,6 +287,7 @@ class CastDialog(QDialog):
         self.rows = []
         self._research: dict = {}
         self._who: dict = {}
+        self._chosen: dict = {}       # person_id -> the preview you picked to keep with the approval
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         holder = QWidget()
@@ -305,6 +306,8 @@ class CastDialog(QDialog):
             hl_ = QLabel(head)
             hl_.setWordWrap(True)
             bl.addWidget(hl_)
+            if p["approved"] and p["design"]:
+                bl.addLayout(self._kept_row(p))
             who_row = QHBoxLayout()
             who_row.addWidget(QLabel("Who is this (for the photo search)"))
             who = QLineEdit(p.get("search_hint") or "")
@@ -336,6 +339,8 @@ class CastDialog(QDialog):
                              "with ComfyUI), to see it before you approve")
             paint.setEnabled(False)
             pics = QHBoxLayout()
+            if p["approved"]:
+                suggest.setText("Research again from photos")
             suggest.clicked.connect(lambda _=False, pp=p, d=design, n=note, b=suggest, pb=paint, w=who:
                                     self._suggest({**pp, "search_hint": w.text().strip()}, d, n, b, pb))
             paint.clicked.connect(lambda _=False, pp=p, d=design, n=note, pb=paint, pl=pics:
@@ -354,6 +359,10 @@ class CastDialog(QDialog):
         scroll.setWidget(holder)
         v.addWidget(scroll, 1)
         buttons = QHBoxLayout()
+        lib = QPushButton("All approved caricatures...")
+        lib.setToolTip("Everyone you've approved a caricature for, in any video")
+        lib.clicked.connect(lambda: CaricatureLibraryDialog(self).exec())
+        buttons.addWidget(lib)
         buttons.addStretch(1)
         save = QPushButton("Save")
         save.setObjectName("primary")
@@ -363,6 +372,31 @@ class CastDialog(QDialog):
         buttons.addWidget(cancel)
         buttons.addWidget(save)
         v.addLayout(buttons)
+
+    def _kept_row(self, p) -> QHBoxLayout:
+        """The caricature already approved for this person (kept with them for every video)."""
+        from .common import cached_pixmap
+        row = QHBoxLayout()
+        if p.get("picture"):
+            pic = QLabel()
+            pic.setPixmap(cached_pixmap(p["picture"], 160, 90))
+            pic.setToolTip("The approved picture, kept with this person")
+            row.addWidget(pic)
+        trad = {t["key"]: t["name"] for t in cast.traditions(include_excluded=True)}.get(p.get("tradition") or "", "")
+        where = p.get("approved_in_title") or ""
+        here = p.get("approved_in") == self.ep.project_id
+        used = [u for u in p.get("used_in") or [] if u != self.ep.project_id]
+        text = (f"<span style='color:{GREEN}'><b>Already approved</b></span> "
+                f"{(p.get('approved_at') or '')[:10]}"
+                + (f" in <i>{where}</i>" if where and not here else "")
+                + (f", in the {trad} style" if trad else "")
+                + (f". Drawn in {len(used)} other video(s)." if used else ".")
+                + f"<br><span style='color:{MUTED}'>It's kept with this person, so every video about them starts "
+                  "with it and draws them the same way. Change the design or untick Approved to redo it.</span>")
+        lab = QLabel(text)
+        lab.setWordWrap(True)
+        row.addWidget(lab, 1)
+        return row
 
     def _background(self, work, note, done) -> None:
         """Run work() in the background, show its progress messages in `note`, then call done(result, error)."""
@@ -443,21 +477,30 @@ class CastDialog(QDialog):
                 w = pics.takeAt(0).widget()
                 if w:
                     w.deleteLater()
+            from PySide6.QtWidgets import QButtonGroup, QRadioButton
+
             from .common import cached_pixmap
-            for item in out:
+            group = QButtonGroup(pics)
+            pid = person["person_id"]
+            for n, item in enumerate(out):
                 lab = QLabel()
                 lab.setPixmap(cached_pixmap(item["path"], 220, 124))
                 lab.setToolTip(f"{item['style']}\n\n{item['prompt']}")
                 col = QVBoxLayout()
-                cap = QLabel(item["style"])
-                cap.setObjectName("muted")
+                pick = QRadioButton(f"Keep this one ({item['style']})")
+                pick.setToolTip("The picture and style saved with this person when you approve")
+                pick.toggled.connect(lambda on, it=item: on and self._chosen.__setitem__(pid, it))
+                group.addButton(pick)
                 w = QWidget()
                 col.addWidget(lab)
-                col.addWidget(cap)
+                col.addWidget(pick)
                 w.setLayout(col)
                 pics.addWidget(w)
-            note.setText("Previews painted (first one is the chosen style). If the likeness is off, edit the design "
-                         "and paint again; approve when it looks right.")
+                if n == 0:
+                    pick.setChecked(True)
+            note.setText("Previews painted (the first is the chosen style). Pick the one to keep; if the likeness "
+                         "is off, edit the design and paint again. Approve when it looks right: the design, the "
+                         "picked picture and its style are kept with this person for every later video.")
 
         self._background(lambda say: cast.paint_previews(self.ep, person["person_id"], res), note, done)
 
@@ -474,9 +517,55 @@ class CastDialog(QDialog):
                             "Describe looks only; the name is added as a caption.")
                 return
             if text or ok.isChecked():
-                cast.save(p["person_id"], text, ok.isChecked())
+                pick = self._chosen.get(p["person_id"]) or {}
+                cast.save(p["person_id"], text, ok.isChecked(), tradition=pick.get("key") or self.trad.currentData(),
+                          ep=self.ep, picture=pick.get("path"))
         for pid, who in self._who.items():
             if who.text().strip():
                 cast.save_hint(pid, who.text())
         self.ep.set_creative(caricature_style=self.trad.currentData())
         self.accept()
+
+
+class CaricatureLibraryDialog(QDialog):
+    """Every approved caricature, from any video: they're kept with the person, not the video."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from .common import cached_pixmap
+        self.setWindowTitle("Approved caricatures")
+        self.resize(760, 560)
+        v = QVBoxLayout(self)
+        people = cast.library()
+        v.addWidget(QLabel(f"<b>{len(people)} approved caricature(s)</b> <span style='color:{MUTED}'>kept with each "
+                           "person; any video about them uses these automatically.</span>"))
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        holder = QWidget()
+        hl = QVBoxLayout(holder)
+        names = {t["key"]: t["name"] for t in cast.traditions(include_excluded=True)}
+        for p in people:
+            box = QFrame()
+            box.setStyleSheet(f"QFrame {{ background:{PANEL}; border-radius:6px; }}")
+            row = QHBoxLayout(box)
+            if p.get("picture"):
+                pic = QLabel()
+                pic.setPixmap(cached_pixmap(p["picture"], 160, 90))
+                row.addWidget(pic)
+            lab = QLabel(f"<b>{p['name']}</b> <span style='color:{MUTED}'>{p.get('role_types') or ''}</span><br>"
+                         f"{p.get('design') or ''}<br><span style='color:{MUTED}'>Approved "
+                         f"{(p.get('approved_at') or '')[:10]}"
+                         + (f" in {p['approved_in_title']}" if p.get("approved_in_title") else "")
+                         + (f" · {names.get(p.get('tradition') or '', '')}" if p.get("tradition") else "")
+                         + f" · drawn in {len(p.get('used_in') or [])} video(s)</span>")
+            lab.setWordWrap(True)
+            row.addWidget(lab, 1)
+            hl.addWidget(box)
+        if not people:
+            hl.addWidget(QLabel("None yet. Approve a design in a video's Cast window and it's kept here."))
+        hl.addStretch(1)
+        scroll.setWidget(holder)
+        v.addWidget(scroll, 1)
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        v.addWidget(close, 0, Qt.AlignRight)

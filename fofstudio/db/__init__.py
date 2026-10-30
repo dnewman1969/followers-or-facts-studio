@@ -39,6 +39,10 @@ MIGRATIONS = [
     ("caricature", "design_json", "TEXT"),       # the structured design (research "Art styles caricatures ...")
     ("caricature", "references_json", "TEXT"),   # the free photos looked at (audit only; never sent to ComfyUI)
     ("caricature", "search_hint", "TEXT"),       # who this is, so the photo search finds the right person
+    ("caricature", "tradition", "TEXT"),         # the caricature style it was approved in
+    ("caricature", "picture", "TEXT"),           # the approved picture, relative to the data folder
+    ("caricature", "approved_in", "TEXT"),       # the video (project id) it was approved in
+    ("caricature", "used_in", "TEXT"),           # JSON list of the videos that drew this person
 ]
 
 
