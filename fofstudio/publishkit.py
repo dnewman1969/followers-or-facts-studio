@@ -1,4 +1,4 @@
-"""Publish Kit: upload in your own browser, with no Google setup at all.
+"""Publish Kit: upload on YouTube's own page in your browser, with no Google setup at all.
 
 From the research "Easy YouTube upload like PowerDirector": YouTube's own upload page needs no API, no
 client file, no audit and no sign-in from the Studio, and it's fully within YouTube's rules (driving YouTube
@@ -16,13 +16,15 @@ from typing import Any
 from .episode import Episode
 from .util import StageError, read_json, utc_now, write_json, write_text
 
-UPLOAD_PAGE = "https://www.youtube.com/upload"
+from .youtube import UPLOAD_PAGE  # noqa: F401 - used by the upload window
+
 CHECKLIST = [
     "Drag the video file onto the upload page (the folder with it is open).",
-    "Title and Description: paste them with the Copy buttons.",
+    "Title and Description: paste them with the Copy buttons (the title is already copied).",
     "Thumbnail: Upload file → thumbnail.png (in the same folder).",
     "Audience: \"No, it's not made for kids\".",
-    "Show more → Altered content: \"Yes\" (the video has AI illustrations), and Tags: paste them.",
+    "Show more → Tags: press Copy tags and paste them all in one go (they're what people search for).",
+    "Show more → Altered content: \"Yes\" (the video has AI illustrations). Category: Education.",
     "Subtitles: Upload file → With timing → the .srt file (same folder).",
     "Visibility: Private. Save. Check YouTube's copyright and ad checks in Studio, then make it public.",
     "Copy the video's link and paste it back here, so the Studio knows it's uploaded.",
@@ -37,8 +39,10 @@ def prepare(ep: Episode) -> dict[str, Any]:
     video = ep.abs(meta["video"])
     if not video.exists():
         raise StageError("The final video file is missing. Render it again on the Production page.")
-    tags = ", ".join(meta.get("tags", []))
-    kit = {"title": meta["title"][:100], "description": meta["description"][:5000], "tags": tags[:500],
+    from .youtube import sanitize_tags
+    tag_list = sanitize_tags(meta.get("tags", []))
+    tags = ", ".join(tag_list)
+    kit = {"title": meta["title"][:100], "description": meta["description"][:5000], "tags": tags, "tag_count": len(tag_list),
            "video": str(video), "thumbnail": str(ep.abs(meta["thumbnail"])) if meta.get("thumbnail") else "",
            "captions": str(ep.abs(meta["captions"])) if meta.get("captions") else "", "checklist": CHECKLIST,
            "made_at": utc_now()}

@@ -119,9 +119,9 @@ the viewer what to think before the evidence does).
   most one sting every few scenes), "hard_cut" for a sharp change, "silence" for no music.
   drop_before: words copied exactly from your narration where the music stops so the voice arrives alone
   (always the verdict sentence in the verdict scene; also a claim's exact quote). Otherwise "".
-OWLBERT: 0 to 2 moves, each tied to 2-6 words copied EXACTLY from your narration (put moves on the new
-fact, the number, the name or the source, never on "I", "we" or "this"). Empty is fine: never add motion
-just to fill a scene.
+OWLBERT: 1 to 3 moves, each tied to 2-6 words copied EXACTLY from your narration (put moves on the new
+fact, the number, the name or the source, never on "I", "we" or "this"). He's the host: he reacts to what
+he's saying, like a presenter would. Pick moves that fit the words, not just to fill time.
   point: point at the evidence while it's on screen (claim, record, benefit, toolkit).
   glasses: push up his spectacles before reading a quote closely.
   hat_trick + prop: pulls something out of his cap as the transition into what he's talking about:
@@ -132,6 +132,13 @@ just to fill a scene.
   word, verdict scene only. swoop: flies across the screen at a big section change. flourish: spreads his
   wings (intro title or toolkit). fly_in: first scene only. fly_out: last scene only. solemn: cap to his
   chest, for harm to real people (the only move allowed in a harm scene besides point and glasses).
+  wave: hello (intro) or goodbye (outro). nod: "yes, the record says so". shake: shakes his head at a claim
+  that's false. shrug: "why would anyone sell that?" (benefit). facepalm: wing over his eyes at a claim
+  that falls apart on its own. magnify: looks through his magnifying glass, "let's look closer" (record).
+  read: holds up the page he's quoting and reads it (record, claim). count: taps out "one, two, three"
+  (tell, toolkit). lean_in: leans toward the picture, "here's the important part". sigh: a sad slump (harm).
+  bounce: two excited hops (toolkit, intro). Never shrug, facepalm, bounce, surprised, swoop or flourish on
+  careful topics or in a harm scene.
   Never react to the people who believed it; react with the viewer, to the trick or the seller.
   Example (record scene): narration "...The answer is in the original agency caption. It's dated May 2009..."
   -> [{"move": "hat_trick", "prop": "document", "at": "the original agency caption"},

@@ -203,6 +203,23 @@ def fake_llm(get_packet):
         if "how_it_plays" in props:
             return {"how_it_plays": "The camera drifts toward the clock.", "motion_prompt": "slow push in",
                     "camera": "zoom_in", "seconds": 4}
+        if "ideas" in props:   # Scan data for stories
+            ev = [e for e in (get_packet() or {}).get("evidence", []) if e.get("include")] or \
+                (get_packet() or {}).get("evidence", [])
+            cid = ev[0]["claim_id"] if ev else "C-X"
+            return {"ideas": [
+                {"kind": "clip", "title": "The radio that sold fear", "pitch": "One striking fact.",
+                 "claim_ids": [cid], "evidence_ids": [e["id"] for e in ev[:2]], "minutes_guess": 1},
+                {"kind": "long", "title": "The whole Y2K fear machine", "pitch": "The full saga, thinly sourced.",
+                 "claim_ids": [cid], "evidence_ids": [e["id"] for e in ev], "minutes_guess": 25},
+                {"kind": "short", "title": "Made-up idea", "pitch": "Uses nothing real.",
+                 "claim_ids": ["C-NOPE"], "evidence_ids": ["E-NOPE"], "minutes_guess": 5},
+                {"kind": "clip", "title": "the radio that sold fear", "pitch": "A repeat.", "claim_ids": [cid],
+                 "evidence_ids": [], "minutes_guess": 1}]}
+        if "search_phrases" in props:   # YouTube search tags
+            return {"search_phrases": ["y2k bug hoax", "was y2k real", "gary northman y2k", "y2k survival kits",
+                                       "y2k fear explained", "millennium bug debunked", "one"],
+                    "hashtags": ["#Y2K", "#FactCheck"]}
         raise AssertionError(schema)
     return chat_json
 

@@ -617,7 +617,13 @@ def run(ctx: Context) -> None:
         ctx.progress("Planning the chapters from the research", 2)
         from .. import channelmemory
         stype, writer = book_type_and_writer(ep, ctx.options)
-        book = {**make_outline(ctx, llm, mat, ep.title, stype, channelmemory.for_prompt(ep)),
+        idea = ctx.options.get("idea")      # a book made from a "Scan data for stories" idea
+        memory = channelmemory.for_prompt(ep)
+        if idea:
+            from .ideas import focus_note
+            memory = (memory or "") + focus_note(idea)
+        book = {**make_outline(ctx, llm, mat, idea["title"] if idea else ep.title, stype, memory),
+                **({"idea": idea} if idea else {}),
                 "evidence_key": mat.key(), "approved": False, "made_at": utc_now(), "material": mat.counts(),
                 "story_type": stype.key, "story_type_name": stype.name, "writer": writer.key,
                 "writer_name": writer.name}

@@ -1,13 +1,15 @@
-"""Stages 10-11 - Package (title, description, chapters, sources, thumbnail) and Upload.
+"""Stages 10-11 - Package (title, description, chapters, sources, thumbnail, search tags) and Upload.
 
-Upload uses the free YouTube Data API. It always uploads as PRIVATE (or the
-privacy in Settings) and marks the video as containing altered/synthetic
-media, as YouTube requires for realistic AI content. You flip it public yourself.
-Quota: one upload costs about 1,600 of the default 10,000 daily units.
+Upload is done on YouTube's own upload page in your browser (Dave, 2026-10-30: no Google setup). The Studio
+opens the page and puts the title, description and tags one click away (publishkit.py); you paste the
+video's link back and the Upload step is marked done.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import re
 from typing import Any
 
 from .. import cards, db
@@ -18,6 +20,8 @@ from ..util import StageError, read_json, utc_now, write_json, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 from .common import cited_sources, credit_line, source_line
 from .storyboard import shots as board_shots
+
+log = logging.getLogger(__name__)
 
 
 
@@ -32,21 +36,94 @@ def _chapter_name(scene: dict[str, Any]) -> str:
     return " ".join(words[:7]).rstrip(".,;:") or scene["scene_id"]
 
 
-def keywords(ep: Episode, story: dict[str, Any]) -> list[str]:
-    """Search tags from this video's own story: its subject, the claims, the trick it teaches, the style."""
-    from .. import styles, techniques
-    from ..youtube import sanitize_tags
+SEARCH_SCHEMA = {"type": "object", "properties": {
+    "search_phrases": {"type": "array", "minItems": 10, "maxItems": 40, "items": {"type": "string"}},
+    "hashtags": {"type": "array", "maxItems": 3, "items": {"type": "string"}}},
+    "required": ["search_phrases", "hashtags"]}
+
+
+def _basics(ep: Episode, story: dict[str, Any]) -> dict[str, list[str]]:
+    """What this video is about, straight from the database: people, groups, claims, the story's trick."""
+    from .. import techniques
+    from .script import selected_packet
     arc = db.one("SELECT title FROM arc WHERE arc_id=?", (ep.info.get("arc_id"),)) or {}
     claims = [r["short_title"] for r in db.rows(
         "SELECT c.short_title FROM project_claim pc JOIN claim c USING(claim_id) WHERE pc.project_id=? "
         "ORDER BY pc.order_no", (ep.project_id,))]
+    try:
+        ids = [c["claim_id"] for c in selected_packet(ep, check=False)["claims"]]
+    except StageError:
+        ids = []
+    people, orgs = [], []
+    if ids:
+        marks = ",".join("?" * len(ids))
+        people = [r["name"] for r in db.rows(
+            f"""SELECT p.name, COUNT(*) n FROM claim_entity ce JOIN person p ON p.person_id=ce.entity_id
+                WHERE ce.entity_type='person' AND ce.claim_id IN ({marks})
+                  AND ce.link_role IN ('said_it','amplified','benefited','platformed')
+                GROUP BY p.person_id ORDER BY n DESC LIMIT 4""", tuple(ids))]
+        orgs = [r["name"] for r in db.rows(
+            f"""SELECT o.name, COUNT(*) n FROM claim_entity ce JOIN organization o ON o.org_id=ce.entity_id
+                WHERE ce.entity_type IN ('org','organization') AND ce.claim_id IN ({marks})
+                GROUP BY o.org_id ORDER BY n DESC LIMIT 3""", tuple(ids))] if _has_table("organization") else []
     tricks = [t.name for t in (techniques.get(k) for k in story.get("techniques", [])) if t]
-    tags = ["Followers or Facts", "fact check", "critical thinking", "media literacy", "Professor Owlbert"]
-    tags += ([arc["title"].split(":")[0][:60]] if arc.get("title") else [])
-    tags += tricks + [c[:60] for c in claims[:6]]
-    tags += [story.get("thumbnail_words", "").title()] if story.get("thumbnail_words") else []
-    tags += ["debunk", "misinformation", "history", styles.get(ep.creative()["style"]).name.lower()]
-    return sanitize_tags(tags)
+    return {"arc": [arc["title"].split(":")[0][:60]] if arc.get("title") else [], "claims": claims,
+            "people": people, "orgs": orgs, "tricks": tricks}
+
+
+def _has_table(name: str) -> bool:
+    return bool(db.one("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)))
+
+
+def keywords(ep: Episode, story: dict[str, Any], title: str = "", ask_ai: bool = True) -> list[str]:
+    """Lots of search tags (Dave, 2026-10-30: "we want this to be found in search"): the phrases people
+    actually type into YouTube about this subject (the local AI writes them from the video's own subject,
+    claims and people), then the names, claims and the channel's own tags, as many as fit in YouTube's 500
+    characters. Only true, on-topic terms: YouTube treats misleading or off-topic tags as spam."""
+    from ..youtube import sanitize_tags
+    b = _basics(ep, story)
+    phrases: list[str] = []
+    if ask_ai:
+        try:
+            from ..llm import Ollama
+            ans = Ollama(job="stories").chat_json([
+                {"role": "system", "content": (
+                    "You write YouTube search tags for a fact-check documentary. List 25-40 short search phrases "
+                    "(2-5 words, lower case) that real people type into YouTube when looking for THIS subject: the "
+                    "people's names with the topic, the claim in plain words, questions like 'was ... real' or "
+                    "'is ... true', 'debunked', 'explained', the year or event, and common misspellings of names. "
+                    "Every phrase must be honestly about this video. No other channels, shows, brands or creators; "
+                    "no clickbait that the video doesn't deliver. Also give up to 3 hashtags (no spaces).")},
+                {"role": "user", "content": json.dumps({"title": title or ep.title, "subject": b["arc"],
+                                                        "claims": b["claims"][:8], "people": b["people"],
+                                                        "organisations": b["orgs"], "lesson": b["tricks"],
+                                                        "logline": story.get("logline") or story.get("hook") or ""},
+                                                       ensure_ascii=False)}],
+                SEARCH_SCHEMA, lenient=True, temperature=0.4)
+            phrases = [str(x).strip().lower() for x in ans.get("search_phrases") or [] if 1 < len(str(x).split()) <= 6]
+        except Exception as exc:  # noqa: BLE001 - the tags from the database are still written; logged
+            log.warning("The local AI couldn't write search phrases (%s); using the database tags only.", exc)
+    names = b["people"] + b["orgs"]
+    tags = [*b["arc"], *names[:3], *phrases[:12], *[c[:60] for c in b["claims"][:4]],
+            *[f"{n} {w}" for n in b["people"][:2] for w in ("debunked", "fact check")],
+            "fact check", "Followers or Facts", *phrases[12:], *b["tricks"], "debunked", "misinformation",
+            "conspiracy theories explained", "media literacy", "critical thinking", "Professor Owlbert",
+            *names[3:], *[c[:60] for c in b["claims"][4:8]],
+            *([story["thumbnail_words"].title()] if story.get("thumbnail_words") else []), "history", "documentary"]
+    from .. import promptcheck      # no brand, show or artist names (the check below would block them anyway)
+    return sanitize_tags([t for t in tags if not promptcheck.found(t)])
+
+
+def hashtags(tags: list[str]) -> list[str]:
+    """Three hashtags for above the title: #FactCheck plus two from the subject."""
+    out = ["#FactCheck"]
+    for t in tags:
+        h = "#" + "".join(w[:1].upper() + w[1:] for w in re.findall(r"[A-Za-z0-9]+", t))
+        if 3 < len(h) <= 30 and h.lower() not in {x.lower() for x in out} and h.lower() != "#followersorfacts":
+            out.append(h)
+        if len(out) == 3:
+            break
+    return out
 
 
 def package(ctx: Context) -> None:
@@ -89,6 +166,11 @@ def package(ctx: Context) -> None:
                "figures, not real images; every claim about them is sourced below."
                if any(sh.get("kind") == "caricature" for sh in board_shots(ep)) else ""),
             "Spotted a mistake? Tell us in the comments. Corrections are pinned and logged publicly."]
+    from .stories import chosen
+    story = chosen(ep) or {}
+    ctx.progress("Writing lots of search tags", 40)
+    tags = keywords(ep, story, title)
+    tail += ["", " ".join(hashtags(tags))]
     description, left_out = fit_description(head, proof_links(ep), tail)
     proof = proof_links(ep)
     write_text(ep.path("publish", "proof-links.txt"), "\n".join(
@@ -98,9 +180,6 @@ def package(ctx: Context) -> None:
         ctx.log(f"The description was full, so {left_out} proof link(s) went into proof-links.txt "
                 "(paste them into the pinned comment).")
 
-    from .stories import chosen
-    story = chosen(ep) or {}
-    tags = keywords(ep, story)
     thumb_words = (ctx.options.get("thumbnail_text") or story.get("thumbnail_words")
                    or " ".join(title.split()[:4]))
     first_ai = next((s for s in board_shots(ep)
@@ -216,97 +295,13 @@ def check_package(ep: Episode) -> list[Check]:
     return out
 
 
-def _youtube():
-    """Uses the sign-in from Settings; never opens a browser in the middle of a job."""
-    from .. import youtube
-    try:
-        return youtube.service(interactive=False)
-    except StageError:
-        raise StageError("Not signed in to YouTube (or the sign-in ran out). Go to Settings → YouTube → Sign in, "
-                         "then press Upload again. To stop it running out every 7 days, set your Google Cloud app "
-                         "to 'In production' (docs/YOUTUBE.md, step 6).")
-
-
 def upload(ctx: Context) -> None:
-    ep = ctx.episode
-    meta = read_json(ep.path("publish", "metadata.json"))
-    if not meta:
-        raise StageError("Approve Package first.")
-    from googleapiclient.http import MediaFileUpload  # noqa: imported after _youtube's check
-    yt = _youtube()
-    from ..youtube import sanitize_tags, studio_url, video_url
-    privacy = ctx.options.get("privacy") or meta["privacy"]
-    body = {
-        "snippet": {"title": meta["title"][:100], "description": meta["description"][:5000],
-                    "tags": sanitize_tags(meta.get("tags", [])), "categoryId": str(meta["category_id"])},
-        "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": bool(meta["made_for_kids"]),
-                   "containsSyntheticMedia": True},
-    }
-    media = MediaFileUpload(str(ep.abs(meta["video"])), chunksize=8 * 1024 * 1024, resumable=True,
-                            mimetype="video/mp4")
-    from .. import youtube
-    acct = youtube.account() or {}
-    ctx.progress(f"Uploading to {acct.get('title', 'your channel')} as {privacy}...", 1)
-    request = yt.videos().insert(part="snippet,status", body=body, media_body=media, notifySubscribers=False)
-    response, retries = None, 0
-    import time as _time
-    while response is None:
-        ctx.check_cancel()
-        try:
-            status, response = request.next_chunk()
-        except Exception as exc:  # noqa: BLE001 - retry YouTube's brief server errors, stop on anything else
-            code = getattr(getattr(exc, "resp", None), "status", None)
-            if code in (500, 502, 503, 504) and retries < 6:
-                retries += 1
-                ctx.progress(f"YouTube had a hiccup ({code}); trying again in {2 ** retries} s...", None)
-                _time.sleep(2 ** retries)
-                continue
-            raise StageError(f"The upload stopped: {youtube.explain(exc)} You can also use Publish → Upload in my "
-                             "browser (no setup).")
-        if status:
-            ctx.progress(f"Uploading the video: {int(status.progress() * 100)}%", status.progress() * 95)
-    video_id = response["id"]
-    db.execute("UPDATE project SET youtube_id=? WHERE project_id=?", (video_id, ep.project_id))
-    write_json(ep.path("publish", "upload.json"), {"youtube_id": video_id, "privacy": privacy,
-                                                     "video_url": video_url(video_id),
-                                                     "studio_url": studio_url(video_id),
-                                                     "channel": acct.get("title"), "uploaded_at": utc_now()})
-    ctx.log(f"Uploaded: {video_url(video_id)} ({privacy}). Review it in YouTube Studio: {studio_url(video_id)}")
-    ctx.progress("Uploaded. Setting the thumbnail and captions...", 96)
-    try:
-        yt.thumbnails().set(videoId=video_id,
-                            media_body=MediaFileUpload(str(ep.abs(meta["thumbnail"])))).execute()
-    except Exception as exc:  # noqa: BLE001 - needs a phone-verified channel
-        ctx.log(f"Thumbnail not set ({exc}). Verify the channel by phone, then set it in Studio.")
-    if meta.get("captions") and ep.abs(meta["captions"]).exists():
-        try:
-            yt.captions().insert(part="snippet", body={"snippet": {
-                "videoId": video_id, "language": "en", "name": "English"}},
-                media_body=MediaFileUpload(str(ep.abs(meta["captions"])))).execute()
-        except Exception as exc:  # noqa: BLE001
-            ctx.log(f"Captions not uploaded ({exc}); add the .srt in YouTube Studio.")
-
-
-def autopublish(ctx: Context) -> None:
-    """After a final render: write it up and upload it PRIVATE, so you can check YouTube's own checks
-    (copyright, ad suitability) in YouTube Studio before you make it public."""
-    ep = ctx.episode
-    timeline = read_json(ep.path("render", "timeline.json"))
-    if not timeline or timeline.get("draft") or not ep.abs(timeline["output"]).exists():
-        raise StageError("There's no finished render to upload.")
-    from .. import youtube
-    if not youtube.account():
-        raise StageError("Not uploaded automatically: you're not signed in to YouTube (Settings → YouTube).")
-    ctx.progress("Writing the title, description and thumbnail", 2)
-    package(ctx)
-    problems = [c.message for c in check_package(ep) if c.level == BLOCK]
-    if problems:
-        ep.record("package", "awaiting_approval", "written automatically; needs fixing before upload")
-        raise StageError("Not uploaded automatically, the write-up needs fixing first: " + "; ".join(problems))
-    ep.record("package", "awaiting_approval", "written automatically for a private upload")
-    ctx.options["privacy"] = "private"   # always private: you make it public after checking it
-    upload(ctx)
-    ep.record("upload", "awaiting_approval", "uploaded automatically as private; review it in YouTube Studio")
+    """Uploading happens in your browser (Publish → Upload on YouTube), so there's nothing to run here."""
+    if read_json(ctx.episode.path("publish", "upload.json")):
+        ctx.log("Already on YouTube.")
+        return
+    raise StageError("Upload in your browser: Publish → Upload on YouTube opens YouTube's upload page with the "
+                     "title, description and tags ready to paste. Then paste the video's link back.")
 
 
 def check_upload(ep: Episode) -> list[Check]:

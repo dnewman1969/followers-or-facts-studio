@@ -1,5 +1,20 @@
 # Story types and writers
 
+## Scan data for stories (added 2026-10-30)
+
+At the top of the **Stories** page, **Scan data for stories** has the local AI read all the ticked research
+and list every video it could make, with how long each would be:
+
+- **Info clip**: one striking, sourced fact or one claim taken apart, 30-90 seconds (a YouTube Short).
+- **Short story**: one claim, person or thread told properly, about 2-10 minutes.
+- **Long story**: several claims or the whole saga, 10 minutes or more (a big one can also be a book).
+
+Each idea lists the claims and evidence it uses (only real IDs: an idea that uses nothing from the research
+is dropped). The length is worked out from that material with the Script page's length formula, so a
+"long story" with only a few minutes of material is listed as a short story (never padded). Pick an idea,
+choose **Make it as** (2 stories, 2 info clips or 1 book) and the story type and writer, then **Create**.
+Use one of the two stories (or clips) for the script as usual.
+
 On the **Stories** page, next to the style and length:
 
 - **Story type**: how the story is built (its beats in order). "Let the AI pick" gives the three

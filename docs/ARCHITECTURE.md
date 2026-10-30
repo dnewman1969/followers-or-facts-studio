@@ -38,7 +38,7 @@ Kokoro and ffmpeg.
 | `fofstudio/stages/captions.py` | Word timings and SRT | new (OwlBox had one cue per scene) |
 | `fofstudio/engines/render.py` | Camera moves, transitions, clips, narration, ducked music | OwlBox `engine/` rewritten in Python and extended |
 | `fofstudio/cards.py` | Quote/title/credits cards, AI label, thumbnail | truth-vlog `render_episode.py` card idea + BRANDING-KIT colours |
-| `fofstudio/stages/publish.py` | Description, chapters, thumbnail, YouTube upload | truth-vlog templates; OwlBox YouTube API notes |
+| `fofstudio/stages/publish.py` | Description, chapters, thumbnail, search tags; upload is on YouTube's page in the browser (publishkit.py) | truth-vlog templates |
 | `fofstudio/jobs.py` | Queue, worker, heartbeats, pause on failure | Nimrod's Tower `research_queue.py` / `overnight_runner.py` |
 | `fofstudio/rendermode.py` | Suspend/resume other programs, VRAM readout | new (the handoff's Render Mode idea) |
 | `fofstudio/pipeline.py` | What can run, approvals, what a redo invalidates | new |

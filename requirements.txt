@@ -10,7 +10,5 @@ reportlab>=4.0        # lays out the book PDFs (BSD)
 faster-whisper>=1.0   # exact word timing for captions (MIT), CPU
 ddgs>=9.0             # web search for the research agents (MIT), no key needed
 trafilatura>=2.0      # reads the article text out of web pages (Apache-2.0)
-google-api-python-client>=2.100   # YouTube upload (Apache-2.0)
-google-auth-oauthlib>=1.2        # YouTube sign-in (Apache-2.0)
 opencv-python-headless>=4.9      # smooth camera moves (Apache-2.0)
 pytest>=8.0

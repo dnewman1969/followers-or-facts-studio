@@ -206,15 +206,9 @@ class MainWindow(QMainWindow):
             self.toast.show_message(f"✔ {label} finished for {job['project_id']}. Have a look.", "ok", 6)
             if job["stage"] == "render" and settings()["video"].get("open_folder_after_render", True):
                 self._reveal_render(job["project_id"])
-            if job["stage"] == "render" and settings()["youtube"].get("auto_upload"):
-                from .. import youtube
-                if youtube.account():
-                    self.toast.show_message("Uploading it to YouTube as private next...", "info", 6)
-                else:
-                    self.toast.show_message("Not uploaded automatically: sign in under Settings → YouTube first.",
-                                            "warn", 8)
-            if job["stage"] in ("upload", "autopublish"):
-                self._open_studio(job["project_id"])
+            if job["stage"] == "render" and not job.get("draft"):
+                self.toast.show_message("Next: Publish → Upload on YouTube (title, description and tags ready "
+                                        "to paste).", "info", 8)
         elif job["status"] == "cancelled":
             self.toast.show_message(f"{label} was cancelled.", "warn", 5)
         else:

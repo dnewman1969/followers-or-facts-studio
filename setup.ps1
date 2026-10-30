@@ -6,14 +6,12 @@
 
   Options:
       -DataDir "F:\AI\fof-data"   where episodes, the database and voice models live
-      -YouTube                    also install the YouTube upload packages
       -Chatterbox                 also install voice cloning (needs ~6 GB VRAM, CUDA PyTorch)
       -ComfyModels                also download the Wan 2.2 + ACE-Step models into ComfyUI (~45 GB)
 #>
 param(
     [string]$DataDir = "F:\AI\fof-data",
     [string]$ComfyDir = "F:\AI\ComfyUI",
-    [switch]$YouTube,
     [switch]$Chatterbox,
     [switch]$ComfyModels
 )
@@ -38,7 +36,6 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 $venvPy = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 & $venvPy -m pip install --upgrade pip
 & $venvPy -m pip install -r requirements.txt
-if ($YouTube) { & $venvPy -m pip install -r requirements-youtube.txt }
 if ($Chatterbox) {
     & $venvPy -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
     & $venvPy -m pip install -r requirements-chatterbox.txt

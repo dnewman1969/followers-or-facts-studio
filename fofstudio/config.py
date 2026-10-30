@@ -140,13 +140,10 @@ DEFAULTS: dict[str, Any] = {
         "author": "Followers or Facts",   # the name on the cover and the copyright line
         "min_pages": 45,                  # a subject with this much material is called book-sized
     },
-    "youtube": {
-        "client_secrets": "",
+    "youtube": {                        # uploading is done on YouTube's own page (no Google setup)
         "privacy": "private",
-        "category_id": "25",
+        "category_id": "27",            # Education
         "made_for_kids": False,
-        "auto_upload": True,            # upload as PRIVATE as soon as the final video is rendered
-        "open_studio_after_upload": True,
     },
     "rendermode": {
         "suggested": [

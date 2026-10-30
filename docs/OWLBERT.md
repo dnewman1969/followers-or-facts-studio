@@ -23,6 +23,9 @@ Owlbert narrates every video and appears throughout it:
 
 ## His moves
 
+Added 2026-10-30: eleven more moves, and he does more: up to three small moves a scene, and a scene the
+script leaves without one gets a small reaction that fits it (`bits.ROLE_MOVES`).
+
 Owlbert is cut into parts (`fofstudio/rig.py`): body, two folded wings, cap, tassel. The program
 also draws what the picture doesn't show: spread wings for flying, the top of his head under the
 cap, the inside of the cap, and the props. He is never flipped left-to-right, so the tassel always
@@ -51,6 +54,17 @@ the words he's saying when it happens:
 | swoop | big | Loops across the screen | A big section change |
 | hat_trick + document / card / bulb / magnifier | big | Cap off, turned over, pulls the thing out with sparkles while the picture dims | document: the source he's about to quote (shows its title and date); card: the trick's name (tell); bulb: the question (toolkit) |
 | stamp | big | Brings his wing down as a red verdict stamp (FALSE, UNPROVEN...) lands | Verdict scene, on the verdict word |
+| wave | small | Raises a wing and waves | Hello in the intro, goodbye in the outro |
+| nod | small | Two small nods | "Yes, the record says so" (record, verdict; allowed in harm scenes) |
+| shake | small | Shakes his head | At a false claim (never at the people who believed it) |
+| shrug | small, playful | Both wings out, a little lift | "Why would anyone sell that?" (benefit) |
+| facepalm | small, playful | Wing over his eyes, a slump | A claim that falls apart on its own |
+| magnify | small | Holds his magnifying glass to his eye and looks at the picture | "Let's look closer" (record) |
+| read | small | Holds up the page he's quoting (its title and date) and reads it | Record and claim scenes; allowed in harm scenes |
+| count | small | Taps his raised wing: one, two, three | Listing the questions (tell, toolkit) |
+| lean_in | small | Leans toward the picture | "Here's the important part" |
+| sigh | small | A slow, sad slump with his eyes half closed | Harm to real people |
+| bounce | big, playful | Two excited hops with his wings out | Toolkit, intro |
 
 The program checks every direction (`bits.plan_directed`) and drops any that break the rules from the
 research: at most one big and two small moves a scene, small moves 4 s apart, never two at once, no

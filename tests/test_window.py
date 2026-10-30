@@ -140,54 +140,34 @@ def test_queue_page_and_worker_test_button(app, episode):
     assert not app.problems, app.problems
 
 
-def test_render_is_uploaded_privately_with_a_studio_link(app, episode, monkeypatch):
-    """Google's uploader idea, our way: after a final render, write it up and upload it PRIVATE."""
-    from fofstudio import youtube
-    from fofstudio.stages import publish
+def test_write_up_has_lots_of_search_tags_and_upload_is_in_the_browser(app, episode, monkeypatch):
+    """Dave (2026-10-30): no Google setup, open YouTube's page; lots of search terms so it's found."""
+    from fofstudio.app import youtube_ui
+    from fofstudio.youtube import tag_length
     ep = episode
     _finish(ep)
     pipeline.approve(ep, "production")
     pipeline.run_now(ep, "render")
-    sent = {}
-
-    class Req:
-        def __init__(self, result):
-            self.result = result
-
-        def next_chunk(self):
-            return None, self.result
-
-        def execute(self):
-            return {}
-
-    class Fake:
-        def videos(self):
-            return self
-
-        def insert(self, part, body, media_body, notifySubscribers):  # noqa: N803 - YouTube's name
-            sent.update(body=body, notify=notifySubscribers)
-            return Req({"id": "abc123"})
-
-        def thumbnails(self):
-            return self
-
-        def set(self, videoId, media_body):  # noqa: N803
-            sent["thumb"] = True
-            return Req({})
-
-        def captions(self):
-            return self
-    monkeypatch.setattr(publish, "_youtube", lambda: Fake())
-    monkeypatch.setattr(youtube, "account", lambda: {"title": "Followers or Facts", "channel_id": "UC1"})
-    pipeline.run_now(ep, "autopublish")
-    body = sent["body"]
-    assert body["status"]["privacyStatus"] == "private" and body["status"]["containsSyntheticMedia"]
-    assert sent["notify"] is False and sent["thumb"]
-    tags = body["snippet"]["tags"]
-    assert "critical thinking" in tags and sum(len(t) for t in tags) + len(tags) <= 500
-    up = read_json(ep.path("publish", "upload.json"))
-    assert up["studio_url"] == "https://studio.youtube.com/video/abc123/edit" and up["privacy"] == "private"
-    assert ep.stage_status("upload")["status"] == "awaiting_approval"
+    pipeline.approve(ep, "render")
+    pipeline.run_now(ep, "package")
+    meta = read_json(ep.path("publish", "metadata.json"))
+    tags = meta["tags"]
+    assert len(tags) >= 20 and tag_length(tags) <= 500
+    assert "was y2k real" in tags and "fact check" in tags and "one" not in tags   # one-word AI junk dropped
+    assert "#FactCheck" in meta["description"]
+    pipeline.approve(ep, "package")
+    with pytest.raises(Exception, match="Upload on YouTube"):
+        pipeline.run_now(ep, "upload")
+    opened = []
+    monkeypatch.setattr(youtube_ui, "_open", lambda url: opened.append(url))
+    monkeypatch.setattr(youtube_ui, "reveal", lambda p: opened.append(str(p)))
+    k = youtube_ui.PublishKitDialog(ep)
+    from PySide6.QtGui import QGuiApplication
+    assert any("youtube.com/upload" in u for u in opened)
+    assert QGuiApplication.clipboard().text() == meta["title"]          # the title is copied straight away
+    k._copy("tags", "Tags")
+    assert QGuiApplication.clipboard().text() == ", ".join(tags)
+    assert not app.problems, app.problems
 
 
 def test_tags_are_trimmed_to_youtubes_limit():
@@ -276,15 +256,12 @@ def test_a_new_project_starts_with_clean_pages(app, episode):
     assert not app.problems, app.problems
 
 
-def test_youtube_setup_and_browser_upload_windows(app, episode, monkeypatch):
+def test_browser_upload_window(app, episode, monkeypatch):
     from fofstudio.app import youtube_ui
     from fofstudio.util import read_json, write_json
     opened = []
     monkeypatch.setattr(youtube_ui, "_open", lambda url: opened.append(url))
     monkeypatch.setattr(youtube_ui, "reveal", lambda p: opened.append(str(p)))
-    d = youtube_ui.SetupDialog()
-    assert "No client file" in d.file_lab.text() or "Client file" in d.file_lab.text()
-    d.close()
     ep = episode
     ep.path("render", "final.mp4").write_bytes(b"x")
     write_json(ep.path("publish", "metadata.json"), {"title": "My title", "description": "My description",
@@ -320,4 +297,35 @@ def test_cast_window_shows_a_kept_caricature(app, episode):
     assert cast.record(person["person_id"])["approved_in"] == ep.project_id
     lib = CaricatureLibraryDialog()
     assert "1 approved caricature" in " ".join(lab.text() for lab in lib.findChildren(QLabel))
+    assert not app.problems, app.problems
+
+
+def test_stories_page_scans_and_creates(app, episode, monkeypatch):
+    """Dave (2026-10-30): Scan data for stories at the top, pick an idea, choose what to make, Create."""
+    from fofstudio.stages import ideas
+    from tests.test_pipeline import tick_all
+    ep = episode
+    pipeline.run_now(ep, "research", {"depth": "quick"})
+    tick_all(ep)
+    pipeline.approve(ep, "research")
+    pipeline.run_now(ep, "ideas")
+    from fofstudio.app.main import MainWindow
+    w = MainWindow()
+    w.show()
+    w._fill_picker(ep.project_id)
+    page = {type(p).__name__: p for p in w.pages_and_tools}["StoriesPage"]
+    page.set_episode(ep)
+    page.refresh()
+    assert page.scan_btn.isEnabled()
+    assert page.ideas.rowCount() == len(ideas.load(ep)) and page.ideas_box.isVisibleTo(page)
+    page.ideas.selectRow(0)
+    assert page.make_as.currentData() == "clip"          # an info-clip idea defaults to 2 info clips
+    started = []
+    monkeypatch.setattr(page, "run_stage", lambda stage, opts, label: started.append((stage, opts)))
+    page._create_from_idea()
+    assert started[0][0] == "stories" and started[0][1]["make"] == "clip"
+    page.make_as.setCurrentIndex(page.make_as.findData("book"))
+    page._create_from_idea()
+    assert started[1][0] == "book" and started[1][1]["idea"]["id"] == "I01"
+    w.close()
     assert not app.problems, app.problems

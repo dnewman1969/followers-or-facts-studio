@@ -1,71 +1,20 @@
-# YouTube sign-in and upload (free, one time, about 10 minutes)
+# Uploading to YouTube
 
-The Studio uploads with the free YouTube Data API. You make a small "app" in Google Cloud that only
-you use, download its sign-in file, and sign in once from the Studio. No billing, no card.
+No Google setup (changed 2026-10-30 at Dave's request; the old Google Cloud sign-in is gone).
 
-**Easiest:** Settings → YouTube → **Set up YouTube, step by step** opens each Google page in order and checks
-what it can. **No setup at all:** Publish → **Upload in my browser** opens YouTube's own upload page with
-copy buttons for everything (research "Easy YouTube upload like PowerDirector": PowerDirector ships its own
-Google-approved sign-in; a personal program can't borrow it, so it's your own app or the browser).
+1. Publish → **Write it up**: title, description (hook, chapters, every proof link and its Wayback copy,
+   credits, three hashtags), a thumbnail and **lots of search tags**: the phrases people type into YouTube
+   about this subject (written by the local AI from the video's own claims and people), then the names,
+   claims and the channel's tags, as many as fit in YouTube's 500 characters. Edit the tags box if you like;
+   it counts the characters for you.
+2. Publish → **Upload on YouTube**: YouTube's upload page opens in your browser, the folder with the video
+   opens, and the title is already copied. Drag the video in and paste the title, description and tags with
+   the Copy buttons. Follow the checklist (thumbnail, not made for kids, altered content: yes, subtitles,
+   Private).
+3. Paste the video's link back into the Studio and press **It's uploaded**.
+4. In YouTube Studio, check the copyright and ad-suitability checks, pin the comment
+   (`publish/pinned-comment.txt`), then make it public.
 
-The step people miss is **Publish app** (step 4 below): in "Testing" Google signs you out every 7 days, and
-the next upload fails. Do it before you download the client file.
-
-## Set it up
-
-1. Go to https://console.cloud.google.com/ and make a **New project** (call it "FoF Studio").
-2. **APIs & Services → Library** → search **YouTube Data API v3** → **Enable**.
-3. **Google Auth Platform** (it used to be called "OAuth consent screen"):
-   - **Branding:** app name "FoF Studio", your email as the support email.
-   - **Audience:** choose **External**, then press **Publish app** so it says **In production** (without
-     this, Google signs you out every 7 days). Google doesn't need to review an app only you use.
-4. **Data access → Add or remove scopes:** tick `.../auth/youtube.upload` and `.../auth/youtube.force-ssl`
-   (upload, thumbnail, captions, and reading your channel's name).
-5. **Clients → Create client → Desktop app** → **Create** → **Download JSON**.
-6. Check **Audience** still says **In production** (step 3).
-7. In the Studio: **Settings → YouTube → Choose client file...** and pick the JSON you downloaded. (If you
-   just leave the downloaded `client_secret_....json` in your Downloads folder, on the Desktop or in
-   `F:\AI\fof-data`, the Studio finds it by itself.)
-8. **Sign in to YouTube.** A browser tab opens. Pick the Google account that owns the channel (or its
-   Brand Account). Google warns "Google hasn't verified this app": that's expected for your own app.
-   Click **Advanced → Go to FoF Studio (unsafe)**, **tick "Manage your YouTube videos"**, allow access, and
-   close the tab. (If that box isn't ticked, uploads fail with "insufficient permissions".)
-9. Settings now says **Signed in as <your channel>**. The sign-in is kept in `fof-data\youtube-token.json`.
-
-## First upload: one quick check
-
-Upload a short test video first (any finished episode will do) as **Private**. Then open it in YouTube
-Studio and try switching it to **Unlisted**. If YouTube says **"Locked as private"**, Google is
-applying an old rule to new, unaudited projects; you can still publish by uploading from YouTube Studio
-yourself, or fill in Google's free API audit form. Google's own pages disagree about whether the lock
-still applies in 2026, so this test is the way to find out.
-
-## Uploading from the Publish page
-
-Press **Upload to YouTube (private)**. The line under the button shows what's ready: the YouTube packages,
-your client file, and whether you're signed in. If you're not signed in, a browser tab opens to sign in
-and the upload starts when you come back. If the video hasn't been written up yet, it's written up and
-uploaded in one go.
-
-## Automatic upload after the final render
-
-With Settings → YouTube → **Upload automatically** ticked (the default), every final render (not a
-preview) is written up and uploaded straight away as **Private**: title, description with every
-source link and the AI disclosure, tags (trimmed to YouTube's 500-character limit), category and the
-thumbnail. When it's done the Studio opens the video in **YouTube Studio** so you can see YouTube's
-checks (copyright, ad suitability) before you make it public. The Publish page keeps both links.
-If something in the write-up needs your attention (a blocked check), it stops before uploading and
-the Publish page says what to fix.
-
-## Good to know
-
-- **Uploads are private by default** (Settings → YouTube → Upload as). Check the video, pin the
-  comment with the proof links, then make it public in YouTube Studio.
-- **Plenty of uploads per day.** Since June 2026 uploads have their own quota (about 100 a day).
-- **Custom thumbnails need a phone-verified channel.** If yours isn't, the upload still works and the
-  log says to set the thumbnail in YouTube Studio (files up to 50 MB are accepted since September 2026).
-- **AI disclosure:** every upload is marked "contains altered or synthetic content", and the
-  description says the illustrations are AI and labelled on screen. Caricatures get an extra line.
-- **Subscribers aren't notified** of the private upload; they'll see it when you make it public.
-- If an upload says the sign-in ran out, go to Settings → YouTube → **Sign in again**. A job never opens
-  a browser by itself in the middle of an upload.
+Why not fill YouTube's page automatically? YouTube has no way for another program to fill its upload form,
+and driving YouTube Studio with a robot is against its rules. Keep tags honest and on topic: YouTube treats
+misleading or off-topic tags as spam.

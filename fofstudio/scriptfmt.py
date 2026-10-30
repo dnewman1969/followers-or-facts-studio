@@ -38,7 +38,8 @@ CHANGES = ("continue", "crossfade", "sting", "hard_cut", "silence")
 QUOTED = {"drop before": "drop_before", "back after": "back_after", "sting at": "sting_at"}
 # Owlbert's moves (fofstudio/bits.py draws them) and what he can pull out of his hat
 MOVES = ("fly_in", "fly_out", "point", "glasses", "think", "hat_tip", "solemn", "surprised", "flourish", "swoop",
-         "hat_trick", "stamp")
+         "hat_trick", "stamp",
+         "wave", "nod", "shake", "shrug", "facepalm", "magnify", "read", "count", "lean_in", "sigh", "bounce")
 PROPS = ("card", "document", "bulb", "magnifier")
 
 

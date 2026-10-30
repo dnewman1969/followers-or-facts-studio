@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from . import (book, captions, lengthscan, music, narration, production, publish, render, research, script, stories,
+from . import (book, captions, ideas, lengthscan, music, narration, production, publish, render, research, script, stories,
                storyboard, styletest, video)
 from .base import Stage
 
@@ -36,7 +36,7 @@ STAGES: list[Stage] = [
     Stage("package", "Write-up", "cpu", ("render",), publish.package, publish.check_package,
           description="Title, description with every proof link, chapters, thumbnail."),
     Stage("upload", "Upload", "network", ("package",), publish.upload, publish.check_upload,
-          description="Upload to YouTube as private."),
+          description="Upload on YouTube's own page in your browser, then paste the link back."),
 ]
 
 
@@ -59,11 +59,13 @@ def _selftest(ctx):
 STAGES.append(Stage("selftest", "Worker test", "cpu", (), _selftest, lambda ep: [], hidden=True,
                     description="Checks that the background worker runs jobs."))
 
-STAGES.append(Stage("autopublish", "Automatic upload", "network", (), publish.autopublish, lambda ep: [],
-                    hidden=True, description="After a final render: write it up and upload it as private."))
 
 STAGES.append(Stage("scan", "Story scan", "ollama", (), lengthscan.run, lambda ep: [], hidden=True,
                     description="Reads the story and evidence and works out how long the video should be."))
+
+STAGES.append(Stage("ideas", "Scan data for stories", "ollama", (), ideas.run, lambda ep: [], hidden=True,
+                    description="Lists every info clip, short story and long story the ticked research could make, "
+                                "with how long each would be."))
 
 STAGES.append(Stage("book", "Book", "ollama", (), book.run, book.check, hidden=True,
                     description="The whole story with references, as a PDF, written only from the ticked research."))

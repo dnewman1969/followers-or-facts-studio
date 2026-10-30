@@ -3,7 +3,7 @@
 One program on your own PC that takes a story from the research database all the
 way to a finished, uploaded YouTube video, stopping for your OK after every step.
 No subscriptions: the AI runs on your PC (Ollama + ComfyUI + Kokoro), and the
-only online service is the free YouTube upload.
+only online step is uploading on YouTube's own page in your browser.
 
 ```
 1 Database ─► 2 Research ─► 3 Stories ─► 4 Script ─► 5 Storyboard ─► 6 Video ─► 7 Production ─► 8 Publish

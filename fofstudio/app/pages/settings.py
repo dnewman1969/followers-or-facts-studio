@@ -1,23 +1,18 @@
-"""Settings: Sound (speakers, test, volume, mix) and YouTube (sign in) at the top, then every other
-value in settings.toml as a form, plus connection tests."""
+"""Settings: Sound (speakers, test, volume, mix) at the top, then every other value in settings.toml as a
+form, plus connection tests. (YouTube needs no setup: Publish → Upload on YouTube.)"""
 
 from __future__ import annotations
 
-import threading
-
-from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGroupBox,
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox,
                                QLabel, QLineEdit, QScrollArea, QSlider, QSpinBox,
                                QVBoxLayout, QWidget)
 
-from ... import youtube
 from ...comfy import Comfy
-from ...config import REPO, save_settings, settings, settings_path
+from ...config import save_settings, settings, settings_path
 from ...llm import JOBS, Ollama
-from ...util import StageError
 from .. import sound
-from ..common import GOLD, GREEN, MUTED, RED, button, error, info, label, row
+from ..common import GOLD, GREEN, RED, button, info, label, row
 
 HELP = {
     "moves": "Owlbert's moves: fly in, point at the evidence, hat trick, wing flourish, fly off",
@@ -30,7 +25,7 @@ HELP = {
     "video_workflow": "Wan 2.2 image-to-video workflow",
     "voice": "Kokoro voice id, e.g. bm_george, bm_fable, am_michael",
 }
-OWN_PANELS = {"sound", "youtube"}   # these sections have their own panels above the form
+OWN_PANELS = {"sound", "youtube"}   # sound has its own panel; youtube needs no settings any more
 MIX = [("speech_db", "Speech", -24, 12), ("music_db", "Music", -40, 6), ("master_db", "Master", -24, 12)]
 
 
@@ -62,7 +57,6 @@ class SettingsPage(QWidget):
         self.tester = sound.Tester(self)
         self._sign_in_result: dict | None = None
         self.lay.addWidget(self._sound_panel())
-        self.lay.addWidget(self._youtube_panel())
         self._build()
 
     # ------------------------------------------------------------ Sound
@@ -150,109 +144,6 @@ class SettingsPage(QWidget):
     def _say(self, text: str) -> None:
         self.test_msg.setText(text if "<span" in text else f"<span style='color:{GREEN}'>{text}</span>")
 
-    # ------------------------------------------------------------ YouTube
-    def _youtube_panel(self) -> QGroupBox:
-        cfg = settings()["youtube"]
-        box = QGroupBox("YouTube")
-        form = QFormLayout(box)
-        form.addRow(label("One-time setup (free, about 10 minutes). The step-by-step window opens each Google page "
-                          "for you. No setup at all? Publish → Upload in my browser works without it.", "muted"))
-        form.addRow("Guide", row(button("Set up YouTube, step by step", self._setup, "primary"),
-                                 button("Open the setup guide", self._guide),
-                                 button("Open Google Cloud", lambda: QDesktopServices.openUrl(
-                                     QUrl("https://console.cloud.google.com/apis/library/youtube.googleapis.com")))))
-        self.client_lab = QLabel("")
-        form.addRow("1. Client file", row(button("Choose client file...", self._choose_client), self.client_lab))
-        self.sign_btn = button("Sign in to YouTube", self._sign_in, "primary")
-        self.out_btn = button("Sign out", self._sign_out)
-        self.account_lab = QLabel("")
-        self.account_lab.setWordWrap(True)
-        form.addRow("2. Your channel", row(self.sign_btn, self.out_btn, self.account_lab))
-        self.privacy = QComboBox()
-        for text, key in (("Private (recommended: check it, then make it public in YouTube Studio)", "private"),
-                          ("Unlisted", "unlisted"), ("Public", "public")):
-            self.privacy.addItem(text, key)
-        self.privacy.setCurrentIndex(max(0, self.privacy.findData(cfg["privacy"])))
-        form.addRow("Upload as", self.privacy)
-        self.kids = QCheckBox("Made for kids")
-        self.kids.setChecked(bool(cfg["made_for_kids"]))
-        form.addRow("", self.kids)
-        self.category = QComboBox()
-        for text, key in (("News & Politics", "25"), ("Education", "27"), ("Science & Technology", "28"),
-                          ("People & Blogs", "22")):
-            self.category.addItem(text, key)
-        self.category.setCurrentIndex(max(0, self.category.findData(str(cfg["category_id"]))))
-        form.addRow("Category", self.category)
-        self.auto = QCheckBox("Upload automatically as private when the final video is rendered, then open "
-                              "YouTube Studio so I can review it")
-        self.auto.setChecked(bool(cfg.get("auto_upload", True)))
-        form.addRow("Automatic", self.auto)
-        self._show_account()
-        return box
-
-    def _setup(self) -> None:
-        from ..youtube_ui import SetupDialog
-        SetupDialog(self).exec()
-        self._show_account()
-
-    def _guide(self) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(REPO / "docs" / "YOUTUBE.md")))
-
-    def _choose_client(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Choose the client file you downloaded from Google Cloud",
-                                              "", "Google client file (*.json)")
-        if not path:
-            return
-        try:
-            youtube.use_client_file(path)
-        except StageError as exc:
-            error(self, str(exc))
-        self._show_account()
-
-    def _sign_in(self) -> None:
-        if not youtube.client_file():
-            error(self, "Choose the client file first (step 1).")
-            return
-        self.sign_btn.setEnabled(False)
-        self.sign_btn.setText("Finish signing in in your browser...")
-        self.account_lab.setText(f"<span style='color:{GOLD}'>A browser tab opened. Pick the Google account that "
-                                 "owns the channel, allow access, then come back here.</span>")
-        self._sign_in_result = None
-
-        def work() -> None:
-            try:
-                self._sign_in_result = {"ok": youtube.sign_in()}
-            except Exception as exc:  # noqa: BLE001 - shown on the page
-                self._sign_in_result = {"error": str(exc)}
-        threading.Thread(target=work, daemon=True).start()
-        self._poll = QTimer(self)
-        self._poll.timeout.connect(self._sign_in_done)
-        self._poll.start(500)
-
-    def _sign_in_done(self) -> None:
-        if self._sign_in_result is None:
-            return
-        self._poll.stop()
-        self.sign_btn.setEnabled(True)
-        res = self._sign_in_result
-        if "error" in res:
-            error(self, f"Signing in didn't work:\n{res['error']}")
-        self._show_account()
-
-    def _sign_out(self) -> None:
-        youtube.sign_out()
-        self._show_account()
-
-    def _show_account(self) -> None:
-        cf = youtube.client_file()
-        self.client_lab.setText(f"<span style='color:{GREEN}'>✔ {cf.name}</span>" if cf else
-                                f"<span style='color:{MUTED}'>not chosen yet</span>")
-        acct = youtube.account()
-        self.sign_btn.setText("Sign in again" if acct else "Sign in to YouTube")
-        self.out_btn.setEnabled(bool(acct))
-        self.account_lab.setText(f"<span style='color:{GREEN}'>✔ Signed in as <b>{acct['title']}</b></span>"
-                                 if acct else f"<span style='color:{MUTED}'>not signed in</span>")
-
     # ------------------------------------------------------------ everything else
     def _build(self) -> None:
         for section, values in settings().items():
@@ -305,11 +196,6 @@ class SettingsPage(QWidget):
         snd["normalize_loudness"] = self.normalize.isChecked()
         snd["loudness_lufs"] = self.lufs.value()
         snd["media_backend"] = self.backend.currentData()
-        data["youtube"]["privacy"] = self.privacy.currentData()
-        data["youtube"]["made_for_kids"] = self.kids.isChecked()
-        data["youtube"]["category_id"] = self.category.currentData()
-        data["youtube"]["auto_upload"] = self.auto.isChecked()
-        data["youtube"]["open_studio_after_upload"] = self.auto.isChecked()
         path = save_settings(data)
         # the preview player picks up the new speaker and volume straight away
         win = self.window()

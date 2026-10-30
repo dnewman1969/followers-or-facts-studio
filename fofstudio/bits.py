@@ -40,12 +40,28 @@ KINDS = {
     "swoop": "Swoop across",
     "stamp": "Verdict stamp",
     "fly_out": "Fly off",
+    # added 2026-10-30 (Dave: "make a bunch more Owlbert animations and have him do more in the videos")
+    "wave": "Wave hello",
+    "nod": "Nod",
+    "shake": "Shake his head",
+    "shrug": "Shrug",
+    "facepalm": "Wing to his face",
+    "magnify": "Look through his magnifying glass",
+    "read": "Read the document",
+    "count": "Count the points",
+    "lean_in": "Lean in",
+    "sigh": "A sad sigh",
+    "bounce": "Excited hops",
 }
 LENGTH = {"fly_in": 2.4, "point": 2.4, "hat_trick": 5.2, "flourish": 1.6, "surprised": 1.0, "think": 2.2,
-          "glasses": 1.0, "hat_tip": 1.3, "solemn": 3.2, "swoop": 1.9, "stamp": 2.4, "fly_out": 2.0}
-BIG = {"fly_in", "hat_trick", "surprised", "swoop", "stamp", "fly_out"}
-PLAYFUL = {"flourish", "surprised", "swoop"}        # never in careful topics (the hat trick only shows a document there)
-SOMBER_OK = {"point", "glasses", "solemn"}          # all he does in a harm scene
+          "glasses": 1.0, "hat_tip": 1.3, "solemn": 3.2, "swoop": 1.9, "stamp": 2.4, "fly_out": 2.0,
+          "wave": 1.8, "nod": 1.2, "shake": 1.3, "shrug": 1.5, "facepalm": 2.0, "magnify": 2.6, "read": 3.0,
+          "count": 2.4, "lean_in": 1.8, "sigh": 2.2, "bounce": 1.6}
+BIG = {"fly_in", "hat_trick", "surprised", "swoop", "stamp", "fly_out", "bounce"}
+PLAYFUL = {"flourish", "surprised", "swoop", "shrug", "facepalm", "bounce"}   # never in careful topics (the hat
+#                                                    trick only shows a document there)
+SOMBER_OK = {"point", "glasses", "solemn", "sigh", "read", "nod"}   # all he does in a harm scene
+HOLDS = {"magnify": "magnifier", "read": "document"}   # moves where he holds a prop up
 VERDICT_WORDS = {"false": "FALSE", "true": "TRUE", "misleading": "MISLEADING", "mostly_false": "MOSTLY FALSE",
                  "unverified": "UNPROVEN", "contested": "CONTESTED", "partly_true": "PARTLY TRUE"}
 PROP_NAMES = {"card": "trick card", "document": "document", "bulb": "light bulb", "magnifier": "magnifying glass"}
@@ -150,6 +166,7 @@ def prop_image(kind: str, text: str = "", height: int = 300) -> Image.Image:
         small = cards.font("sans_bold", int(h * 0.055))
         d.text((30 * ss, 30 * ss), "THE RECORD", font=small, fill=(150, 40, 40, 255))
         size = int(h * 0.085)
+        lines, big = [title], cards.font("serif_bold", max(6, size))   # (a tiny page still draws)
         while size > 10:
             big = cards.font("serif_bold", size)
             lines = cards._wrap(d, title, big, w - 60 * ss)
@@ -420,6 +437,121 @@ class Move:
             p.wing_r = ang
         return p
 
+    # ------------------------------------------------------------ the 2026-10-30 moves
+    def _side_wing(self, p: Pose, angle: float) -> Pose:
+        """Lift the wing on the side facing the middle of the screen."""
+        if self.st.inward < 0:
+            p.wing_l = angle
+        else:
+            p.wing_r = angle
+        return p
+
+    def _wave(self, t: float, base: Pose) -> Pose:
+        """Wing up and waving: hello at the start, goodbye at the end."""
+        up = _ramp(t, 0.0, 0.3) * (1 - _ramp(t, self.d - 0.3, self.d))
+        wag = 22 * math.sin(2 * math.pi * 3.0 * t) * up
+        p = replace(base, rot=-2 * up * self.st.inward, gaze=self.st.inward)
+        return self._side_wing(p, 105 * up + wag)
+
+    def _nod(self, t: float, base: Pose) -> Pose:
+        """Two small nods: 'yes, the record says so'."""
+        k = _ramp(t, 0.0, self.d)
+        bob = max(0.0, math.sin(2 * math.pi * 2.0 * k * self.d / 1.2)) * (1 - _ramp(t, self.d - 0.25, self.d))
+        return replace(base, squash=0.045 * bob, rot=1.5 * bob * self.st.inward)
+
+    def _shake(self, t: float, base: Pose) -> Pose:
+        """Shakes his head: 'no, that's not what happened' (about the claim, never about believers)."""
+        k = math.sin(math.pi * _ramp(t, 0.0, self.d))
+        side = math.sin(2 * math.pi * 3.4 * t) * k
+        return replace(base, rot=5.5 * side, gaze=round(2 * side), squash=-0.01 * k)
+
+    def _shrug(self, t: float, base: Pose) -> Pose:
+        """Both wings out, a little bounce: 'and why would anyone sell that?'"""
+        k = math.sin(math.pi * _ramp(t, 0.0, self.d))
+        return replace(base, wing_l=55 * k, wing_r=55 * k, squash=-0.035 * k, cap_dy=-18 * k)
+
+    def _facepalm(self, t: float, base: Pose) -> Pose:
+        """Wing over his eyes and a slump: at a claim that falls apart on its own."""
+        up = _ease(_ramp(t, 0.0, 0.35)) * (1 - _ease(_ramp(t, self.d - 0.4, self.d)))
+        slump = 0.04 * up
+        p = replace(base, squash=slump, rot=-3 * up * self.st.inward,
+                    blink=max(base.blink, round(up * 4) / 4))
+        return self._side_wing(p, -132 * up)
+
+    def _magnify(self, t: float, base: Pose) -> Pose:
+        """Holds his magnifying glass up to his eye and looks at the evidence: 'let's look closer'."""
+        up = _ease(_ramp(t, 0.0, 0.35)) * (1 - _ease(_ramp(t, self.d - 0.35, self.d)))
+        drift = 2.5 * math.sin(2 * math.pi * 0.8 * t) * up
+        p = replace(base, gaze=round(2 * up) * self.st.inward, rot=(-3 * up + drift) * self.st.inward)
+        self.hold = up
+        return self._side_wing(p, -105 * up)
+
+    def _read(self, t: float, base: Pose) -> Pose:
+        """Holds a page from the record in front of him and reads it (eyes moving along the lines)."""
+        up = _ease(_ramp(t, 0.0, 0.4)) * (1 - _ease(_ramp(t, self.d - 0.4, self.d)))
+        line = math.sin(2 * math.pi * 0.9 * t)
+        p = replace(base, wing_l=-48 * up, wing_r=-48 * up, gaze=round(line * up), squash=0.012 * up)
+        self.hold = up
+        return p
+
+    def _count(self, t: float, base: Pose) -> Pose:
+        """Taps his wing up three times: one, two, three questions to ask."""
+        up = _ramp(t, 0.0, 0.25) * (1 - _ramp(t, self.d - 0.3, self.d))
+        beat = max(0.0, math.sin(2 * math.pi * 3 * _ramp(t, 0.25, self.d - 0.3) * 1.0)) if up else 0.0
+        p = replace(base, gaze=self.st.inward, squash=0.015 * beat)
+        return self._side_wing(p, (135 + 22 * beat) * up)
+
+    def _lean_in(self, t: float, base: Pose) -> Pose:
+        """Leans toward the picture, eyes on it: 'here's the important part'."""
+        k = _ease(_ramp(t, 0.0, 0.45)) * (1 - _ease(_ramp(t, self.d - 0.45, self.d)))
+        return replace(base, rot=-9 * k * self.st.inward, x=base.x + self.st.inward * self.st.w * 0.012 * k,
+                       gaze=round(2 * k) * self.st.inward, squash=-0.02 * k)
+
+    def _sigh(self, t: float, base: Pose) -> Pose:
+        """A slow, sad slump with his eyes half closed: for the harm a claim did to real people."""
+        k = _ease(_ramp(t, 0.0, 0.9)) * (1 - _ease(_ramp(t, self.d - 0.7, self.d)))
+        return replace(base, squash=0.05 * k, wing_l=-14 * k, wing_r=-14 * k, cap_dy=10 * k,
+                       blink=max(base.blink, round(0.5 * k * 4) / 4))
+
+    def _bounce(self, t: float, base: Pose) -> Pose:
+        """Two excited hops with his wings out: 'here's how to spot it!'"""
+        k = _ramp(t, 0.0, self.d)
+        hop = abs(math.sin(2 * math.pi * k)) * self.st.h * 0.028
+        out = math.sin(math.pi * k)
+        return replace(base, y=base.y - hop, wing_l=40 * out, wing_r=40 * out,
+                       squash=-0.04 * abs(math.sin(2 * math.pi * k)), cap_dy=-22 * abs(math.sin(2 * math.pi * k)))
+
+    def _held_prop(self, t: float, pose: Pose, img: Image.Image) -> None:
+        """The magnifying glass at his eye, or the page in front of him, while he holds them up."""
+        k = getattr(self, "hold", 0.0)
+        if k <= 0.02:
+            return
+        inward = self.st.inward
+        m = self.st.to_screen(pose)
+        if self.kind == "magnify":
+            eye = rig_eye(inward)
+            cx, cy = _apply(m, (eye[0] + inward * 20, eye[1] + 10))
+            full = max(8, int(330 * self.st.s))
+            pic = prop_image("magnifier", "", full)      # drawn once at full size, then shrunk while it comes up
+            pic = pic.resize((max(1, int(pic.width * (0.6 + 0.4 * k))), max(1, int(pic.height * (0.6 + 0.4 * k)))),
+                             Image.LANCZOS)
+            if inward < 0:
+                pic = pic.transpose(Image.FLIP_LEFT_RIGHT)
+            lx = cx - (pic.width * (0.6 if inward < 0 else 0.4))
+            ly = cy - pic.height * 0.4 + (1 - k) * pic.height * 0.8
+        else:
+            cx, cy = _apply(m, (512 + inward * 40, 760))
+            full = max(40, int(430 * self.st.s))
+            pic = prop_image("document", self.prop.get("text", "") or "The record", full)
+            pic = pic.resize((max(1, int(pic.width * (0.5 + 0.5 * k))), max(1, int(pic.height * (0.5 + 0.5 * k)))),
+                             Image.LANCZOS)
+            lx, ly = cx - pic.width / 2, cy - pic.height / 2 + (1 - k) * pic.height * 0.6
+        if k < 1:
+            a = np.asarray(pic).copy()
+            a[..., 3] = (a[..., 3] * min(1.0, k * 1.6)).astype("uint8")
+            pic = Image.fromarray(a, "RGBA")
+        _paste(img, pic, int(lx), int(ly))
+
     def _hat_trick(self, t: float, base: Pose) -> Pose:
         inward = self.st.inward
         d = self.d
@@ -454,6 +586,9 @@ class Move:
     def extras(self, t: float, pose: Pose, img: Image.Image, cap_opening: tuple[float, float] | None) -> None:
         if self.kind == "stamp":
             self._stamp_extra(t, img)
+            return
+        if self.kind in HOLDS:
+            self._held_prop(t, pose, img)
             return
         if self.kind != "hat_trick" or cap_opening is None:
             return
@@ -509,6 +644,11 @@ class Move:
         if self.kind != "hat_trick":
             return 0.0
         return 0.35 * _ramp(t, 1.2, 1.7) * (1 - _ramp(t, self.d - 1.3, self.d - 0.9))
+
+
+def rig_eye(inward: int) -> tuple[float, float]:
+    """The centre of the eye on the side facing the middle of the screen (art pixels)."""
+    return owl.EYES[1] if inward > 0 else owl.EYES[0]
 
 
 def _paste(img: Image.Image, pic: Image.Image, left: int, top: int) -> None:
@@ -602,35 +742,46 @@ def plan(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks: list[st
         return []
     first = scenes[0]
     add("fly_in", first["start"], first, variant=rnd.randrange(2))
+    if first["speech_end"] - first["speech_start"] > 5:
+        add("wave", first["start"] + LENGTH["fly_in"] + 0.5, first)
     hats = 0
     points_last = -999.0
     point_variant = 0
-    for sc in scenes[1:-1] if len(scenes) > 2 else scenes[1:]:
+    for n, sc in enumerate(scenes[1:-1] if len(scenes) > 2 else scenes[1:]):
         role = sc.get("role")
         talk = sc["speech_end"] - sc["speech_start"]
+        used_big = False
         if role == "tell" and playful_ok and hats < 2 and talk > 6:
             t = sc["speech_start"] + min(2.0, talk * 0.2)
             if ok_big(t):
                 tech = techniques.get(tricks[0]) if tricks else None
                 add("hat_trick", t, sc, prop={"kind": "card", "text": tech.name if tech else "The Trick"})
                 hats += 1
-                continue
-        if role == "toolkit" and playful_ok and hats < 2 and talk > 6:
+                used_big = True
+        if role == "toolkit" and playful_ok and hats < 2 and talk > 6 and not used_big:
             t = sc["speech_start"] + min(1.5, talk * 0.2)
             if ok_big(t):
                 add("hat_trick", t, sc, prop={"kind": "bulb", "text": ""})
                 hats += 1
-                continue
+                used_big = True
         if role == "verdict" and playful_ok and int(creative.get("humor", 1)) > 0 and talk > 3:
             t = sc["speech_start"] + 0.3
             if ok_big(t):
                 add("flourish", t, sc)
-                continue
-        if role in POINT_ROLES and talk > 8 and sc["speech_start"] - points_last >= 25:
+                used_big = True
+        if role in POINT_ROLES and talk > 8 and sc["speech_start"] - points_last >= 15 and not used_big:
             t = sc["speech_start"] + min(3.0, talk * 0.25)
             add("point", t, sc, variant=point_variant)
             point_variant += 1
             points_last = t
+        # Dave (2026-10-30): "have him do more in the videos": a second, smaller reaction later in the scene
+        extra = default_move(role, careful, int(creative.get("humor", 1)), n)
+        t_extra = sc["speech_start"] + talk * 0.62
+        if extra in BIG and (used_big or not ok_big(t_extra)):
+            extra = None
+        if extra and talk > 7:
+            add(extra, t_extra, sc,
+                **({"prop": {"kind": HOLDS[extra], "text": "The record"}} if extra in HOLDS else {}))
     last = scenes[-1]
     if len(scenes) > 1:
         start = max(last["speech_start"] + 0.5, last["end"] - LENGTH["fly_out"])
@@ -643,6 +794,27 @@ def plan(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks: list[st
             continue
         out.append(b)
     return out
+
+
+# what he does by himself when the script doesn't direct a scene, by its role (alternating for variety)
+ROLE_MOVES = {
+    "intro": ["lean_in", "think"],
+    "claim": ["shake", "facepalm", "think", "lean_in"],
+    "record": ["read", "magnify", "nod", "glasses"],
+    "benefit": ["shrug", "lean_in", "magnify"],
+    "harm": ["sigh", "read"],
+    "tell": ["count", "nod"],
+    "toolkit": ["count", "bounce", "think"],
+    "verdict": ["nod", "shake"],
+    "outro": ["wave", "hat_tip"],
+}
+
+
+def default_move(role: str, careful: bool, humor: int, n: int) -> str | None:
+    """A role-fitting reaction for a scene, never a playful one on careful topics or with humor off."""
+    options = [m for m in ROLE_MOVES.get(role or "", ["nod", "think"])
+               if not ((careful or humor == 0) and m in PLAYFUL) and not (role == "harm" and m not in SOMBER_OK)]
+    return options[n % len(options)] if options else None
 
 
 def _norm(w: str) -> str:
@@ -669,7 +841,8 @@ def plan_directed(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks
                   info: dict[str, dict[str, str]] | None = None) -> list[dict]:
     """Owlbert's moves as the script directs them (each scene's OWLBERT lines), checked against the rules
     from the research (docs/OWLBERT.md), because the writer can't be trusted to follow them alone:
-      * at most one big move and two small ones a scene; small moves 4 s apart; never two at once;
+      * at most one big move and three small ones a scene; small moves 3 s apart; never two at once;
+      * a scene the script left without a move gets one small reaction that fits its role (ROLE_MOVES);
       * fly in only in the first scene, fly off only in the last, the verdict stamp only in the verdict;
       * no hat trick two scenes running, at most three a video; at most two swoops;
       * harm scenes: only point, glasses or cap to the chest; careful topics and humor 0: nothing playful,
@@ -706,6 +879,8 @@ def plan_directed(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks
                 prop = {"kind": p, "text": text}
             elif kind == "stamp":
                 prop = {"kind": "stamp", "text": info.get(sc["scene_id"], {}).get("verdict", "VERDICT")}
+            elif kind in HOLDS:
+                prop = {"kind": HOLDS[kind], "text": info.get(sc["scene_id"], {}).get("document", "The record")}
             if kind == "fly_in":
                 t = sc["start"]
             elif kind == "fly_out":
@@ -716,6 +891,18 @@ def plan_directed(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks
                 t -= {"hat_trick": 1.1, "stamp": 0.35}.get(kind, 0.15)   # the prop lands as he says it
             wanted.append({"kind": kind, "start": max(0.0, t), "scene_id": sc["scene_id"], "prop": prop,
                            "scene_no": k})
+    # Dave (2026-10-30): "have him do more": a scene the script left without a move gets a small reaction
+    directed = {w["scene_id"] for w in wanted}
+    for k, sc in enumerate(scenes):
+        talk = sc["speech_end"] - sc["speech_start"]
+        if sc["scene_id"] in directed or talk < 6 or k in (0, len(scenes) - 1) and sc.get("role") not in ("intro", "outro"):
+            continue
+        m = default_move(sc.get("role", ""), careful, int(creative.get("humor", 1)), k)
+        if m:
+            prop = ({"kind": HOLDS[m], "text": info.get(sc["scene_id"], {}).get("document", "The record")}
+                    if m in HOLDS else None)
+            wanted.append({"kind": m, "start": sc["speech_start"] + talk * 0.4, "scene_id": sc["scene_id"],
+                           "prop": prop, "scene_no": k})
     if scenes and not any(w["kind"] == "fly_in" for w in wanted):
         wanted.insert(0, {"kind": "fly_in", "start": scenes[0]["start"], "scene_id": scenes[0]["scene_id"],
                           "prop": None, "scene_no": 0})
@@ -746,7 +933,7 @@ def plan_directed(scenes: list[dict[str, Any]], creative: dict[str, Any], tricks
             stamps += kind == "stamp"
         else:
             times = small_in.setdefault(sid, [])
-            if len(times) >= 2 or any(abs(w["start"] - x) < 4 for x in times):
+            if len(times) >= 3 or any(abs(w["start"] - x) < 3 for x in times):
                 continue
             times.append(w["start"])
         item = {"id": f"{kind}-{len(out) + 1}", "kind": kind, "start": round(w["start"], 3),

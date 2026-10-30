@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from fofstudio import cast, media, pipeline, styles, subjects, youtube
+from fofstudio import cast, media, pipeline, styles, subjects
 from fofstudio.episode import Episode
 from fofstudio.stages import production, script as script_stage, stories
 from fofstudio.util import StageError
@@ -149,18 +149,6 @@ def test_mix_and_loudness_in_the_render(tmp_path, data):
     assert a["sample_rate"] == "48000" and a["channels"] == 2
 
 
-def test_youtube_client_file_is_checked(tmp_path, data):
-    bad = tmp_path / "web.json"
-    bad.write_text(json.dumps({"web": {"client_id": "x"}}))
-    with pytest.raises(StageError, match="Desktop app"):
-        youtube.use_client_file(bad)
-    good = tmp_path / "client_secret.json"
-    good.write_text(json.dumps({"installed": {"client_id": "x", "client_secret": "y"}}))
-    dest = youtube.use_client_file(good)
-    assert dest.exists() and youtube.client_file() == dest
-    assert youtube.account() is None
-
-
 def test_settings_page_builds_without_a_sound_card(data, monkeypatch):
     import os
     import sys
@@ -221,15 +209,12 @@ def test_storyboard_uses_a_real_picture_or_a_labelled_recreation(episode, monkey
                    for s in plan_shots if s["image"].get("real"))
 
 
-# ---------------------------------------------------------------- v0.6.0: YouTube like PowerDirector
-def test_google_errors_in_plain_words():
+# ---------------------------------------------------------------- v0.8.0: YouTube in the browser, lots of tags
+def test_no_google_setup_left():
     from fofstudio import youtube
-    assert "7 days" in youtube.explain("('invalid_grant: Token has been expired or revoked.', ...)")
-    assert "Manage your YouTube videos" in youtube.explain("insufficientPermissions")
-    assert "no YouTube channel" in youtube.explain("youtubeSignupRequired")
-    assert "Desktop app" in youtube.explain("Error 400: redirect_uri_mismatch")
-    assert "browser" in youtube.explain("quotaExceeded")
-    assert [u for _, u in youtube.SETUP_LINKS][3].endswith("/auth/audience")
+    assert not hasattr(youtube, "sign_in") and not hasattr(youtube, "SETUP_LINKS")
+    assert youtube.UPLOAD_PAGE == "https://www.youtube.com/upload"
+    assert "autopublish" not in {s.name for s in pipeline.STAGES}
 
 
 def test_browser_publish_kit(episode):

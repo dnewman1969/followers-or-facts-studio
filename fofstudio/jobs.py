@@ -359,18 +359,8 @@ def run_job(job: dict[str, Any]) -> None:
 
 
 def _after(job: dict[str, Any], ep: Episode, options: dict[str, Any]) -> None:
-    """Follow-on jobs: a finished final render is uploaded privately (if you're signed in and want that)."""
-    if job["stage"] != "render" or options.get("draft") or not settings()["youtube"].get("auto_upload"):
-        return
-    from . import youtube
-    if not youtube.account():
-        log.info("Render finished; not uploading automatically because you're not signed in to YouTube.")
-        return
-    try:
-        enqueue(job["project_id"], "autopublish")
-        log.info("Render finished; queued the automatic private upload.")
-    except StageError as exc:
-        log.info("Couldn't queue the automatic upload: %s", exc)
+    """Follow-on jobs after a stage finishes (none at the moment: uploading is done in your browser)."""
+    return
 
 
 def worker_loop(once: bool = False, in_app: bool = False) -> None:

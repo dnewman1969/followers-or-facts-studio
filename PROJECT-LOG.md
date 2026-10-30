@@ -692,6 +692,34 @@ they might be true? (Research "Verifying claims from known liars".)
 - Research "Multi agent writers room studio" (multi-agent writing workflow and the Creative Studio screens) sent
   and saved to the project.
 
+## 2026-10-30 — v0.8.0: YouTube in the browser, lots of search tags, more Owlbert, Scan data for stories
+
+- YouTube (Dave: "get rid of all that google setup stuff and just have it open the youtube webpage"): the
+  Google Cloud sign-in, client file, API upload, automatic private upload (autopublish) and Settings → YouTube
+  panel are gone; google-api-python-client / google-auth-* removed (requirements, setup.ps1 -YouTube).
+  youtube.py is now just tag helpers and links. Publish → **Upload on YouTube** opens youtube.com/upload and
+  the video's folder with the title already copied, Copy buttons for description and tags, and a checklist;
+  paste the link back to mark Upload done. The `upload` stage just says to use the button.
+- Search tags (Dave: "make a bunch of them for each video, we want this to be found in search"): the local AI
+  writes 25-40 search phrases people type about the subject (keywords(), job "stories"), merged with the
+  people, organisations and claims from the database and the channel tags, as many as fit in 500 characters
+  (sanitize_tags now skips one that doesn't fit and keeps trying shorter ones; tag_length counts like
+  YouTube). Three hashtags at the end of the description. Editable tags box on the Publish page with a count.
+- Owlbert: 11 new moves in bits.py (wave, nod, shake, shrug, facepalm, magnify with his magnifying glass,
+  read holding the document, count, lean_in, sigh, bounce), in KINDS/LENGTH and scriptfmt.MOVES; the writer's
+  prompt lists them and asks for 1-3 moves a scene. He does more: up to 3 small moves a scene, and a scene
+  without a direction gets a role-fitting reaction (ROLE_MOVES, default_move), never playful on careful
+  topics, only somber ones in harm scenes. docs/OWLBERT.md table updated.
+- Stories page: **Scan data for stories** (hidden stage `ideas`, stages/ideas.py): the local AI lists info
+  clips (30-90 s), short stories and long stories from the ticked research; lengths from the material with
+  the length-scan formula (thin "long" ideas become short ones). Pick one, Make it as 2 stories / 2 info clips
+  / 1 book, with the story type and writer above, Create. stories.run takes {"idea", "make"} (CLIP_RULES for
+  clips, length range per kind); book.run takes {"idea"}.
+- Research "Local AI driving ComfyUI video polish" sent and saved to the project: pick tested templates (don't
+  build graphs), Wan 2.2 + Lightning stays the engine, vision-model checks with retries, SeedVR2 upscale,
+  RIFE to a 24 fps master, ffmpeg checks; blocked licences: 4x-UltraSharp family, GIMM-VFI, MMAudio,
+  ThinkSound. Not built yet.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

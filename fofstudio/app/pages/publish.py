@@ -1,16 +1,13 @@
-"""Publish: the YouTube write-up (title, description with every proof link, thumbnail), then upload private."""
+"""Publish: the YouTube write-up (title, description with every proof link, lots of search tags, thumbnail),
+then upload on YouTube's own page in your browser (no Google setup)."""
 
 from __future__ import annotations
 
-import time
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import (QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+from PySide6.QtWidgets import (QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
                                QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
 
-from ... import pipeline
-from ...config import settings
 from ...util import StageError, read_json, write_json, write_text
 from ..common import GOLD, GREEN, MUTED
 from ..widgets import StagePage, click_feedback
@@ -19,8 +16,9 @@ from ..widgets import StagePage, click_feedback
 class PublishPage(StagePage):
     TITLE = "Publish"
     HELP = ("Step 8. The write-up for YouTube: title, a description with every proof link and its permanent "
-            "Wayback copy, chapters, the Knowledge Fight credit and a thumbnail with Owlbert. Edit anything, "
-            "approve it, then Upload. Videos go up as PRIVATE; you make them public in YouTube Studio.")
+            "Wayback copy, chapters, the Knowledge Fight credit, lots of search tags and a thumbnail with Owlbert. "
+            "Edit anything, then Upload on YouTube: it opens YouTube's upload page with everything ready to paste. "
+            "Upload it as Private, check YouTube's checks, then make it public.")
     APPROVE_STAGE = "package"
 
     def __init__(self, window):
@@ -53,6 +51,16 @@ class PublishPage(StagePage):
         self.desc = QPlainTextEdit()
         ll.addWidget(QLabel("Description"))
         ll.addWidget(self.desc, 1)
+        self.tags_lab = QLabel("Search tags")
+        ll.addWidget(self.tags_lab)
+        self.tags = QPlainTextEdit()
+        self.tags.setFixedHeight(70)
+        self.tags.setPlaceholderText("Search tags, separated by commas (written for you by Write it up)")
+        self.tags.setToolTip("What people type into YouTube's search to find this. YouTube allows 500 characters; "
+                             "the most important go first. Keep them true and on topic: misleading tags count as "
+                             "spam on YouTube.")
+        self.tags.textChanged.connect(self._count_tags)
+        ll.addWidget(self.tags)
         row.addWidget(left, 3)
         right = QWidget()
         rl = QVBoxLayout(right)
@@ -63,20 +71,13 @@ class PublishPage(StagePage):
         self.thumb.setStyleSheet("background:#0d0f15; border-radius:6px;")
         self.thumb.setAlignment(Qt.AlignCenter)
         rl.addWidget(self.thumb)
-        self.upload_btn = QPushButton("Upload to YouTube (private)")
+        self.upload_btn = QPushButton("Upload on YouTube")
         self.upload_btn.setObjectName("primary")
         self.upload_btn.setMinimumHeight(44)
-        click_feedback(self.upload_btn, self._upload)
+        self.upload_btn.setToolTip("Opens YouTube's upload page in your browser and the folder with the video, with "
+                                   "Copy buttons for the title, description and tags. No Google setup.")
+        click_feedback(self.upload_btn, self._browser_upload)
         rl.addWidget(self.upload_btn)
-        self.browser_btn = QPushButton("Upload in my browser (no setup)")
-        self.browser_btn.setToolTip("Opens YouTube's upload page and the video's folder, with copy buttons for the "
-                                    "title, description and tags and a checklist. No Google setup needed.")
-        click_feedback(self.browser_btn, self._browser_upload)
-        rl.addWidget(self.browser_btn)
-        self.yt_state = QLabel("")
-        self.yt_state.setWordWrap(True)
-        self.yt_state.setTextFormat(Qt.RichText)
-        rl.addWidget(self.yt_state)
         self.uploaded = QLabel("")
         self.uploaded.setOpenExternalLinks(True)
         self.uploaded.setWordWrap(True)
@@ -100,6 +101,8 @@ class PublishPage(StagePage):
             return
         meta["title"] = self.title_edit.text().strip()[:100] or meta["title"]
         meta["description"] = self.desc.toPlainText().strip()[:5000]
+        from ...youtube import sanitize_tags
+        meta["tags"] = sanitize_tags([t for t in self.tags.toPlainText().split(",")])
         write_json(self.ep.path("publish", "metadata.json"), meta)
         write_text(self.ep.path("publish", "description.txt"), meta["description"])
         if self.stage_status("package")["status"] == "approved":
@@ -118,78 +121,20 @@ class PublishPage(StagePage):
         PublishKitDialog(self.ep, self).exec()
         self.refresh()
 
-    def _upload(self) -> None:
-        """Upload: signs in first if needed (a browser tab), writes it up if that hasn't been done, then
-        uploads PRIVATE. Each step that can't go ahead says exactly why."""
-        from ... import youtube
-        st = youtube.status()
-        if not st["libs"]:
-            QMessageBox.warning(self, "Upload to YouTube", "The YouTube packages aren't installed. Close the Studio "
-                                "and run Update Studio.cmd, then try again.")
-            return
-        if not st["client_file"]:
-            answer = QMessageBox.question(
-                self, "Upload to YouTube", "Uploading from the Studio needs a one-time Google setup (about 10 minutes, "
-                "Settings → YouTube → Set up YouTube, step by step).\n\nYes: open the step-by-step setup now.\nNo: "
-                "upload in your browser instead (no setup).")
-            if answer == QMessageBox.StandardButton.Yes:
-                from ..youtube_ui import SetupDialog
-                SetupDialog(self).exec()
-            else:
-                self._browser_upload()
-            return
-        if not st["signed_in"]:
-            self._sign_in_then_upload()
-            return
-        meta = read_json(self.ep.path("publish", "metadata.json"))
-        privacy = settings()["youtube"]["privacy"]
-        title = (meta or {}).get("title") or self.ep.title
-        if QMessageBox.question(self, "Upload to YouTube",
-                                f"Upload \"{title}\" to {st['account']['title']} as {privacy.upper()}?") \
-                != QMessageBox.Yes:
-            return
-        if not meta:   # not written up yet: write it up and upload in one go
-            self.run_stage("autopublish", {}, "Writing it up and uploading to YouTube (private)")
-            return
-        if self.stage_status("package")["status"] != "approved":
-            pipeline.approve(self.ep, "package")
-        self.run_stage("upload", {}, "Uploading to YouTube")
-
-    def _sign_in_then_upload(self) -> None:
-        import threading
-
-        from PySide6.QtCore import QTimer
-
-        from ... import youtube
-        self.yt_state.setText(f"<span style='color:{GOLD}'>A browser tab opened: pick the Google account that owns "
-                              "the channel and allow access. The upload starts when you're back.</span>")
-        self._signin: dict | None = None
-
-        def work() -> None:
-            try:
-                self._signin = {"ok": youtube.sign_in()}
-            except Exception as exc:  # noqa: BLE001 - shown on the page
-                self._signin = {"error": str(exc)}
-        threading.Thread(target=work, daemon=True).start()
-        self._signin_timer = QTimer(self)
-
-        def done() -> None:
-            if self._signin is None:
-                return
-            self._signin_timer.stop()
-            if "error" in self._signin:
-                QMessageBox.warning(self, "Signing in to YouTube", f"Signing in didn't work:\n{self._signin['error']}")
-                self.refresh()
-                return
-            self.refresh()
-            self._upload()
-        self._signin_timer.timeout.connect(done)
-        self._signin_timer.start(500)
+    def _count_tags(self) -> None:
+        from ...youtube import TAG_LIMIT, tag_length
+        tags = [" ".join(t.split()) for t in self.tags.toPlainText().split(",") if t.strip()]
+        n = tag_length(tags)
+        colour = "#e06c5a" if n > TAG_LIMIT else MUTED
+        self.tags_lab.setText(f"Search tags <span style='color:{colour}'>{len(tags)} tags, {n} of {TAG_LIMIT} "
+                              "characters" + (" (the extra ones are dropped when you save)" if n > TAG_LIMIT else "")
+                              + "</span>")
 
     def new_episode(self) -> None:
         super().new_episode()
         self.title_edit.clear()
         self.desc.clear()
+        self.tags.clear()
         self.thumb_words.clear()
         self.thumb.clear()
         self.thumb.setText("The thumbnail appears here")
@@ -199,19 +144,19 @@ class PublishPage(StagePage):
         super().refresh()
         if not self.ep:
             return
-        busy = self.busy("package") or self.busy("upload")
+        busy = self.busy("package")
         rendered = self.stage_status("render")["status"] == "approved"
         self.make_btn.setEnabled(rendered and not busy)
         meta = read_json(self.ep.path("publish", "metadata.json"))
         self.save_btn.setEnabled(bool(meta) and not busy)
-        self.upload_btn.setEnabled((bool(meta) or rendered) and not busy and not self.busy("autopublish"))
-        self._show_youtube_state()
+        self.upload_btn.setEnabled((bool(meta) or rendered) and not busy)
         sig = str(meta.get("made_at") if meta else None) + str(self.ep.path("publish", "thumbnail.png").exists())
         if sig != self._sig:
             self._sig = sig
             if meta:
                 self.title_edit.setText(meta["title"])
                 self.desc.setPlainText(meta["description"])
+                self.tags.setPlainText(", ".join(meta.get("tags", [])))
             if not self.thumb_words.text().strip():
                 from ...stages.stories import chosen
                 self.thumb_words.setText((chosen(self.ep) or {}).get("thumbnail_words", ""))
@@ -235,20 +180,5 @@ class PublishPage(StagePage):
         else:
             self.uploaded.setText("")
 
-    def _show_youtube_state(self) -> None:
-        from ... import youtube
-        if getattr(self, "_yt_checked", 0) and time.time() - self._yt_checked < 20:
-            return
-        self._yt_checked = time.time()
-        st = youtube.status()
-        ok, no = f"<span style='color:{GREEN}'>✔</span>", f"<span style='color:#e06c5a'>✖</span>"
-        acct = st["account"]
-        self.yt_state.setText(
-            f"{ok if st['libs'] else no} YouTube packages &nbsp; "
-            f"{ok if st['client_file'] else no} Google client file &nbsp; "
-            f"{ok if st['signed_in'] else no} "
-            + (f"Signed in as <b>{acct['title']}</b>" if st["signed_in"] and acct else
-               "Not signed in (Upload signs you in)"))
-
     def watched(self) -> list[str]:
-        return ["package", "upload", "render", "autopublish"]
+        return ["package", "upload", "render"]

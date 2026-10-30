@@ -1,5 +1,7 @@
-"""Stories: two ways to tell it as a short video, each with the AI's length estimate. Pick one, or ask for a
-rewrite. Book-sized subjects: write the book, and make it into a long video (the movie)."""
+"""Stories: Scan data for stories (every info clip, short story and long story the research could make, with
+its length), then make 2 stories, 2 info clips or 1 book from the one you pick, with the writer you choose.
+Pick a story for the script, or ask for a rewrite. Book-sized subjects: write the book, and make it into a long
+video (the movie)."""
 
 from __future__ import annotations
 
@@ -7,11 +9,12 @@ import html
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton, QTextBrowser,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
+                               QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout,
+                               QWidget)
 
 from ... import storytypes, techniques
-from ...stages import book, stories, storysize
+from ...stages import book, ideas, stories, storysize
 from ...util import read_json
 from ..common import GOLD, GREEN, MUTED, tint
 from ..creative import CreativePanel
@@ -25,7 +28,10 @@ ROLE_NAMES = {"intro": "Opening", "claim": "The claim", "record": "What the reco
 
 class StoriesPage(StagePage):
     TITLE = "Stories"
-    HELP = ("Step 3. Choose the story type, writer and humor. Then the local AI writes two "
+    HELP = ("Step 3. Press Scan data for stories: the local AI lists every info clip, short story and long story "
+            "the ticked research could make, with how long each video would be. Pick one, choose how to make it "
+            "(2 stories, 2 info clips or 1 book) and the story type and writer above, then Create. Or choose the "
+            "story type, writer and humor and press Create 2 stories to use all the research. The local AI writes two "
             "ways to tell how the lie was built and take it apart, using only the evidence you ticked, and names the "
             "trick Owlbert will teach, each with how long its short video should be. Pick one (the length follows it), or "
             "Rewrite with notes. Both are kept: to make another later, go "
@@ -39,12 +45,55 @@ class StoriesPage(StagePage):
         self.creative = CreativePanel(show=("humor", "story"))
         self.body.addWidget(self.creative)
         top = QHBoxLayout()
+        self.scan_btn = QPushButton("🔎 Scan data for stories")
+        self.scan_btn.setObjectName("primary")
+        self.scan_btn.setToolTip("The local AI reads all the ticked research and lists every info clip (30-90 s), "
+                                 "short story and long story it could make, with how long each video would be.")
+        click_feedback(self.scan_btn, lambda: self.run_stage("ideas", {}, "Scanning the research for stories"))
+        top.addWidget(self.scan_btn)
         self.make_btn = QPushButton("Create 2 stories")
-        self.make_btn.setObjectName("primary")
+        self.make_btn.setToolTip("Two stories from ALL the ticked research (without picking an idea first)")
         click_feedback(self.make_btn, lambda: self.run_stage("stories", {}, "Writing 2 stories"))
         top.addWidget(self.make_btn)
         top.addStretch(1)
         self.body.addLayout(top)
+        # the scanned ideas: pick one, choose what to make, Create
+        self.ideas_box = QWidget()
+        il = QVBoxLayout(self.ideas_box)
+        il.setContentsMargins(0, 0, 0, 0)
+        self.ideas_head = QLabel("")
+        il.addWidget(self.ideas_head)
+        self.ideas = QTableWidget(0, 4)
+        self.ideas.setHorizontalHeaderLabels(["Kind", "Idea", "Length", "What it's about"])
+        self.ideas.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.ideas.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.ideas.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.ideas.verticalHeader().setVisible(False)
+        hh = self.ideas.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(1, QHeaderView.Interactive)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.ideas.setColumnWidth(1, 300)
+        self.ideas.setMinimumHeight(170)
+        self.ideas.setMaximumHeight(240)
+        self.ideas.itemSelectionChanged.connect(self._idea_picked)
+        il.addWidget(self.ideas)
+        mk = QHBoxLayout()
+        mk.addWidget(QLabel("<b>Make it as</b>"))
+        self.make_as = QComboBox()
+        for key, name in ideas.MAKE.items():
+            self.make_as.addItem(name, key)
+        mk.addWidget(self.make_as)
+        mk.addWidget(QLabel(f"<span style='color:{MUTED}'>with the story type and writer chosen above</span>"))
+        self.create_btn = QPushButton("Create")
+        self.create_btn.setObjectName("primary")
+        click_feedback(self.create_btn, self._create_from_idea)
+        mk.addWidget(self.create_btn)
+        mk.addStretch(1)
+        il.addLayout(mk)
+        self.body.addWidget(self.ideas_box)
+        self._ideas_sig = None
         self.size_text = QLabel("")
         self.size_text.setWordWrap(True)
         self.size_text.setStyleSheet(f"background:{tint(GOLD, 0.10)}; border:1px solid {GOLD}; border-radius:6px; "
@@ -114,6 +163,9 @@ class StoriesPage(StagePage):
         data = read_json(self.ep.path("stories.json")) if self.ep else None
         self.make_btn.setText(f"Create {stories.STORY_COUNT} new stories" if data else
                               f"Create {stories.STORY_COUNT} stories")
+        research_ok = bool(self.ep) and self.stage_status("research")["status"] == "approved"
+        self.scan_btn.setEnabled(research_ok and not self.busy("ideas") and not busy)
+        self._refresh_ideas(busy or self.busy("ideas") or self.busy("book"))
         used = stories.used_by(self.ep) if data else {}
         self._refresh_book()
         for i, (view, use, redo) in enumerate(self.cards):
@@ -133,6 +185,57 @@ class StoriesPage(StagePage):
             use.setObjectName("primary" if picked else "")
             use.setStyleSheet("")  # re-apply the object-name style
 
+    def _refresh_ideas(self, busy: bool) -> None:
+        found = ideas.load(self.ep) if self.ep else []
+        self.ideas_box.setVisible(bool(found) or self.busy("ideas"))
+        if self.busy("ideas"):
+            self.ideas_head.setText(f"<span style='color:{MUTED}'>Scanning the research... (watch the bar at the "
+                                    "top)</span>")
+        elif found:
+            n = {k: sum(1 for i in found if i["kind"] == k) for k in ideas.KINDS}
+            self.ideas_head.setText(f"<b>{len(found)} ideas from the research:</b> {n['clip']} info clip(s), "
+                                    f"{n['short']} short story(ies), {n['long']} long story(ies). Pick one.")
+        sig = (self.ep.project_id if self.ep else None, tuple(i["id"] + i["title"] for i in found))
+        if sig != self._ideas_sig:
+            self._ideas_sig = sig
+            self.ideas.setRowCount(len(found))
+            for r, idea in enumerate(found):
+                cells = [ideas.KINDS[idea["kind"]], idea["title"], ideas.length_text(int(idea["seconds"])),
+                         idea["pitch"]]
+                for c, text in enumerate(cells):
+                    item = QTableWidgetItem(text)
+                    item.setToolTip(f"{idea['title']}\n\n{idea['pitch']}\n\nClaims: {', '.join(idea['claim_ids'])}"
+                                    f"\nEvidence: {', '.join(idea['evidence_ids'][:20])}")
+                    self.ideas.setItem(r, c, item)
+        self.create_btn.setEnabled(bool(self._idea()) and not busy)
+
+    def _idea(self) -> dict | None:
+        rows = self.ideas.selectionModel().selectedRows() if self.ideas.selectionModel() else []
+        found = ideas.load(self.ep) if self.ep else []
+        return found[rows[0].row()] if rows and rows[0].row() < len(found) else None
+
+    def _idea_picked(self) -> None:
+        idea = self._idea()
+        if idea:   # a sensible default for what to make; you can change it
+            self.make_as.setCurrentIndex(max(0, self.make_as.findData("clip" if idea["kind"] == "clip" else "story")))
+        self.create_btn.setEnabled(bool(idea) and not self.busy("stories"))
+
+    def _create_from_idea(self) -> None:
+        idea = self._idea()
+        if not idea:
+            self.toast("Pick an idea in the list first.", "warn")
+            return
+        make = self.make_as.currentData()
+        if make == "book":
+            if book.load(self.ep).get("chapters") and QMessageBox.question(
+                    self, "Write a new book", f"There's already a book for this video. Replace it with a new book "
+                    f"about \"{idea['title']}\"?") != QMessageBox.StandardButton.Yes:
+                return
+            self.run_stage("book", {"idea": idea, "fresh": True}, f"Writing the book: {idea['title']}")
+            return
+        label = "2 info clips" if make == "clip" else "2 stories"
+        self.run_stage("stories", {"idea": idea, "make": make}, f"Writing {label}: {idea['title']}")
+
     def _html(self, s: dict, picked: bool, used: list[str] | None = None) -> str:
         e = html.escape
         beats = "".join(f"<li><b>{ROLE_NAMES.get(b['role'], b['role'])}:</b> {e(b['beat'])}"
@@ -151,7 +254,8 @@ class StoriesPage(StagePage):
         wr = storytypes.writers().get(s.get("writer", ""))
         if s.get("length_seconds"):
             secs = int(s["length_seconds"])
-            kind = "a YouTube Short" if secs <= stories.SHORT_MAX else "a short video"
+            kind = ("an info clip" if s.get("format") == "clip" else "a YouTube Short" if secs <= stories.SHORT_MAX
+                    else "a long video" if secs > 600 else "a short video")
             mark += (f"<p><b>Video length: about {secs // 60}:{secs % 60:02d}</b> ({kind})"
                      + (f" <span style='color:{MUTED}'>{e(s.get('length_why', ''))}</span>" if s.get("length_why") else "")
                      + "</p>")
@@ -258,4 +362,4 @@ class StoriesPage(StagePage):
             self.run_stage("stories", {"rewrite": {"index": i, "notes": notes.strip()}}, f"Rewriting story {i + 1}")
 
     def watched(self) -> list[str]:
-        return ["stories", "research", "book", "lookup"]
+        return ["stories", "research", "book", "lookup", "ideas"]

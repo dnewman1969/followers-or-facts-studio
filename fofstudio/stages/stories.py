@@ -41,7 +41,7 @@ STORY_SCHEMA = {
         "owl_moments": {"type": "array", "items": {"type": "string"}},
         "thumbnail_words": {"type": "string"},
         "techniques": {"type": "array", "items": {"type": "string", "enum": list(techniques.TECHNIQUES)}},
-        "length_seconds": {"type": "integer", "minimum": 30, "maximum": 600},
+        "length_seconds": {"type": "integer", "minimum": 30, "maximum": 2400},
         "length_why": {"type": "string"},
     },
     "required": ["title", "logline", "angle", "opening_hook", "beats", "owl_moments", "thumbnail_words",
@@ -131,8 +131,15 @@ STORY_COUNT = 2
 SHORT_MAX = 180          # a YouTube Short is up to 3 minutes
 
 
-def _clean(story: dict[str, Any], valid: set[str]) -> dict[str, Any]:
-    story["length_seconds"] = max(30, min(600, int(story.get("length_seconds") or 120)))
+CLIP_RULES = """
+This is an INFO CLIP, not a full story: 30-90 seconds (a YouTube Short). One beat per role, each beat one
+short sentence's worth: open on the most striking true fact, the claim once (attributed to who sold it), what
+the record shows, who profited, who it hurt (one respectful line), the verdict. The tell names the trick in
+a few words. length_seconds: 30-90."""
+
+
+def _clean(story: dict[str, Any], valid: set[str], cap: int = 600, floor: int = 30) -> dict[str, Any]:
+    story["length_seconds"] = max(floor, min(cap, int(story.get("length_seconds") or 120)))
     for b in story.get("beats", []):
         b["evidence_ids"] = [e for e in b.get("evidence_ids", []) if e in valid]
     story["thumbnail_words"] = thumbnail_words(story.get("thumbnail_words") or story.get("title", ""))
@@ -160,8 +167,8 @@ def run(ctx: Context) -> None:
                                         f"{json.dumps(old, ensure_ascii=False)}\n\nRewrite it with these notes "
                                         f"from the producer: {rewrite['notes']}"},
         ], STORY_SCHEMA, temperature=0.6, on_text=ctx.writing(f"Rewriting story {i + 1}", 20, 95, 450))
-        new = _clean(new, valid)
-        for key in ("story_type", "writer", "angle_hint"):
+        new = _clean(new, valid, 90 if old.get("format") == "clip" else max(600, int(old.get("length_seconds") or 0)))
+        for key in ("story_type", "writer", "angle_hint", "idea", "format"):
             if old.get(key):
                 new[key] = old[key]
         new["revision"] = old.get("revision", 1) + 1
@@ -170,11 +177,25 @@ def run(ctx: Context) -> None:
         data.pop("chosen", None)
     else:
         from . import storysize
-        ctx.progress("Sizing up the story: a Short, one video, a series or a book?", 3)
-        size = storysize.assess(ep, _packet(ep), evidence_for_prompt(ep), llm,
-                                on_text=ctx.writing("Sizing up the story", 3, 9, 250))
-        ctx.progress(f"Size: {storysize.FORMATS[size['format']]} (about {size['video_seconds'] / 60:.0f} min of "
-                     f"video, or a {size['pages']}-page book).", 10)
+        idea = ctx.options.get("idea")           # made from a "Scan data for stories" idea
+        make = ctx.options.get("make") or "story"   # "story" or "clip"
+        focus, cap, floor = "", 600, 30
+        if idea:
+            from .ideas import RANGES, focus_note
+            focus = focus_note(idea)
+            if make == "clip":
+                cap, floor = RANGES["clip"][1], RANGES["clip"][0]
+            else:
+                lo, hi = RANGES["long" if idea.get("kind") == "long" else "short"]
+                cap, floor = max(hi, int(idea.get("seconds") or 0)), lo
+            size = {"format": data.get("size") or "video"}
+            ctx.progress(f"Writing from the idea \"{idea['title']}\"", 8)
+        else:
+            ctx.progress("Sizing up the story: a Short, one video, a series or a book?", 3)
+            size = storysize.assess(ep, _packet(ep), evidence_for_prompt(ep), llm,
+                                    on_text=ctx.writing("Sizing up the story", 3, 9, 250))
+            ctx.progress(f"Size: {storysize.FORMATS[size['format']]} (about {size['video_seconds'] / 60:.0f} min of "
+                         f"video, or a {size['pages']}-page book).", 10)
         options: list[dict[str, Any]] = []
         picks = storytypes.pick(ep.creative(), f"{ep.project_id}-{utc_now()}", STORY_COUNT)
         step = 88 / len(picks)
@@ -189,23 +210,27 @@ def run(ctx: Context) -> None:
                      + "\n".join(f"- {o['title']}: {o['angle']} Opening: {o['opening_hook']}" for o in options)) \
                 if options else ""
             story = llm.chat_json([
-                {"role": "system", "content": RULES + "\n" + storytypes.SHARED_RULES},
+                {"role": "system", "content": RULES + "\n" + storytypes.SHARED_RULES
+                 + (CLIP_RULES if make == "clip" else "")},
                 {"role": "user", "content": f"{style_note(ep)}Evidence:\n{evidence_for_prompt(ep)}\n\nPlan ONE story "
                                             f"as this story type. Its beats follow the beat sheet in order (one beat each; "
                                             f"use the beat sheet's roles):\n{stype.sheet()}\n\nThe script will be "
                                             f"written by {writer.name}: {writer.sounds_like} Write the logline and "
                                             "the opening hook with that flavor. It becomes a short video on the "
-                                            "subject." + other + (f"\n\n{earlier}" if earlier else "")},
+                                            "subject." + focus + other + (f"\n\n{earlier}" if earlier else "")},
             ], STORY_SCHEMA, temperature=0.8,
                 on_text=ctx.writing(f"Writing story {n + 1} of {len(picks)}", 10 + n * step, 10 + (n + 1) * step - 2,
                                     450))
-            story = _clean(story, valid)
+            story = _clean(story, valid, cap, floor)
             story["angle_hint"] = f"{stype.name}: {stype.blurb}"
+            if idea:
+                story["idea"] = idea["id"]
+                story["format"] = "clip" if make == "clip" else "story"
             story["story_type"], story["writer"] = stype.key, writer.key
             story["revision"] = 1
             options.append(story)
         data = {"options": options, "made_at": utc_now(), "set_id": f"{ep.project_id}-{utc_now()}",
-                "size": size["format"]}
+                "size": size["format"], **({"idea": idea, "make": make} if idea else {})}
     write_json(ep.path("stories.json"), data)
     ctx.progress("Stories ready. Pick one.", 100)
 

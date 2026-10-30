@@ -96,10 +96,36 @@ def test_moves_are_planned_with_a_job_and_a_budget():
         assert b["start"] >= a["start"] + a["duration"]          # never two at once
     big = [m["start"] for m in moves if m["kind"] in bits.BIG and m["kind"] != "fly_out"]
     assert all(b - a >= 20 for a, b in zip(big, big[1:]))
-    per_scene = {}
+    per_scene, big_scene = {}, {}
     for m in moves:
         per_scene[m["scene_id"]] = per_scene.get(m["scene_id"], 0) + 1
-    assert max(per_scene.values()) == 1
+        big_scene[m["scene_id"]] = big_scene.get(m["scene_id"], 0) + (m["kind"] in bits.BIG)
+    assert max(per_scene.values()) <= 2 and max(big_scene.values()) <= 1
+    # Dave (2026-10-30): he does more: a reaction in most scenes, using the new moves
+    assert len(moves) >= len(ROLES) + 3
+    assert {"wave", "read", "sigh", "count"} & set(kinds) and "shake" in kinds
+
+
+def test_every_new_move_draws_and_ends_at_rest(data):
+    st = rig.Stage(640, 360)
+    rest = np.asarray(next(bits.frames(st, "nod", 0.05, 15, lambda t: ("X", 0.0)))[1]).astype(int)
+    for kind in ("wave", "nod", "shake", "shrug", "facepalm", "magnify", "read", "count", "lean_in", "sigh",
+                 "bounce"):
+        fr = list(bits.frames(st, kind, bits.LENGTH[kind], 15, lambda t: ("X", 0.0),
+                              {"kind": bits.HOLDS.get(kind, ""), "text": "Court ruling|2022"}))
+        most = max(np.abs(np.asarray(f).astype(int) - rest).mean() for _, f in fr)
+        assert most > 0.3, kind                                         # he really moves
+        assert np.abs(np.asarray(fr[-1][1]).astype(int) - rest).mean() < 3, kind   # and ends where he started
+
+
+def test_quiet_scenes_get_a_fitting_reaction_and_harm_stays_somber():
+    sc = _scenes(ROLES)
+    moves = bits.plan_directed(sc, {"careful": False, "humor": 1}, ["cherry_picking"])
+    assert len({m["scene_id"] for m in moves}) >= len(ROLES) - 1
+    harm = [m["kind"] for m in moves if m["scene_id"] == "S05"]
+    assert harm and set(harm) <= bits.SOMBER_OK
+    careful = bits.plan_directed(sc, {"careful": True, "humor": 0}, [])
+    assert not {m["kind"] for m in careful} & bits.PLAYFUL
 
 
 def test_careful_topics_get_no_playful_moves():

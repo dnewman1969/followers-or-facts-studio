@@ -20,7 +20,7 @@ cd followers-or-facts-studio
 ## 3. Run setup
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1 -YouTube -ComfyModels
+powershell -ExecutionPolicy Bypass -File .\setup.ps1 -ComfyModels
 ```
 
 This:
@@ -31,7 +31,6 @@ This:
 - imports your research from `C:\Projects\truth-vlog\research` (or the copy bundled in `seed\`)
 - downloads the Kokoro voice (~340 MB)
 - with `-ComfyModels`: downloads Wan 2.2 animation and ACE-Step music models into ComfyUI (~45 GB)
-- with `-YouTube`: installs the upload packages
 - puts **Followers or Facts Studio** on your desktop
 - runs `doctor`, which lists anything still missing
 
@@ -83,7 +82,8 @@ shows what went wrong.
    **Make preview** and watch it (the speaker button and slider under the player set how loud it plays here),
    adjust, then **4. Render final video**. The folder with the finished video opens when it's done. Approve.
 8. **8 Publish**: **Write it up** (the thumbnail words come from the story), read the description,
-   **Upload to YouTube (private)**. One-time sign-in setup: Settings → YouTube (see `docs/YOUTUBE.md`).
+   **Upload on YouTube**: it opens YouTube's upload page with the title, description and tags ready to
+   paste (no Google setup; see `docs/YOUTUBE.md`).
 
 ## Sound
 

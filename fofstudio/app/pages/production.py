@@ -131,8 +131,8 @@ class ProductionPage(StagePage):
         self.move_kind = QComboBox()
         for key, name in bits.KINDS.items():
             self.move_kind.addItem(name, key)
-        self.move_kind.setToolTip("Owlbert's moves: he flies in or off, points at the evidence, gives a wing "
-                                  "flourish, or takes off his cap and pulls out the trick of the day")
+        self.move_kind.setToolTip("Owlbert's moves: he flies in or off, points, waves, nods, shakes his head, reads the "
+                                  "document, looks through his magnifying glass, counts, sighs, or pulls the trick out of his cap")
         self.b_move = QPushButton("Add move")
         self.b_move.clicked.connect(self._add_move)
         moves.addWidget(self.move_kind, 1)
