@@ -216,6 +216,9 @@ def fake_llm(get_packet):
                  "claim_ids": ["C-NOPE"], "evidence_ids": ["E-NOPE"], "minutes_guess": 5},
                 {"kind": "clip", "title": "the radio that sold fear", "pitch": "A repeat.", "claim_ids": [cid],
                  "evidence_ids": [], "minutes_guess": 1}]}
+        if "subject" in props and len(props) == 1:   # a style's showcase scene for the style test
+            return {"subject": "A small figure with a lantern crosses a rope bridge over a misty gorge toward one "
+                               "lit window, seen from behind, low moonlight from the left"}
         if "search_phrases" in props:   # YouTube search tags
             return {"search_phrases": ["y2k bug hoax", "was y2k real", "gary northman y2k", "y2k survival kits",
                                        "y2k fear explained", "millennium bug debunked", "one"],

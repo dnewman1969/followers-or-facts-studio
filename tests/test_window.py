@@ -329,3 +329,58 @@ def test_stories_page_scans_and_creates(app, episode, monkeypatch):
     assert started[1][0] == "book" and started[1][1]["idea"]["id"] == "I01"
     w.close()
     assert not app.problems, app.problems
+
+
+def test_clear_all_and_delete_buttons(app, episode, monkeypatch):
+    """Dave (2026-10-30): Clear all on Research; delete a research project on Database → Researched."""
+    from fofstudio import cleanup, researched
+    from fofstudio.app import common
+    ep = episode
+    research_and_story(ep)
+    from fofstudio.app.main import MainWindow
+    w = MainWindow()
+    w.show()
+    w._fill_picker(ep.project_id)
+    pages = {type(p).__name__: p for p in w.pages_and_tools}
+    rp = pages["ResearchPage"]
+    rp.set_episode(ep)
+    monkeypatch.setattr(common, "ask_with_box", lambda *a, **k: (True, True))
+    rp._clear_all()
+    packet = read_json(ep.path("research.json")) or {}       # the page lists what's on file again, unticked
+    assert not packet.get("researched_at") and not any(e["include"] for e in packet.get("evidence", []))
+    assert cleanup.agent_finds(ep.claim_ids) == [] and not ep.path("stories.json").exists()
+    research_and_story(ep)
+    researched.new_video_from(ep.project_id, "evidence")
+    dbp = pages["DatabasePage"]
+    dbp.set_kind("researched")
+    dbp.table.selectRow(0)
+    app.processEvents()
+    assert dbp.del_project_btn.isEnabled()
+    dbp._delete_project()
+    assert dbp.table.rowCount() == 0 and w.ep is None
+    w.close()
+    assert not app.problems, app.problems
+
+
+def test_style_test_window_starts_over_and_rates(app, episode, monkeypatch):
+    from fofstudio import styles
+    from fofstudio.app.styletest_ui import StyleTestDialog
+    from fofstudio.stages import styletest
+
+    class Page:
+        def run_stage(self, *a):
+            self.ran = a
+    styles.rate("relief_print", "kept")
+    d = StyleTestDialog(Page())
+    d.group.setCurrentIndex(d.group.findData("all"))
+    d._rate("noir", "maybe")
+    assert styles.status_of(styles.get("noir")) == "maybe"
+    d.group.setCurrentIndex(d.group.findData("maybe"))
+    assert [k for _, k in d.boxes] == ["noir"]
+    monkeypatch.setattr(styletest, "showcase", lambda k: "x")
+    d._reset()
+    assert styles.ratings() == {}
+    d.boxes[0][0].setChecked(True)
+    d._go()
+    assert d.page.ran[0] == "styletest"
+    assert not app.problems, app.problems

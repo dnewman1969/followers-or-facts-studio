@@ -720,6 +720,28 @@ they might be true? (Research "Verifying claims from known liars".)
   RIFE to a 24 fps master, ffmpeg checks; blocked licences: 4x-UltraSharp family, GIMM-VFI, MMAudio,
   ThinkSound. Not built yet.
 
+## 2026-10-30 — v0.8.1: Clear all, delete research projects, a style test that shows off each look
+
+- Research page: **Clear all** (cleanup.clear_research): clears this video's research step and everything after
+  it, plus lookup-results / claim-check / ideas; a tick box also removes the sources the research agents found
+  (found_by='agent') for these claims, with their quotes (a find no other claim uses is deleted). The original
+  research database is never touched. The page lists what's on file again, unticked.
+- Database → Researched: **Delete this video** and **Delete this research project** (cleanup.delete_video,
+  delete_research_project): folders, jobs, history and project rows; optionally the agents' finds. The subject
+  stays so it can be researched from scratch. A busy video must be stopped first. Common helper ask_with_box.
+- Style test (research "Style test showcase prompts"): five pictures per look: its own showcase scene twice
+  (data/style_showcase.json for 21 looks; the rest drafted once by the local AI at temperature 0 and saved in
+  <data>/style-showcase.json, editable with "Showcase scene..."), a shared crowd-and-salesman scene, a shared
+  evidence close-up (shows fake writing), and the look's Owlbert set with the real Owlbert pasted in; caricature
+  looks add the salesman. Fixed seeds (_comfy_image takes seed). Prompts medium first, one subject, the look's
+  light, a texture sentence by medium (MEDIUM_WORDS reads the look line; several house looks were filed under
+  the wrong medium), positive guard, no "16:9", no quotes, no "no ..." clauses. Keep / Maybe / Drop for every
+  look incl. house looks (never the default), a Maybes filter, **Start the test over** (styletest.reset; also
+  offered when old two-picture results exist). Relief Print look line fixed (was cut off).
+- Next for the style test (from the research): a vision-model pre-screen (photo or drawing? any writing?) that
+  only sorts and badges; Round 2 head-to-heads for maybes; the Turbo-Art merge for print/craft looks that come
+  out too clean.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

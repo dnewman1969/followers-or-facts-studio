@@ -248,15 +248,45 @@ def test_picture_prompts_lead_with_the_medium_and_never_say_no(episode):
 
 
 def test_the_style_test_paints_each_look_and_makes_a_contact_sheet(episode):
+    """2026-10-30: each look paints its own showcase (twice) plus the shared jobs, from fixed seeds."""
     from fofstudio import pipeline
     from fofstudio.stages import styletest
-    pipeline.run_now(episode, "styletest", {"styles": ["fog_layer_glass_fable", "mix:felt_starfarers", "satire"]})
+    keys = ["fog_layer_glass_fable", "mix:felt_starfarers", "satire", "lightbox_sand_drawing"]
+    pipeline.run_now(episode, "styletest", {"styles": keys})
     res = styletest.results()
-    assert set(res) >= {"fog_layer_glass_fable", "mix:felt_starfarers", "satire"}
-    assert len(res["fog_layer_glass_fable"]["pictures"]) == 2 and len(res["satire"]["pictures"]) == 3   # + the salesman
+    assert set(res) >= set(keys)
+    tags = [p["tag"] for p in res["fog_layer_glass_fable"]["pictures"]]
+    assert tags == ["showcase", "showcase2", "crowd", "evidence", "owlbert"]
+    assert [p["tag"] for p in res["satire"]["pictures"]][-1] == "salesman"     # caricature looks: + the salesman
     assert all(Path(p["path"]).exists() for p in res["satire"]["pictures"])
     assert list(styletest.folder().glob("contact-sheet-*.png"))
-    assert all(not promptcheck.found(p["prompt"]) for v in res.values() for p in v["pictures"])
+    fog = {p["tag"]: p for p in res["fog_layer_glass_fable"]["pictures"]}
+    sand = {p["tag"]: p for p in res["lightbox_sand_drawing"]["pictures"]}
+    assert fog["crowd"]["seed"] == sand["crowd"]["seed"]                     # shared pictures: the same seed
+    assert "lantern" in fog["showcase"]["prompt"]                           # its own written showcase scene
+    assert "lantern" in styletest.showcase("lightbox_sand_drawing")         # drafted once by the AI, then saved
+    for v in res.values():
+        for p in v["pictures"]:
+            assert not promptcheck.found(p["prompt"]) and "16:9" not in p["prompt"] and '"' not in p["prompt"]
+            assert " no " not in f" {p['prompt'].lower()} " and " text " not in f" {p['prompt'].lower()} "
+    for key in keys:                                                        # the medium comes first
+        assert res[key]["pictures"][0]["prompt"].startswith(styletest.look_words(styles.get(key))[:20])
+    assert "fingerprints" in styletest.prompt_for(styles.get("fingerprint_clay_stop_motion"), "x")   # its texture
+
+
+def test_the_style_test_starts_over_and_takes_maybes():
+    from fofstudio.stages import styletest
+    styles.rate("relief_print", "maybe")
+    styles.rate("comic", "dropped")
+    assert styles.status_of(styles.get("relief_print")) == "maybe"
+    assert "comic" not in dict(styles.choices())                            # a house look can be dropped too
+    assert any("(maybe)" in label for _, label in styles.choices())
+    styles.rate(styles.DEFAULT, "dropped")
+    assert styles.DEFAULT in dict(styles.choices())                         # but never the default look
+    styletest.save_showcase("relief_print", "A town crier rings a bell")
+    assert styletest.reset() == 3
+    assert styles.ratings() == {} and styletest.results() == {}
+    assert styletest.showcase("relief_print") == "A town crier rings a bell"   # your edits survive a reset
 
 
 def test_titles_and_tags_never_name_a_brand(episode):

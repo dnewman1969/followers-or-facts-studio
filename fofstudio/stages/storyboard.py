@@ -205,9 +205,10 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
 
 
 # ---------------------------------------------------------------- painting
-def _comfy_image(ep: Episode, name: str, prompt: str) -> tuple[Any, dict[str, Any], int]:
+def _comfy_image(ep: Episode, name: str, prompt: str, seed: int | None = None) -> tuple[Any, dict[str, Any], int]:
+    """Paint one picture. A fixed seed (the style test) makes every look start from the same noise."""
     cfg = settings()["comfyui"]
-    seed = new_seed()
+    seed = seed or new_seed()
     saved, meta = run_template("image_workflow", {
         "PROMPT": prompt, "SEED": seed, "WIDTH": cfg["image_width"], "HEIGHT": cfg["image_height"],
         "FILENAME_PREFIX": f"fof/{ep.project_id}/{name}",

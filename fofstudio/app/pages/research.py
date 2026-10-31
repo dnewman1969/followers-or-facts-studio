@@ -15,6 +15,7 @@ from ... import jobs, pipeline
 from ...stages import research as rs
 from ...stages import script as script_stage
 from ...util import read_json
+from .. import common
 from ..common import GOLD, GREEN, MUTED, table, tint
 from ..widgets import StagePage, click_feedback
 
@@ -73,6 +74,14 @@ class ResearchPage(StagePage):
         click_feedback(self.dive, lambda: self.run_stage("deepdive", {}, "Deep dive on the weak claims"))
         row.addWidget(self.dive)
         row.addStretch(1)
+        self.clear_all = QPushButton("🧹 Clear all")
+        self.clear_all.setMinimumHeight(40)
+        self.clear_all.setToolTip("Start this video's research again from nothing: the ticks, the agents' runs, "
+                                  "look-ups, claim checks, story ideas and everything made after research are "
+                                  "cleared. Tick the box to also remove what the agents found for these claims, "
+                                  "so old finds stop mixing in. Your original research database is never deleted.")
+        click_feedback(self.clear_all, self._clear_all)
+        row.addWidget(self.clear_all)
         self.body.addLayout(row)
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -456,6 +465,26 @@ class ResearchPage(StagePage):
         self.detail.setHtml("".join(parts))
 
     # ------------------------------------------------------------ actions
+    def _clear_all(self) -> None:
+        from ... import cleanup
+        if not self.ep:
+            return
+        n = len(cleanup.agent_finds(self.ep.claim_ids))
+        yes, finds = common.ask_with_box(
+            self, "Clear all research",
+            f"Start {self.ep.project_id}'s research again from nothing?\n\nThis clears its ticks, the agents' runs, "
+            "look-ups, claim checks and story ideas, and everything made after research (stories, script, "
+            "pictures...). Your original research database stays.",
+            f"Also remove the {n} source(s) the research agents found for these claims (so old finds stop mixing in)",
+            checked=n > 0)
+        if not yes:
+            return
+        out = cleanup.clear_research(self.ep, finds)
+        self._sig = None
+        self.toast("Research cleared" + (f": {out['sources']} agent find(s) and {out['quotes']} quote(s) removed"
+                                         if finds else "") + ". Press Start research for a fresh start.")
+        self.refresh()
+
     def _start(self) -> None:
         depth = self.depth.currentData()
         label = "Reading the sources on file" if depth == "files" else "Research agents"

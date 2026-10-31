@@ -1,0 +1,26 @@
+{
+ "_about": "Signature showcase subjects for the style test (research 'Style test showcase prompts', 2026-10-30): the composition, light and subject each style is known for, with a channel story beat inside. One subject doing one thing, trait words only, no names, no signs, labels or quoted words. Styles not listed here get a subject drafted once by the local AI (saved in the data folder, editable in Test styles).",
+ "subjects": {
+  "relief_print": "A town crier mid-stride rings a hand bell while a black crow carries the rumour from chimney to chimney above the stacked rooftops of a small hill town, seen from a low angle, the crier large on the left third, the sky made of radiating gouge lines, flat graphic light, brick red only on the crow and the bell",
+  "fingerprint_clay_stop_motion": "A plasticine shopper on a tiny kitchen set weighs one giant lumpy clay tomato on a toy scale, eyebrows raised in doubt, warm practical lamp light from the side, macro view with shallow focus, felt curtains and cardboard cupboards behind",
+  "backlit_shadow_puppet_fable": "A lace-cut black silhouette messenger in strict profile whispers into a giant flower shaped like an ear, the whisper drawn as a trail of cut-paper birds flying away across a glowing amber gradient",
+  "fog_layer_glass_fable": "A small traveller with a lantern stands lost in milky fog between layered pine trees, one warm window glowing far away, cold moonlight from the left, the trees fading into paler layers with distance",
+  "noir": "A figure in a trench coat under a single streetlamp in a rain-slick alley hands a plain envelope to a second shadowed figure, venetian-blind shadows striping a brick wall, hard light from above, wet cobbles shining",
+  "comic": "A low-angle panel of an invented square-jawed hero bursting through a giant torn sheet of blank newsprint, speed lines radiating outward, halftone dots in the shadows, an empty jagged starburst shape behind him",
+  "old_world_string_marionette": "A carved wooden salesman marionette bows on a tiny painted stage, his strings rising up into darkness to a pair of huge hands, a single warm footlight from below, velvet curtains half drawn",
+  "floating_world_woodblock": "A great curling wave made of blank paper sheets rises over a small boat of people seen from behind, a distant mountain under a pale sky, bold diagonal crop, flat colour gradients",
+  "victorian_toy_theatre": "A card-cut paper stage with layered painted wings, a striped hot-air balloon rising before a crowd of cut-out spectators seen from behind, candle-like footlights glowing along the front edge",
+  "blueprint": "An exploded view of a miracle water filter, its unlabelled parts floating apart around an empty hollow box, crisp white technical lines on deep Prussian blue, measured guide lines and circles",
+  "constructivist_agitprop_poster": "A giant loudspeaker on a steep diagonal tower blasts a storm of blank paper leaflets over a crowd seen from behind, hard geometric shapes, a bold red diagonal slicing the sky",
+  "documentary": "A period kitchen table with an old wooden radio, a family seen from behind leaning in to listen, soft window light, dust floating in the beam, worn wallpaper",
+  "classroom": "An empty classroom in golden afternoon light, a green chalkboard covered in chalk arrows and circles linking a jar of coins to a radio, wooden desks in rows, a globe on the teacher's table",
+  "cartoon": "A cheerful flat cartoon town where a single rumour, drawn as a bright paper aeroplane, zig-zags from rooftop to rooftop past round trees, everyone below seen from behind pointing up at it",
+  "satire": "An invented grinning salesman in an oversized checked suit pours a stream of gold coins from a bottle into his own hat while a line of tiny townspeople wait below, loose ink lines and a light watercolour wash",
+  "newscast": "A retro television news studio at night with an empty anchor desk, a big glowing world globe behind it, blue and gold studio light, a camera on a tripod in the foreground, every screen showing plain colour",
+  "truecrime": "A cork evidence board lit by one desk lamp, red string linking blank photographs turned face down, plain index cards and a map with pins, a coffee cup ring on the desk below",
+  "courtroom": "A wood-panelled courtroom seen from the gallery, the judge's bench high and empty, lawyers seen from behind leaning over their tables, loose pastel strokes and charcoal shadows, warm overhead light",
+  "papercut": "A layered paper town at dusk where a paper megaphone on a hill sends rings of cut-paper sound waves over the rooftops, soft drop shadows between the layers, a big paper moon",
+  "infomercial": "A bright retro studio kitchen set with a gleaming miracle blender on a turntable, a cheering studio audience seen from behind, starburst shapes of plain colour, blazing studio lights",
+  "heist": "A blueprint spread across a table under a hanging lamp, four gloved hands moving toy markers around a vault, teal shadows and warm orange light, a split panel showing a ticking wall clock"
+ }
+}

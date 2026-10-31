@@ -169,7 +169,15 @@ class DatabasePage(QWidget):
         self.new_story_btn.setToolTip("Same ticked evidence and the same three stories. Pick a story you "
                                       "haven't made yet.")
         self.new_story_btn.clicked.connect(lambda: self._new_from("story"))
-        for b in (self.new_ev_btn, self.new_story_btn):
+        self.del_video_btn = QPushButton("🗑 Delete this video")
+        self.del_video_btn.setToolTip("Delete the video picked above: its folder, pictures and history.")
+        self.del_video_btn.clicked.connect(self._delete_video)
+        self.del_project_btn = QPushButton("🗑 Delete this research project")
+        self.del_project_btn.setToolTip("Delete every video made from this subject (and, if you tick the box, what "
+                                        "the research agents found for it), so you can start over. The subject stays "
+                                        "in the database: pick it again and press OK to research it from scratch.")
+        self.del_project_btn.clicked.connect(self._delete_project)
+        for b in (self.new_ev_btn, self.new_story_btn, self.del_video_btn, self.del_project_btn):
             b.setMinimumHeight(38)
             again.addWidget(b)
         rb.addLayout(again)
@@ -292,11 +300,68 @@ class DatabasePage(QWidget):
     def _res_buttons(self) -> None:
         v = self.video_pick.currentData()
         self.open_btn.setEnabled(bool(v))
+        self.del_video_btn.setEnabled(bool(v))
+        self.del_project_btn.setEnabled(0 <= self.table.currentRow() < len(self._rows))
         self.new_ev_btn.setEnabled(bool(v and v["has_research"]))
         can_story = bool(v and v["stories"])
         self.new_story_btn.setEnabled(can_story)
         self.new_story_btn.setToolTip("Same ticked evidence and the same three stories. Pick a story you haven't "
                                       "made yet." if can_story else "This video has no stories written yet.")
+
+    def _delete_video(self) -> None:
+        from .. import common
+        from ... import cleanup
+        v = self.video_pick.currentData()
+        if not v:
+            return
+        yes, _ = common.ask_with_box(self, "Delete video", f"Delete {v['project_id']} \"{v['title']}\"?\n\nIts folder "
+                                     "(pictures, audio, renders) and history are deleted. This can't be undone. "
+                                     "Anything already on YouTube stays there.", "I understand", checked=True)
+        if not yes:
+            return
+        try:
+            cleanup.delete_video(v["project_id"])
+        except StageError as exc:
+            error(self, str(exc))
+            return
+        self.win.toast.show_message(f"{v['project_id']} deleted.")
+        self._after_delete()
+
+    def _delete_project(self) -> None:
+        from .. import common
+        from ... import cleanup
+        r = self.table.currentRow()
+        if not 0 <= r < len(self._rows):
+            error(self, "Click a research project in the list first.")
+            return
+        row = self._rows[r]
+        vids = researched.videos_for(row["kind"], row["id"])
+        claims = sorted({c for v in vids for c in v["episode"].claim_ids})
+        n = len(cleanup.agent_finds(claims))
+        yes, finds = common.ask_with_box(
+            self, "Delete research project",
+            f"Delete the research project \"{row['title']}\" and its {len(vids)} video(s)?\n\nTheir folders and "
+            "history are deleted; this can't be undone. The subject stays in the database, so you can pick it "
+            "again and research it from scratch.",
+            f"Also remove the {n} source(s) the research agents found for it", checked=True)
+        if not yes:
+            return
+        try:
+            out = cleanup.delete_research_project(row["kind"], row["id"], finds)
+        except StageError as exc:
+            error(self, str(exc))
+            return
+        self.win.toast.show_message(f"Deleted {len(out['videos'])} video(s)"
+                                    + (f" and {out['sources']} agent find(s)" if finds else "") + ".")
+        self._after_delete()
+
+    def _after_delete(self) -> None:
+        """The video picker at the top no longer lists deleted videos (or keeps a deleted one open)."""
+        cur = self.win.ep.project_id if getattr(self.win, "ep", None) else None
+        if hasattr(self.win, "_fill_picker"):
+            still = cur and db.one("SELECT 1 FROM project WHERE project_id=?", (cur,))
+            self.win._fill_picker(cur if still else None)
+        self.refresh()
 
     def _open_video(self) -> None:
         v = self.video_pick.currentData()

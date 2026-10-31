@@ -83,7 +83,7 @@ def ratings_path() -> Path:
 
 
 def ratings() -> dict[str, str]:
-    """Your Keep / Drop choices from the style test: {style key: "kept" | "dropped"}."""
+    """Your Keep / Maybe / Drop choices from the style test: {style key: "kept" | "maybe" | "dropped"}."""
     try:
         return json.loads(ratings_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -91,7 +91,7 @@ def ratings() -> dict[str, str]:
 
 
 def rate(key: str, verdict: str) -> None:
-    if verdict not in ("kept", "dropped", "draft"):
+    if verdict not in ("kept", "maybe", "dropped", "draft"):
         raise ValueError(verdict)
     r = ratings()
     if verdict == "draft":
@@ -104,7 +104,12 @@ def rate(key: str, verdict: str) -> None:
 
 
 def status_of(s: Style) -> str:
-    return ratings().get(s.key, s.status) if s.status != "live" else "live"
+    """kept / maybe / dropped from the style test, else the look's own status. A house look stays "live" unless
+    you dropped it in the test (2026-10-30: every look can be judged; the default look can't be dropped)."""
+    st = ratings().get(s.key, s.status)
+    if s.status == "live" and (st not in ("dropped", "maybe", "kept") or (st == "dropped" and s.key == DEFAULT)):
+        return "live"
+    return st
 
 
 def get(key: str | None) -> Style:
@@ -123,10 +128,12 @@ def choices(careful: bool = False, include_drafts: bool = True) -> list[tuple[st
     rate_of = ratings()
     rows: list[tuple[int, str, str]] = []
     for s in STYLES.values():
-        st = rate_of.get(s.key, s.status) if s.status != "live" else "live"
+        st = rate_of.get(s.key, s.status)
+        if s.status == "live" and (st != "dropped" or s.key == DEFAULT):
+            st = "live"
         if st == "dropped" or (careful and not s.careful_ok) or (st == "draft" and not include_drafts):
             continue
-        label = s.name + (" (untested)" if st == "draft" else "") + \
+        label = s.name + (" (untested)" if st == "draft" else " (maybe)" if st == "maybe" else "") + \
             (" (needs your OK)" if s.tier == "care" and st != "kept" else "")
         rows.append(({"live": 0, "kept": 1}.get(st, 2), label, s.key))
     out = [(k, label) for _, label, k in sorted(rows)]

@@ -147,6 +147,18 @@ def error(parent: QWidget, text: str) -> None:
     QMessageBox.warning(parent, "Followers or Facts Studio", text)
 
 
+def ask_with_box(parent: QWidget, title: str, text: str, box_text: str, checked: bool = False) -> tuple[bool, bool]:
+    """A Yes/No question with one tick box under it. Returns (yes, ticked)."""
+    from PySide6.QtWidgets import QCheckBox
+    m = QMessageBox(QMessageBox.Warning, title, text, QMessageBox.Yes | QMessageBox.No, parent)
+    m.setDefaultButton(QMessageBox.No)
+    box = QCheckBox(box_text)
+    box.setChecked(checked)
+    m.setCheckBox(box)
+    yes = m.exec() == QMessageBox.Yes
+    return yes, box.isChecked()
+
+
 def info(parent: QWidget, text: str) -> None:
     QMessageBox.information(parent, "Followers or Facts Studio", text)
 
