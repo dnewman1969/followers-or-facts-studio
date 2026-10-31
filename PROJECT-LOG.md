@@ -742,6 +742,16 @@ they might be true? (Research "Verifying claims from known liars".)
   only sorts and badges; Round 2 head-to-heads for maybes; the Turbo-Art merge for print/craft looks that come
   out too clean.
 
+## 2026-10-31 — v0.8.2: Clear all also removes the research quotes
+
+- Dave (screenshot, S01E09 John Birch Society): after Clear all, 5 rows stayed. 3 are the claims' own sources
+  from the research database (Project Megiddo, the Senate Y2K final report, the Quigley piece), kept on purpose
+  as the starting point. 2 were QUOTES an earlier research run picked from those database sources: Clear all
+  only removed quotes on agent-found sources. Every quote comes from a research run (the importer adds none),
+  so the tick box now removes every quote for the video's claims too (cleanup.research_quotes; the dialog says
+  how many). Same for Delete research project.
+- add_excerpt drops a leading list bullet ("• Hundreds of ...") from a quote.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

@@ -6,5 +6,5 @@ narration, captions, music, render and upload. Every stage stops for your OK.
 Nothing here needs a subscription or a cloud account (YouTube upload aside).
 """
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"
 APP_NAME = "Followers or Facts Studio"

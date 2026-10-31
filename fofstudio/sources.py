@@ -148,6 +148,7 @@ def quote_in_text(quote: str, text: str) -> bool:
 
 def add_excerpt(source_id: str, text: str, claim_id: str | None = None) -> tuple[int, bool]:
     """Store an excerpt. It is marked verified only if found word for word in the saved copy."""
+    text = re.sub(r"^[\s•·▪◦*\-–—]+", "", text or "")   # a list bullet isn't part of the quote
     full = source_text(source_id)
     verified = bool(full and quote_in_text(text, full))
     existing = db.one("SELECT excerpt_id, verified FROM source_excerpt WHERE source_id=? AND text=?",

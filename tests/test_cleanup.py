@@ -20,11 +20,12 @@ def test_clear_all_starts_the_research_over(episode):
     research_and_story(ep)
     finds = cleanup.agent_finds(ep.claim_ids)
     original = _db_sources(ep.claim_ids)
-    assert finds and original
+    assert finds and original and cleanup.research_quotes(ep.claim_ids)
     out = cleanup.clear_research(ep, agent_finds_too=True)
     assert not ep.path("research.json").exists() and not ep.path("stories.json").exists()
     assert ep.stage_status("research")["status"] != "approved" and "Stories" in out["steps"]
     assert out["sources"] == len(finds) and cleanup.agent_finds(ep.claim_ids) == []
+    assert cleanup.research_quotes(ep.claim_ids) == 0          # every quote a research run picked is gone too
     assert _db_sources(ep.claim_ids) == original                    # the original database is never touched
     packet = rs.build_packet(ep)
     assert packet["evidence"] and not any(e["include"] for e in packet["evidence"])   # nothing ticked

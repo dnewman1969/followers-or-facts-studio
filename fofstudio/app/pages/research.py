@@ -470,13 +470,15 @@ class ResearchPage(StagePage):
         if not self.ep:
             return
         n = len(cleanup.agent_finds(self.ep.claim_ids))
+        q = cleanup.research_quotes(self.ep.claim_ids)
         yes, finds = common.ask_with_box(
             self, "Clear all research",
             f"Start {self.ep.project_id}'s research again from nothing?\n\nThis clears its ticks, the agents' runs, "
             "look-ups, claim checks and story ideas, and everything made after research (stories, script, "
-            "pictures...). Your original research database stays.",
-            f"Also remove the {n} source(s) the research agents found for these claims (so old finds stop mixing in)",
-            checked=n > 0)
+            "pictures...).\n\nThe sources from your research database that these claims are linked to always "
+            "stay listed (unticked), as the starting point; nothing unticked is ever used in a video.",
+            f"Also remove what earlier research added: {q} quote(s) and {n} source(s) the agents found (so old "
+            "finds stop mixing in)", checked=bool(n or q))
         if not yes:
             return
         out = cleanup.clear_research(self.ep, finds)

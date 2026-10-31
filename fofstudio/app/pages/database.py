@@ -343,7 +343,8 @@ class DatabasePage(QWidget):
             f"Delete the research project \"{row['title']}\" and its {len(vids)} video(s)?\n\nTheir folders and "
             "history are deleted; this can't be undone. The subject stays in the database, so you can pick it "
             "again and research it from scratch.",
-            f"Also remove the {n} source(s) the research agents found for it", checked=True)
+            f"Also remove what its research added: {cleanup.research_quotes(claims)} quote(s) and {n} source(s) "
+            "the agents found", checked=True)
         if not yes:
             return
         try:

@@ -45,17 +45,30 @@ def agent_finds(claim_ids: list[str]) -> list[str]:
             WHERE cs.claim_id IN ({marks}) AND s.found_by = 'agent' ORDER BY s.source_id""", tuple(claim_ids))]
 
 
+def research_quotes(claim_ids: list[str]) -> int:
+    """How many quotes the research runs picked for these claims. Every quote comes from a research run (your
+    research database has sources, not quotes), so all of them go when you start the research over."""
+    if not claim_ids:
+        return 0
+    marks = ",".join("?" * len(claim_ids))
+    return (db.one(f"SELECT COUNT(*) AS n FROM source_excerpt WHERE claim_id IN ({marks})", tuple(claim_ids))
+            or {}).get("n", 0)
+
+
 def remove_agent_finds(claim_ids: list[str]) -> dict[str, int]:
-    """Unlink the agents' finds from these claims (and their quotes); a find no other claim uses is deleted."""
-    ids = agent_finds(claim_ids)
-    if not ids:
+    """Remove what research runs added for these claims: every quote they picked (from any source, including
+    the ones in your research database), and the sources the agents found on the web. A found source no other
+    claim uses is deleted. Your research database's own sources and their links stay."""
+    if not claim_ids:
         return {"sources": 0, "quotes": 0, "deleted": 0}
+    ids = agent_finds(claim_ids)
     cmarks = ",".join("?" * len(claim_ids))
-    quotes = deleted = 0
+    deleted = 0
     with db.transaction() as con:
+        quotes = con.execute(f"DELETE FROM source_excerpt WHERE claim_id IN ({cmarks})", tuple(claim_ids)).rowcount
         for sid in ids:
-            quotes += con.execute(f"DELETE FROM source_excerpt WHERE source_id=? AND (claim_id IN ({cmarks}) "
-                                  "OR claim_id IS NULL)", (sid, *claim_ids)).rowcount
+            quotes += con.execute("DELETE FROM source_excerpt WHERE source_id=? AND claim_id IS NULL",
+                                  (sid,)).rowcount
             con.execute(f"DELETE FROM claim_source WHERE source_id=? AND claim_id IN ({cmarks})", (sid, *claim_ids))
             still = con.execute("SELECT 1 FROM claim_source WHERE source_id=? LIMIT 1", (sid,)).fetchone() or \
                 con.execute("SELECT 1 FROM source_excerpt WHERE source_id=? LIMIT 1", (sid,)).fetchone()
