@@ -214,6 +214,11 @@ class StoryboardPage(StagePage):
         self.test_btn.setToolTip("Paint the same test pictures in the new looks and mixes, then Keep or Drop each")
         self.test_btn.clicked.connect(self._test_styles)
         row.addWidget(self.test_btn)
+        self.unreal_btn = QPushButton("Unreal guides...")
+        self.unreal_btn.setToolTip("Let Unreal Engine build a rough 3D set for each place, so the rooms match from "
+                                   "shot to shot and the camera angles really change (three easy steps)")
+        self.unreal_btn.clicked.connect(self._unreal)
+        row.addWidget(self.unreal_btn)
         row.addWidget(self.summary, 1)
         self.body.addLayout(row)
         self.scroll = QScrollArea()
@@ -226,6 +231,12 @@ class StoryboardPage(StagePage):
             return
         from ..styletest_ui import StyleTestDialog
         StyleTestDialog(self, self).exec()
+
+    def _unreal(self) -> None:
+        if not self.ep:
+            return
+        from ..unreal_ui import UnrealDialog
+        UnrealDialog(self, self.ep).exec()
 
     def _show_review(self) -> None:
         path = self.ep.path("director-review.md") if self.ep else None
@@ -266,6 +277,7 @@ class StoryboardPage(StagePage):
         self.summary.setText(f"{n} shots planned" if n else "")
         self.review_btn.setEnabled(bool(self.ep) and self.ep.path("director-review.md").exists() and not busy)
         self.test_btn.setEnabled(bool(self.ep) and not busy and not self.busy("styletest"))
+        self.unreal_btn.setEnabled(bool(self.ep) and not busy)
         sig = (busy, str(board))
         if sig == self._sig:
             return

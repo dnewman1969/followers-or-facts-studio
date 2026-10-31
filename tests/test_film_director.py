@@ -125,3 +125,52 @@ def test_unreal_guide_pictures_steer_the_painting(episode, monkeypatch):
     own.mkdir(parents=True)
     Image.new("RGB", (64, 36), "white").save(own / "pose.png")
     assert controlmaps.guide_for(ep, painted[0]) == own / "pose.png"
+
+
+def test_unreal_script_job_and_bringing_its_captures_in(episode):
+    """Dave (2026-10-31): "make a script that can do what you need": the Studio writes the job and a ready-to-run
+    Unreal script; what Unreal saves becomes guide pictures by itself."""
+    import json
+    import py_compile
+
+    import numpy as np
+    from PIL import Image
+
+    from fofstudio import controlmaps, unreal_bridge
+    from fofstudio.util import write_json
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    pipeline.approve(ep, "script")
+    pipeline.run_now(ep, "storyboard")
+    r = unreal_bridge.prepare(ep)
+    job = json.loads(r["job"].read_text(encoding="utf-8"))
+    assert job["places"] and set(job["places"][0]) >= {"id", "name", "architecture", "props"}
+    script = r["script"].read_text(encoding="utf-8")
+    assert "{{JOB_PATH}}" not in script and str(r["job"]) in script
+    py_compile.compile(str(r["script"]), doraise=True)        # Unreal will be able to run it
+    # pretend Unreal ran: one place, one camera, depth (cm) and a layout picture at 672x384
+    place = job["places"][0]["id"]
+    out = Path(job["out"]) / place
+    out.mkdir(parents=True, exist_ok=True)
+    w, h = 672, 384
+    depth = np.full((h, w), 2000.0, "<f4")
+    depth[100:300, 200:450] = 400.0                            # a box near the camera
+    depth[:40] = 1e10                                          # sky
+    depth.tofile(out / "wide.depth.bin")
+    layout = np.zeros((h, w, 3), np.uint8)
+    layout[100:300, 200:450] = 200
+    layout.tofile(out / "wide.layout.bin")
+    write_json(out / "wide.json", {"width": w, "height": h, "camera": "wide", "fov": 70})
+    write_json(out / "place.json", {"id": place, "kind": "room"})
+    assert unreal_bridge.pending()
+    sid = next(s for s, v in bible.load(ep)["scenes"].items() if v.get("location") == place)
+    found = controlmaps.guides(ep, sid)                         # brings them in by itself
+    names = {p.name for p in found}
+    assert {"wide-depth.png", "wide-lines.png"} <= names
+    d = Image.open(controlmaps.folder_for_location(place) / "wide-depth.png").convert("L")
+    assert d.size == (1344, 768) or d.size[0] > w
+    px = np.array(d)
+    assert px[384, 650] > px[600, 100] and px[5, 5] == 0      # near is bright, far is dark, sky is black
+    assert not unreal_bridge.pending() and not out.exists()    # the raw files are tidied away
+    assert unreal_bridge.status(ep)[0]["guides"] >= 2

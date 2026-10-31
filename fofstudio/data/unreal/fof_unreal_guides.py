@@ -1,0 +1,356 @@
+"""Followers or Facts Studio: guide pictures from Unreal Engine (made by the Studio; you don't need to edit this).
+
+What it does, by itself:
+  1. reads the job the Studio wrote (the places in your video: a radio studio, a main street, a courthouse...);
+  2. for each place builds a rough set from Unreal's built-in shapes (walls, desks, buildings, benches, trees,
+     a few stand-in figures) in the open level, with its own lights;
+  3. puts six cameras around it (wide, medium, low angle, high angle, close, side) and captures a DEPTH picture and a
+     plain grey LAYOUT picture from each;
+  4. saves them for the Studio, then removes everything it added. Your level is left as it was.
+The Studio turns them into the guide pictures the painter follows (so a place keeps the same layout in every shot).
+
+How to run it (Unreal Engine 5): open any project, then Tools > Execute Python Script... and pick this file.
+(First time only: Edit > Plugins, search "Python Editor Script Plugin", tick it, restart Unreal.)
+It shows a progress bar and a message when it's done (a minute or two per place).
+"""
+
+import json
+import math
+import os
+import struct
+
+import unreal
+
+JOB = r"{{JOB_PATH}}"           # filled in by the Studio
+WIDTH, HEIGHT = 672, 384         # half the painting size; the Studio scales them up
+
+CUBE = "/Engine/BasicShapes/Cube.Cube"
+SPHERE = "/Engine/BasicShapes/Sphere.Sphere"
+CYLINDER = "/Engine/BasicShapes/Cylinder.Cylinder"
+CONE = "/Engine/BasicShapes/Cone.Cone"
+PLANE = "/Engine/BasicShapes/Plane.Plane"
+
+
+# ---------------------------------------------------------------- Unreal helpers (UE 5.0 - 5.6)
+def _actors():
+    try:
+        return unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    except Exception:
+        return None
+
+
+def _world():
+    try:
+        return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+    except Exception:
+        return unreal.EditorLevelLibrary.get_editor_world()
+
+
+def _spawn(cls, loc, rot=(0, 0, 0)):
+    location = unreal.Vector(*loc)
+    rotation = unreal.Rotator(roll=rot[0], pitch=rot[1], yaw=rot[2])
+    sub = _actors()
+    if sub:
+        return sub.spawn_actor_from_class(cls, location, rotation)
+    return unreal.EditorLevelLibrary.spawn_actor_from_class(cls, location, rotation)
+
+
+def _destroy(actor):
+    sub = _actors()
+    if sub:
+        sub.destroy_actor(actor)
+    else:
+        unreal.EditorLevelLibrary.destroy_actor(actor)
+
+
+MESHES = {}
+
+
+def _mesh(path):
+    if path not in MESHES:
+        MESHES[path] = unreal.EditorAssetLibrary.load_asset(path)
+    return MESHES[path]
+
+
+class Set:
+    """Everything spawned for one place, so it can all be removed afterwards."""
+
+    def __init__(self):
+        self.actors = []
+
+    def shape(self, mesh, x, y, z, sx, sy, sz, yaw=0.0):
+        """A built-in shape; sizes in metres (the basic shapes are 1 m across), position of its centre in metres."""
+        a = _spawn(unreal.StaticMeshActor, (x * 100, y * 100, z * 100), (0, 0, yaw))
+        a.static_mesh_component.set_static_mesh(_mesh(mesh))
+        a.set_actor_scale3d(unreal.Vector(sx, sy, sz))
+        self.actors.append(a)
+        return a
+
+    def box(self, x, y, z, sx, sy, sz, yaw=0.0):        # z = floor level of the box's base
+        return self.shape(CUBE, x, y, z + sz / 2, sx, sy, sz, yaw)
+
+    def figure(self, x, y, yaw=0.0, sitting=False):
+        """A stand-in person: body, head and shoulders (seen from behind or far away in the paintings)."""
+        h = 1.25 if sitting else 1.75
+        self.shape(CYLINDER, x, y, h * 0.42, 0.42, 0.3, h * 0.84 / 1.0, yaw)
+        self.shape(SPHERE, x, y, h * 0.92, 0.24, 0.24, 0.26)
+        self.shape(CUBE, x, y, h * 0.76, 0.5, 0.22, 0.12, yaw)
+
+    def lights(self, focus=(0, 0, 1.5)):
+        """A sun and sky for outdoor places, and a lamp in front of the action so rooms with a ceiling are lit."""
+        sun = _spawn(unreal.DirectionalLight, (0, 0, 800), (0, -45, 35))
+        sky = _spawn(unreal.SkyLight, (0, 0, 600))
+        lamp = _spawn(unreal.PointLight, (focus[0] * 100, (focus[1] - 1.5) * 100, 250))
+        try:
+            lamp.point_light_component.set_editor_property("attenuation_radius", 3000.0)
+            lamp.point_light_component.set_editor_property("intensity", 20000.0)
+        except Exception:
+            pass
+        try:
+            sky.light_component.recapture_sky()
+        except Exception:
+            pass
+        self.actors += [sun, sky, lamp]
+
+    def clear(self):
+        for a in self.actors:
+            try:
+                _destroy(a)
+            except Exception:
+                pass
+        self.actors = []
+
+
+# ---------------------------------------------------------------- the sets, by kind of place
+def room(s, w=8, d=7, h=3.2, windows=True):
+    s.box(0, 0, -0.1, w, d, 0.1)                                     # floor
+    s.box(0, d / 2, 0, w, 0.15, h)                                   # back wall
+    s.box(-w / 2, 0, 0, 0.15, d, h)                                  # left wall
+    s.box(w / 2, 0, 0, 0.15, d, h)                                   # right wall
+    if windows:
+        s.box(-w / 2 + 0.1, 0.5, 1.0, 0.1, 1.6, 1.2)                 # a window recess
+    s.box(0, 0, h, w, d, 0.1)                                        # ceiling
+
+
+def studio(s):
+    room(s, 7, 6, 3, windows=False)
+    s.box(0, 1.2, 0, 2.4, 0.9, 0.75)                                 # desk
+    s.shape(CYLINDER, -0.4, 1.0, 0.95, 0.06, 0.06, 0.4)              # microphone stand
+    s.shape(SPHERE, -0.4, 1.0, 1.2, 0.14, 0.14, 0.2)                 # microphone
+    s.box(2.3, 2.6, 0, 1.6, 0.4, 2.0)                                # shelves of equipment
+    s.box(-2.4, 2.6, 0, 1.2, 0.5, 1.4)                               # rack
+    s.figure(0, 1.9, 180, sitting=True)                              # the host, from behind
+    s.box(0, 2.9, 1.2, 2.2, 0.05, 1.0)                               # a big blank panel on the wall
+
+
+def office(s):
+    room(s)
+    s.box(0.5, 1.0, 0, 2.0, 1.0, 0.76)                               # table
+    for x in (-0.2, 1.2):
+        s.box(x, 0.2, 0, 0.5, 0.5, 0.45)                             # chairs
+        s.box(x, -0.05, 0.45, 0.5, 0.06, 0.5)
+    s.box(-3.3, 3.0, 0, 1.0, 0.45, 2.2)                              # shelves
+    s.box(3.0, 3.0, 0, 1.4, 0.6, 1.0)                                # cabinet
+    s.box(0.5, 1.0, 0.76, 0.6, 0.4, 0.05)                            # papers on the table
+    s.figure(-2.0, -0.5, 30)
+
+
+def street(s):
+    s.box(0, 0, -0.1, 60, 60, 0.1)                                   # ground
+    s.box(0, 0, -0.05, 8, 60, 0.06)                                  # road
+    for side in (-1, 1):
+        for i, (w, h) in enumerate([(6, 7), (5, 10), (7, 6), (6, 12), (5, 8), (6, 7)]):
+            s.box(side * 9, -18 + i * 7, 0, 6, w, h)                 # shop fronts and buildings
+            s.box(side * 5.9, -18 + i * 7, 2.6, 0.3, w * 0.8, 0.6)   # awnings
+        for i in range(5):
+            s.shape(CYLINDER, side * 4.6, -16 + i * 8, 2.0, 0.15, 0.15, 4.0)   # lamp posts
+    for x, y in ((-1.5, 2), (1.0, 4), (2.5, -3)):
+        s.figure(x, y, 90)
+
+
+def hall(s):
+    """A courtroom, hearing room or chamber."""
+    room(s, 16, 14, 7, windows=False)
+    s.box(0, 5.0, 0, 6, 1.6, 1.4)                                    # the raised bench
+    s.box(0, 5.6, 1.4, 6, 0.6, 1.0)
+    for i in range(4):
+        for side in (-1, 1):
+            s.box(side * 3.5, -1 - i * 1.6, 0, 4.5, 0.5, 0.9)        # rows of benches
+    for x in (-7, -3.5, 3.5, 7):
+        s.shape(CYLINDER, x, 6.5, 3.5, 0.8, 0.8, 7.0)                # columns
+    for x in (-3, 3):
+        s.box(x, 2.5, 0, 2.5, 1.0, 0.8)                              # tables
+    s.figure(-3, 1.6, 180, sitting=True)
+    s.figure(3.5, -2.6, 180, sitting=True)
+
+
+def warehouse(s):
+    s.box(0, 0, -0.1, 40, 40, 0.1)
+    s.box(0, 15, 0, 40, 0.3, 9)
+    for i in range(5):
+        for j in range(3):
+            h = 1.2 + ((i + j) % 3) * 1.1
+            s.box(-10 + i * 5, -2 + j * 5, 0, 2.4, 2.4, h)           # stacks of crates
+    s.figure(2, -8, 0)
+
+
+def kitchen(s):
+    room(s, 6, 5, 2.8)
+    s.box(0, 2.1, 0, 4.5, 0.65, 0.9)                                 # counter
+    s.box(0, 2.3, 1.5, 4.5, 0.35, 0.7)                               # cupboards
+    s.box(0, 0, 0, 1.4, 1.0, 0.75)                                   # table
+    s.box(0.2, 0.1, 0.75, 0.35, 0.2, 0.25)                           # a radio on the table
+    s.figure(-0.9, -0.5, 30, sitting=True)
+
+
+def outdoors(s):
+    s.box(0, 0, -0.1, 120, 120, 0.1)
+    for x, y, r in ((-30, 40, 18), (25, 55, 24), (60, 30, 14)):
+        s.shape(SPHERE, x, y, -r * 0.2, r * 2, r * 2, r)             # hills, poking up
+    for i in range(10):
+        x, y = -20 + (i * 7) % 40, 8 + (i * 13) % 30
+        s.shape(CYLINDER, x, y, 1.5, 0.35, 0.35, 3.0)                # trunks
+        s.shape(SPHERE, x, y, 4.2, 3.0, 3.0, 3.4)                    # crowns
+    s.box(0, 0, -0.05, 4, 120, 0.06)                                 # a road
+    s.figure(1.0, 3.0, 90)
+
+
+def crowd(s):
+    """A rally, a fair or a meeting: a stage and people seen from behind."""
+    s.box(0, 0, -0.1, 50, 50, 0.1)
+    s.box(0, 9, 0, 8, 4, 1.1)                                        # stage
+    s.box(0, 10.8, 1.1, 8, 0.2, 4)                                   # backdrop
+    s.figure(0, 9, 180)                                              # the speaker
+    for row in range(5):
+        for k in range(7):
+            s.figure(-6 + k * 2 + (row % 2) * 0.9, 4 - row * 1.6, 0)
+
+
+KINDS = [
+    ("studio", ("studio", "radio", "broadcast", "newsroom", "station", "booth", "podcast", "tv")),
+    ("hall", ("court", "courthouse", "senate", "congress", "hearing", "chamber", "capitol", "hall", "church")),
+    ("street", ("street", "town", "city", "downtown", "storefront", "shop front", "avenue", "main")),
+    ("warehouse", ("warehouse", "factory", "plant", "depot", "storage", "bunker", "silo")),
+    ("kitchen", ("kitchen", "home", "house", "living", "farmhouse", "cabin")),
+    ("crowd", ("rally", "fair", "crowd", "stadium", "convention", "protest", "meeting", "stage")),
+    ("outdoors", ("field", "farm", "road", "hill", "forest", "desert", "mountain", "park", "outdoor", "countryside")),
+    ("office", ("office", "room", "shop", "store", "library", "study", "lab", "bank", "clinic")),
+]
+BUILD = {"studio": studio, "hall": hall, "street": street, "warehouse": warehouse, "kitchen": kitchen,
+         "crowd": crowd, "outdoors": outdoors, "office": office}
+# where the action is (metres) and how far the cameras stand back, per kind of place
+FOCUS = {"studio": ((0, 1.4, 1.1), 3.2), "hall": ((0, 2.5, 1.4), 8.0), "street": ((0, 0, 1.6), 9.0),
+         "warehouse": ((0, 2, 1.6), 11.0), "kitchen": ((0, 0.5, 1.0), 2.8), "crowd": ((0, 5, 1.6), 10.0),
+         "outdoors": ((1, 3, 1.6), 12.0), "office": ((0.5, 1.0, 1.0), 3.4)}
+
+
+def kind_of(place):
+    text = " ".join(str(place.get(k, "")) for k in ("kind", "name", "architecture", "props", "id")).lower()
+    if place.get("kind") in BUILD:
+        return place["kind"]
+    for kind, words in KINDS:
+        if any(w in text for w in words):
+            return kind
+    return "office"
+
+
+# ---------------------------------------------------------------- the cameras and the captures
+# The sets are open at the front (toward -y, where rooms have no wall), so the cameras stand in front, spread
+# left to right: 270 degrees is straight in front of the action.
+CAMERAS = [   # name, angle around the focus (degrees), distance (x the place's distance), height (m), field of view
+    ("wide", 255, 1.0, 1.7, 70), ("medium", 275, 0.55, 1.5, 55), ("low", 290, 0.6, 0.4, 60),
+    ("high", 240, 0.9, 4.5, 60), ("close", 268, 0.3, 1.3, 40), ("side", 320, 0.7, 1.6, 55),
+]
+
+
+def _target(fmt):
+    return unreal.RenderingLibrary.create_render_target2d(_world(), WIDTH, HEIGHT, fmt)
+
+
+def capture(s, cam, focus, dist, out_dir):
+    name, angle, far, height, fov = cam
+    fx, fy, fz = focus
+    a = math.radians(angle)
+    cx, cy = fx + math.cos(a) * dist * far, fy + math.sin(a) * dist * far
+    cz = max(0.3, height if name != "high" else height * (dist / 6.0))
+    dx, dy, dz = fx - cx, fy - cy, fz - cz
+    yaw = math.degrees(math.atan2(dy, dx))
+    pitch = math.degrees(math.atan2(dz, math.hypot(dx, dy)))
+    cap = _spawn(unreal.SceneCapture2D, (cx * 100, cy * 100, cz * 100), (0, pitch, yaw))
+    try:
+        comp = cap.capture_component2d
+        comp.set_editor_property("fov_angle", fov)
+        comp.set_editor_property("capture_every_frame", False)
+        comp.set_editor_property("capture_on_movement", False)
+        try:   # only the set we built, never whatever else is in your level
+            comp.set_editor_property("primitive_render_mode",
+                                     unreal.SceneCapturePrimitiveRenderMode.PRM_USE_SHOW_ONLY_LIST)
+            comp.set_editor_property("show_only_actors", list(s.actors))
+        except Exception:
+            pass
+        # depth: how far each point is, in centimetres
+        rt = _target(unreal.TextureRenderTargetFormat.RTF_R32F)
+        comp.set_editor_property("texture_target", rt)
+        comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_SCENE_DEPTH)
+        comp.capture_scene()
+        px = unreal.RenderingLibrary.read_render_target_raw(_world(), rt, False)
+        with open(os.path.join(out_dir, f"{name}.depth.bin"), "wb") as f:
+            f.write(struct.pack(f"<{len(px)}f", *[p.r for p in px]))
+        # layout: the plain grey set, lit, for the outlines
+        rt2 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA8)
+        comp.set_editor_property("texture_target", rt2)
+        comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_FINAL_COLOR_LDR)
+        comp.capture_scene()
+        px2 = unreal.RenderingLibrary.read_render_target(_world(), rt2, True)
+        with open(os.path.join(out_dir, f"{name}.layout.bin"), "wb") as f:
+            f.write(bytes(v for p in px2 for v in (p.r, p.g, p.b)))
+        with open(os.path.join(out_dir, f"{name}.json"), "w") as f:
+            json.dump({"width": WIDTH, "height": HEIGHT, "camera": name, "fov": fov,
+                       "position_m": [cx, cy, cz], "yaw": yaw, "pitch": pitch}, f)
+    finally:
+        _destroy(cap)
+
+
+def main():
+    with open(JOB, encoding="utf-8") as f:
+        job = json.load(f)
+    out_root = job["out"]
+    places = job["places"]
+    total = len(places) * len(CAMERAS)
+    done_places = []
+    with unreal.ScopedSlowTask(total, "Followers or Facts: building sets and capturing guide pictures") as task:
+        task.make_dialog(True)
+        for place in places:
+            kind = kind_of(place)
+            out_dir = os.path.join(out_root, place["id"])
+            os.makedirs(out_dir, exist_ok=True)
+            s = Set()
+            try:
+                BUILD[kind](s)
+                focus, dist = FOCUS[kind]
+                s.lights(focus)
+                for cam in CAMERAS:
+                    if task.should_cancel():
+                        raise KeyboardInterrupt
+                    task.enter_progress_frame(1, f"{place.get('name', place['id'])}: {cam[0]} camera")
+                    capture(s, cam, focus, dist, out_dir)
+                with open(os.path.join(out_dir, "place.json"), "w") as f:
+                    json.dump({**place, "built_as": kind}, f)
+                done_places.append(f"{place.get('name', place['id'])} ({kind})")
+            finally:
+                s.clear()
+    with open(os.path.join(out_root, "done.json"), "w") as f:
+        json.dump({"places": done_places, "cameras": [c[0] for c in CAMERAS]}, f)
+    msg = ("Done! Guide pictures made for:\n- " + "\n- ".join(done_places)
+           + "\n\nGo back to the Studio and press Make pictures (it brings them in by itself).")
+    unreal.log(msg)
+    try:
+        unreal.EditorDialog.show_message("Followers or Facts", msg, unreal.AppMsgType.OK)
+    except Exception:
+        pass
+
+
+try:
+    main()
+except KeyboardInterrupt:
+    unreal.log_warning("Followers or Facts: cancelled. Nothing was left in your level.")

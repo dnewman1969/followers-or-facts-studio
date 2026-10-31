@@ -815,6 +815,24 @@ whatever was being said; the variety check compared framing but not WHAT is show
   by the planner; DINOv2 repeat check on painted frames; RIFE and SeedVR2 in ComfyUI; first-last-frame clips for
   planned moves; a capped five-step retry ladder.
 
+## 2026-10-31 — v0.9.2: Unreal does it by itself
+
+Dave: "I'm at a complete loss on what you want me to do with Unreal, can you make a script that can do what you
+need, that way it will be done correctly."
+- `fofstudio/data/unreal/fof_unreal_guides.py`: one Unreal editor Python script. For every place in the video's
+  bible it builds a rough set from Unreal's built-in shapes (eight kinds: studio, hall, street, warehouse,
+  kitchen, crowd, outdoors, office, picked from the place's name), lights it, puts six cameras in front (wide,
+  medium, low, high, close, side), captures depth and a grey layout picture from each, saves them and removes
+  everything it added. Progress bar, cancel button, a Done message. Untested inside Unreal here (no Unreal in
+  the build machine): the first real run may need a fix.
+- `fofstudio/unreal_bridge.py`: `prepare()` writes `<data>/unreal/job.json` and a copy of the script with the
+  job's path filled in; `bring_in()` turns the captures into `control-maps/<place>/<cam>-depth.png` (near =
+  white) and `-lines.png` (edges from the depth jumps plus the lit layout), at the painting's size, and tidies the
+  raw files. `controlmaps.guides()` calls it by itself, so Make pictures is enough.
+- Storyboard page: **Unreal guides...** window with the three numbered steps and one button each.
+- docs/UNREAL.md rewritten as those three steps.
+- Test: the job, the filled-in script compiles, fake Unreal captures become guide pictures the storyboard uses.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

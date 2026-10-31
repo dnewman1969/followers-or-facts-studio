@@ -30,7 +30,9 @@ def folder_for_location(location_id: str) -> Path:
 
 
 def guides(ep: Episode, scene_id: str) -> list[Path]:
-    from . import bible
+    from . import bible, unreal_bridge
+    if unreal_bridge.pending():          # Unreal finished since last time: turn its captures into guides
+        unreal_bridge.bring_in()
     own = ep.path("control", scene_id)
     if own.is_dir():
         found = sorted(p for p in own.iterdir() if p.suffix.lower() in KINDS)
