@@ -202,6 +202,11 @@ class ResearchPage(StagePage):
         self.start.setText("Research again" if packet.get("researched_at") else "Start research")
         if busy:
             self.status.setText("")
+        elif not packet.get("researched_at") and rs.own_only(self.ep):
+            self.status.setText(f"<span style='color:{GOLD}'><b>Choose how much research time, then press Start "
+                                "research.</b></span> The list starts empty: the agents read the sources on file "
+                                "for these claims, search the web, court records and archives, and everything they "
+                                "find for this video appears here.")
         elif not packet.get("researched_at"):
             self.status.setText(f"<span style='color:{GOLD}'><b>Choose how much research time, then press Start "
                                 f"research.</b></span> The {len(packet.get('evidence', []))} pieces of evidence "
@@ -475,8 +480,8 @@ class ResearchPage(StagePage):
             self, "Clear all research",
             f"Start {self.ep.project_id}'s research again from nothing?\n\nThis clears its ticks, the agents' runs, "
             "look-ups, claim checks and story ideas, and everything made after research (stories, script, "
-            "pictures...).\n\nThe sources from your research database that these claims are linked to always "
-            "stay listed (unticked), as the starting point; nothing unticked is ever used in a video.",
+            "pictures...). The list starts empty; Start research fills it again with what this video's research "
+            "finds (including the sources on file for these claims, read again).",
             f"Also remove what earlier research added: {q} quote(s) and {n} source(s) the agents found (so old "
             "finds stop mixing in)", checked=bool(n or q))
         if not yes:

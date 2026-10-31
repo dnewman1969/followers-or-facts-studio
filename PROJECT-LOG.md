@@ -752,6 +752,17 @@ they might be true? (Research "Verifying claims from known liars".)
   how many). Same for Delete research project.
 - add_excerpt drops a leading list bullet ("• Hundreds of ...") from a quote.
 
+## 2026-10-31 — v0.8.3: each video's Research list holds only its own research
+
+- Dave: "whenever a new subject is chosen to research the research window should have no old search data in
+  there. Why are these 3 still here after I clicked clear?" The 3 were the claims' own sources from the research
+  database: the page listed everything linked to the claims, from any video's research, before anything ran.
+- Now (episode.json "research_own", set for new videos and by Clear all): the list starts EMPTY and holds only
+  what this video's runs found or read (research.json "own_ids"): the sources on file for its claims and their
+  quotes (touched_on_file, added when a full research run reads them), plus what the agents found in its runs,
+  look-ups and deep dives (_hunt records them). Another video's finds on shared claims stay out. Older videos
+  (and copies of them) list everything, as before, until you press Clear all.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

@@ -86,6 +86,10 @@ def clear_research(ep: Episode, agent_finds_too: bool = False) -> dict[str, Any]
     cleared = pipeline.clear(ep, "research")
     for name in EXTRA_FILES:
         ep.path(name).unlink(missing_ok=True)
+    from .util import write_json
+    info = ep.info
+    info["research_own"] = True        # from now on the list holds only what this video's research finds
+    write_json(ep.path("episode.json"), info)
     out: dict[str, Any] = {"steps": cleared, "sources": 0, "quotes": 0, "deleted": 0}
     if agent_finds_too:
         out.update(remove_agent_finds(ep.claim_ids))

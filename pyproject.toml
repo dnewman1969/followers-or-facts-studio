@@ -1,6 +1,6 @@
 [project]
 name = "followers-or-facts-studio"
-version = "0.8.2"
+version = "0.8.3"
 description = "Local research-to-YouTube pipeline for the Followers or Facts channel"
 requires-python = ">=3.11"
 

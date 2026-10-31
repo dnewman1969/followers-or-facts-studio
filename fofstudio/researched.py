@@ -133,6 +133,7 @@ def new_video_from(project_id: str, mode: str) -> Episode:
     db.execute("UPDATE project SET subject_type=?, subject_id=? WHERE project_id=?", (kind, sid, new.project_id))
     info = new.info
     info["based_on"] = project_id
+    info["research_own"] = bool(src.info.get("research_own"))   # the copy lists the same research as the original
     write_json(new.path("episode.json"), info)
     packet = read_json(src.path("research.json")) or {}
     if mode == "evidence":

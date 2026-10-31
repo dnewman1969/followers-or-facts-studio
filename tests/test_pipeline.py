@@ -439,7 +439,12 @@ def test_script_roundtrip():
 
 
 def test_research_lists_what_is_on_file_without_starting(episode):
+    """Videos made before 2026-10-31 list everything on file (new ones start empty: test_cleanup.py)."""
     ep = episode
+    info = ep.info
+    info["research_own"] = False
+    from fofstudio.util import write_json
+    write_json(ep.path("episode.json"), info)
     packet = rs.prepare(ep)  # what the Research page does when it opens: no agents, no internet
     assert packet["evidence"] and not any(e["include"] for e in packet["evidence"])
     assert not packet.get("researched_at")
@@ -457,14 +462,17 @@ def test_research_saves_summaries_and_flags_new_finds(episode):
     assert new and {e["id"] for e in new}.isdisjoint(before)
     found = next(e for e in packet["evidence"] if e.get("found_by") == "agent")
     assert "survival supplies" in found["summary"]
-    # the database keeps it: a brand-new video on the same subject sees it straight away
+    # the database keeps it, but a brand-new video starts with an empty list of its own (Dave, 2026-10-31)
     other = Episode.create("S01E09", "Same subject", "A-Y2K-FEAR-INDUSTRY", ep.claim_ids)
-    assert any(e["source_id"] == found["source_id"] for e in rs.prepare(other)["evidence"])
+    assert rs.prepare(other)["evidence"] == []
+    from fofstudio import cleanup
+    assert found["source_id"] in cleanup.agent_finds(ep.claim_ids)
 
 
 def test_dig_deeper_on_ticked_evidence(episode, monkeypatch):
     ep = episode
-    packet = rs.prepare(ep)
+    pipeline.run_now(ep, "research", {"depth": "files"})      # the sources on file, read for this video
+    packet = read_json(ep.path("research.json"))
     target = next(e for e in packet["evidence"] if e["kind"] == "link")
     asked = []
     real = Ollama.chat_json

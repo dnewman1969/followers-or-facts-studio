@@ -59,6 +59,7 @@ class Episode:
         write_json(ep.path("episode.json"), {
             "project_id": project_id, "title": title, "arc_id": arc_id,
             "claim_ids": claim_ids, "created_at": utc_now(), "format": "fof-episode/1",
+            "research_own": True,   # the Research page lists only what THIS video's research found (2026-10-31)
         })
         for sub in ("images", "video", "audio/narration", "audio/music", "captions",
                     "render", "publish", "receipts"):

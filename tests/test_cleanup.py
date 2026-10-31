@@ -27,9 +27,23 @@ def test_clear_all_starts_the_research_over(episode):
     assert out["sources"] == len(finds) and cleanup.agent_finds(ep.claim_ids) == []
     assert cleanup.research_quotes(ep.claim_ids) == 0          # every quote a research run picked is gone too
     assert _db_sources(ep.claim_ids) == original                    # the original database is never touched
-    packet = rs.build_packet(ep)
-    assert packet["evidence"] and not any(e["include"] for e in packet["evidence"])   # nothing ticked
-    assert not any(e.get("found_by") == "agent" for e in packet["evidence"])
+    assert rs.build_packet(ep)["evidence"] == []                      # the list starts empty again
+
+
+def test_each_video_lists_only_its_own_research(episode):
+    """Dave (2026-10-31): a new subject's Research page has no old search data in it."""
+    from fofstudio.episode import Episode
+    ep = episode
+    assert rs.prepare(ep)["evidence"] == []                          # nothing before Start research
+    research_and_story(ep)
+    mine = {e["id"] for e in read_json(ep.path("research.json"))["evidence"]}
+    finds = set(cleanup.agent_finds(ep.claim_ids))
+    assert finds <= mine and _db_sources(ep.claim_ids) <= mine       # what it found, and the sources on file it read
+    other = Episode.create("S01E05", "Another subject on the same claims", None, ep.claim_ids)
+    assert rs.prepare(other)["evidence"] == []                       # the first video's finds don't leak in
+    pipeline.run_now(other, "research", {"depth": "files"})          # reading only the sources on file
+    listed = {e["id"] for e in read_json(other.path("research.json"))["evidence"]}
+    assert _db_sources(other.claim_ids) <= listed and not (finds & listed)
 
 
 def test_clear_all_can_keep_the_agents_finds(episode):

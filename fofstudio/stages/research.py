@@ -144,18 +144,45 @@ def build_packet(ep: Episode) -> dict[str, Any]:
     arc = db.one("SELECT * FROM arc WHERE arc_id=?", (info.get("arc_id"),)) if info.get("arc_id") else None
     old = read_json(ep.path("research.json")) or {}
     ticked = {e["id"] for e in old.get("evidence", []) if e.get("include")}
+    evidence = evidence_list(claims, ticked, set(old.get("new_ids", [])))
+    own = old.get("own_ids") or []
+    if own_only(ep):   # only what this video's own research runs found or read
+        keep = set(own)
+        evidence = [e for e in evidence if e["id"] in keep]
     return {
         "project_id": ep.project_id, "title": ep.title, "arc": arc,
         "subject": {"kind": proj.get("subject_type") or ("story" if arc else "conspiracy"),
                     "id": proj.get("subject_id") or info.get("arc_id"), "title": ep.title},
         "claims": claims,
-        "evidence": evidence_list(claims, ticked, set(old.get("new_ids", []))),
+        "evidence": evidence,
+        "own_ids": own,
         "restrictions": restrictions_for(claim_ids, info.get("arc_id")),
         "built_at": utc_now(),
         "researched_at": old.get("researched_at"),
         "runs": old.get("runs", []),
         "new_ids": old.get("new_ids", []),
     }
+
+
+def own_only(ep: Episode) -> bool:
+    """Dave (2026-10-31): "whenever a new subject is chosen to research, the research window should have no old
+    search data". The database is shared by every video, so a video only lists what its OWN research runs found
+    or read: nothing before Start research; after it, the sources on file it read (with their quotes) and what
+    the agents found this time. Finds from other videos' research on the same claims stay out of its list.
+    Videos made before this change (and copies of them) list everything, as before."""
+    return bool(ep.info.get("research_own"))
+
+
+def touched_on_file(claims: list[dict[str, Any]]) -> set[str]:
+    """What a research run reads from the database: each claim's own sources from your research database and the
+    word-for-word quotes taken from them."""
+    out: set[str] = set()
+    for c in claims:
+        mine = {s["source_id"] for s in c["sources"] if (s.get("found_by") or "database") != "agent"
+                and s.get("source_type") != "kf_index"}
+        out |= mine
+        out |= {f"E{e['excerpt_id']}" for e in c["excerpts"] if e["source_id"] in mine}
+    return out
 
 
 def evidence_list(claims: list[dict[str, Any]], ticked: set[str] | None = None,
@@ -335,7 +362,7 @@ def _summarize(llm: Ollama, claim: dict[str, Any], title: str, text: str) -> str
 
 
 def _hunt(ctx: Context, llm: Ollama, claim: dict[str, Any], about: str, n_queries: int, n_pages: int,
-          base: float, step: float, label: str) -> tuple[int, int, int]:
+          base: float, step: float, label: str, touched: set[str] | None = None) -> tuple[int, int, int]:
     """Plan searches, search, read the best pages, keep word-for-word quotes. Returns (found, kept, rejected)."""
     found = kept = rejected = 0
     ctx.progress(f"Planning searches for {label}", base)
@@ -378,8 +405,12 @@ def _hunt(ctx: Context, llm: Ollama, claim: dict[str, Any], about: str, n_querie
             continue
         sid = _add_found_source(claim["claim_id"], hit, page, q)
         found += 1
+        if touched is not None:
+            touched.add(sid)
         for x in good:
             eid, ok = sources.add_excerpt(sid, x["quote"].strip(), claim["claim_id"])
+            if touched is not None:
+                touched.add(f"E{eid}")
             db.execute("UPDATE source_excerpt SET supports=? WHERE excerpt_id=?", (x.get("supports"), eid))
             kept += ok
     return found, kept, rejected
@@ -399,6 +430,7 @@ def run(ctx: Context) -> None:
     before_ids = {e["id"] for e in packet["evidence"]}
     claims = packet["claims"]
     kept = rejected = found = 0
+    touched: set[str] = set()
 
     if not focus:
         # 1. sources already in the database
@@ -443,7 +475,7 @@ def run(ctx: Context) -> None:
                          f"Year: {c.get('first_known_year') or ''}\nPeople: "
                          f"{', '.join(p['name'] for p in c['people'][:6])}")
                 f, k, r = _hunt(ctx, llm, c, about, n_queries, n_pages, 25 + 50 * n / max(1, len(claims)),
-                                50 / max(1, len(claims)), f"{c['claim_id']} ({n + 1}/{len(claims)})")
+                                50 / max(1, len(claims)), f"{c['claim_id']} ({n + 1}/{len(claims)})", touched)
                 found, kept, rejected = found + f, kept + k, rejected + r
     else:
         # dig deeper: the agents chase each piece of evidence you ticked
@@ -461,8 +493,13 @@ def run(ctx: Context) -> None:
                      + (f"Quote: {e['quote']}\n" if e.get("quote") else "")
                      + (f"Producer's note: {ctx.options['notes']}\n" if ctx.options.get("notes") else ""))
             f, k, r = _hunt(ctx, llm, c, about, n_queries, n_pages, 5 + 70 * n / len(items), 70 / len(items),
-                            f"{e['id']} ({n + 1}/{len(items)})")
+                            f"{e['id']} ({n + 1}/{len(items)})", touched)
             found, kept, rejected = found + f, kept + k, rejected + r
+
+    # what this run found or read joins this video's list now, so the write-ups and Wayback copies below cover it
+    if not focus:
+        touched |= touched_on_file(build_packet(ep)["claims"])
+    _remember_own(ep, touched)
 
     # 3. a short write-up of what each source is and what it shows
     packet = build_packet(ep)
@@ -530,6 +567,7 @@ def lookup(ctx: Context) -> None:
     if not claims:
         raise StageError("This episode has no claims to look things up for.")
     found = kept = rejected = 0
+    touched: set[str] = set()
     results: list[dict[str, Any]] = []
     for n, q in enumerate(questions):
         ctx.check_cancel()
@@ -537,9 +575,10 @@ def lookup(ctx: Context) -> None:
         about = (f"Claim: {c['short_title']}\nFind primary documents (court records, government documents, news "
                  f"reports from the time, studies) that answer this question:\n{q['question'].strip()}")
         f, k, r = _hunt(ctx, llm, c, about, 3, 3, 5 + 80 * n / len(questions), 80 / len(questions),
-                        f"question {n + 1} of {len(questions)}")
+                        f"question {n + 1} of {len(questions)}", touched)
         found, kept, rejected = found + f, kept + k, rejected + r
         results.append({"question": q["question"], "claim_id": c["claim_id"], "new_finds": k, "at": utc_now()})
+    _remember_own(ep, touched)
     packet = build_packet(ep)
     claim_by_id = {c["claim_id"]: c for c in packet["claims"]}
     done = {r["source_id"] for r in db.rows("SELECT source_id FROM source WHERE summary IS NOT NULL AND summary != ''")}
@@ -568,6 +607,13 @@ def lookup(ctx: Context) -> None:
                                                  "at": utc_now()})
     ctx.progress(f"Looked up {len(questions)} question(s): {len(new_ids)} new piece(s) of evidence, marked NEW on the "
                  "Research page. Tick the ones to use, then write again.", 100)
+
+
+def _remember_own(ep: Episode, ids: set[str]) -> None:
+    """Add what a run found or read to this video's own list (kept in research.json)."""
+    data = read_json(ep.path("research.json")) or {}
+    data["own_ids"] = sorted(set(data.get("own_ids") or []) | ids)
+    write_json(ep.path("research.json"), data)
 
 
 def set_include(ep: Episode, evidence_ids: str | list[str], include: bool) -> None:
