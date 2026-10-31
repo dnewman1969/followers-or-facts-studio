@@ -24,6 +24,28 @@ def _pix(path, w, h) -> QPixmap:
     return cached_pixmap(path, w, h)
 
 
+def panel_text(shot: dict) -> str:
+    """The storyboard panel, as Dave's brief lists it: scene and shot number, camera, action, place, motion,
+    animation notes and the shot's purpose in the story."""
+    look = shot.get("look") or {}
+    anim = shot.get("anim") or {}
+    scene, _, num = shot["shot_id"].rpartition("-s")
+    rows = [f"Scene {scene.replace('SCENE_', '')} · shot {num}",
+            f"Says: \"{shot['covers']}\"" if shot.get("covers") else "",
+            f"Shows: {shot.get('shows')}" if shot.get("shows") else "",
+            "Camera: " + ", ".join(x for x in (look.get("shot_type"), look.get("angle"), look.get("movement")) if x)
+            if any(look.get(k) for k in ("shot_type", "angle", "movement")) else "",
+            f"Action: {shot['action']}" if shot.get("action") else "",
+            f"Place: {look.get('location')}" if look.get("location") else "",
+            f"Emotion: {shot['emotion']}" if shot.get("emotion") else "",
+            (f"Animation: risk {anim['risk']}/100 ({anim['band']}): " + "; ".join(anim.get("why", [])))
+            if anim else "",
+            f"Why: {shot['why']}" if shot.get("why") else "",
+            ("Review: " + "; ".join(shot["vision"]["problems"])) if (shot.get("vision") or {}).get("problems") else ""]
+    text = "\n".join(r for r in rows if r)
+    return f"{text}\n\n{shot.get('idea', '')}" if text else ""
+
+
 class ShotTile(QFrame):
     def __init__(self, page: "StoryboardPage", shot: dict):
         super().__init__()
@@ -39,6 +61,12 @@ class ShotTile(QFrame):
         dec = rv.get("decision", "")
         dcol = {"APPROVED": GREEN, "REPAIRED": GOLD, "REJECTED": RED}.get(dec, MUTED)
         badge = f" <span style='color:{dcol}'>{dec.lower()}</span>" if dec else ""
+        anim = shot.get("anim") or {}
+        if anim:
+            acol = {"low": GREEN, "medium": GOLD, "high": MUTED}.get(anim.get("band"), MUTED)
+            badge += (f" <span style='color:{acol}'>{'moves' if anim.get('band') != 'high' else '2.5D'}</span>")
+        if (shot.get("vision") or {}).get("problems"):
+            badge += f" <span style='color:{RED}'>check</span>"
         head = QLabel(f"<b>{shot['shot_id'].split('-')[-1]}</b> <span style='color:{color}'>{kind}</span>{badge}")
         head.setToolTip(vd.tooltip(rv or None))
         v.addWidget(head)
@@ -50,7 +78,7 @@ class ShotTile(QFrame):
         pic.setStyleSheet(f"border:3px solid {GOLD if use else '#2c3046'}; border-radius:6px; background:#0d0f15;")
         if c and ep.abs(c["path"]).exists():
             pic.setPixmap(_pix(ep.abs(c["path"]), THUMB_W - 6, THUMB_H - 6))
-            pic.setToolTip(c["prompt"])
+            pic.setToolTip(panel_text(shot) or c["prompt"])
         else:
             pic.setText("being painted..." if page.busy("storyboard") else "not made yet")
         v.addWidget(pic)

@@ -13,9 +13,11 @@ You can edit any of it. Step 2, "Make the clips" (video), makes every clip.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
+from .. import finishing, shotplan
 from ..comfy import Comfy, new_seed, run_template
 from ..config import settings
 from ..engines.render import CAMERA_MOVES, Segment, Timeline, _render_segment
@@ -25,16 +27,24 @@ from ..util import StageError, read_json, sha256_text, utc_now, write_json
 from .base import BLOCK, OK, Check, Context
 from .storyboard import shots as board_shots
 
-MOTION_SUFFIX = "slow, subtle cinematic motion, steady camera, natural movement, no sudden changes"
+MOTION_SUFFIX = "smooth steady motion, every shape and colour stays as drawn"
 PLAN_SCHEMA = {
     "type": "object",
     "properties": {
         "how_it_plays": {"type": "string"},
-        "motion_prompt": {"type": "string"},
+        "character_action": {"type": "string"},
+        "environment": {"type": "array", "maxItems": 2, "items": {"type": "string", "enum": []}},
         "camera": {"type": "string", "enum": CAMERA_MOVES},
+        "speed": {"type": "string", "enum": []},
     },
-    "required": ["how_it_plays", "motion_prompt", "camera"],
+    "required": ["how_it_plays", "character_action", "environment", "camera", "speed"],
 }
+
+
+CAMERA_WORDS = {"zoom_in": "a slow push-in", "zoom_out": "a slow pull-out", "pan_left": "the camera pans slowly left",
+                "pan_right": "the camera pans slowly right", "pan_up": "the camera tilts slowly up",
+                "pan_down": "the camera tilts slowly down", "dolly_in": "the camera dollies slowly forward",
+                "static": "the camera holds still"}
 
 
 def plan_path(ep: Episode):
@@ -78,14 +88,24 @@ def plan(ctx: Context) -> None:
         if shot["type"] == "ai_image":
             ctx.progress(f"Writing instructions for {shot['shot_id']} ({n + 1}/{len(shots)})",
                          100 * n / len(shots))
+            from .. import shotplan
+            schema = json.loads(json.dumps(PLAN_SCHEMA))
+            schema["properties"]["environment"]["items"]["enum"] = shotplan.ENVIRONMENT
+            schema["properties"]["speed"]["enum"] = shotplan.SPEEDS
+            risk = shot.get("anim") or shotplan.animation_risk(shot)
             p = llm.chat_json([
                 {"role": "system", "content": (
-                    f"You direct short shots for a {style.name} video, made from a still picture. Describe how "
-                    "the shot plays out in one or two plain sentences, then write a motion prompt for an "
-                    f"image-to-video model (what moves and how, in this style: {style.motion}; keep characters "
-                    "exactly as drawn; never add people, text or logos), and pick a camera move.")},
-                {"role": "user", "content": f"Picture: {shot['prompt']}\nShot length: {seconds:.1f} seconds"},
-            ], PLAN_SCHEMA, temperature=0.5)
+                    f"You are the motion planner for a {style.name} video. A still picture becomes a short moving "
+                    "shot. Plan its motion in three layers: CAMERA (one move and its speed), CHARACTER (one small "
+                    "action of the main figure, a few words, or '' when it's a place or an object: never hands, "
+                    "faces or many people moving), ENVIRONMENT (up to two background movements from the list). One "
+                    f"action only, slow and smooth, in this style: {style.motion}. Then say in one or two plain "
+                    "sentences how the shot plays.")},
+                {"role": "user", "content": f"Picture: {shot['prompt']}\nWhat happens: {shot.get('action', '')}\n"
+                                            f"Why the shot is used: {shot.get('why', '')}\n"
+                                            f"Shot length: {seconds:.1f} seconds"},
+            ], schema, lenient=True, temperature=0.4)
+            p.setdefault("camera", "zoom_in")
             kind = shot.get("kind", "broll")
             sid = shot["scene_id"]
             # the animation level picks which shots Wan animates; b-roll can be text-to-video; everything
@@ -98,14 +118,21 @@ def plan(ctx: Context) -> None:
                 method = "parallax" if sb.get("parallax", True) else "camera_move"
             animated[sid] = animated.get(sid, 0) + (method == "animate")
             t2v[sid] = t2v.get(sid, 0) + (method == "text_to_video")
-            entry = {"how_it_plays": p["how_it_plays"], "motion_prompt": p["motion_prompt"],
-                     "camera": p["camera"] if p["camera"] in CAMERA_MOVES else "zoom_in",
-                     "seconds": max(2.0, min(10.0, seconds)), "method": method, "kind": kind}
             from .. import director as vd
             cam, words = vd.camera_for(shot.get("look") or {}, out[-1]["camera"] if out else "")
+            camera = cam or (p.get("camera") if p.get("camera") in CAMERA_MOVES else "zoom_in")
+            words = words or CAMERA_WORDS.get(camera, "")
+            speed = p.get("speed") if p.get("speed") in shotplan.SPEEDS else "slow"
+            action = (p.get("character_action") or shot.get("action") or "").strip()[:80]
+            env = [e for e in (p.get("environment") or []) if e in shotplan.ENVIRONMENT]
+            entry = {"how_it_plays": p.get("how_it_plays") or shot.get("action") or "",
+                     "motion_prompt": shotplan.motion_prompt(words, speed, action, env, risk["band"]),
+                     "camera": camera, "seconds": max(2.0, min(10.0, seconds)), "method": method, "kind": kind,
+                     "motion": {"camera": {"move": camera, "speed": speed, "words": words},
+                                "character": action if risk["band"] == "low" else "",
+                                "environment": env},
+                     "risk": risk}
             if cam:   # the Virtual Director chose this shot's camera move on the Storyboard
-                entry["camera"] = cam
-                entry["motion_prompt"] = f"{entry['motion_prompt'].rstrip('. ')}. {words}"
                 entry["director_move"] = shot["look"]["movement"]
         else:
             entry = {"how_it_plays": f"{shot['type'].replace('_', ' ')} holds on screen: \"{shot.get('text', '')[:80]}\"",
@@ -121,7 +148,8 @@ def plan(ctx: Context) -> None:
                     "real": bool(shot["image"].get("real")), "recreation": bool(shot["image"].get("recreation")),
                     "credit": shot["image"].get("credit", ""),
                     "image": shot["image"]["path"], "raw": shot["image"].get("raw"),
-                    "prompt": shot.get("prompt", ""), **entry, "clip": None, "approved": False})
+                    "prompt": shot.get("prompt", ""), "covers": shot.get("covers", ""), **entry, "clip": None,
+                    "approved": False})
     save_plan(ep, {"shots": out, "made_at": utc_now()})
     ctx.progress("Scene instructions written. Read them, change anything, then make the clips.", 100)
 
@@ -142,8 +170,11 @@ def choose_animated(ep: Episode, shots: list[dict[str, Any]], level: str) -> set
     except Exception:  # noqa: BLE001 - no script: every scene is fine
         pass
     careful = ep.creative().get("careful")
+    from .. import shotplan
+    # Animation Validation: a picture at high risk of breaking never goes to the animation model (2.5D instead)
     pool = [s for s in shots if s["type"] == "ai_image" and not s.get("owl_live") and not s["image"].get("real")
-            and not (careful and script_roles.get(s["scene_id"]) == "harm")]
+            and not (careful and script_roles.get(s["scene_id"]) == "harm")
+            and (s.get("anim") or shotplan.animation_risk(s))["band"] != "high"]
     want = len(pool) if share >= 1 else max(1 if pool else 0, round(share * len(pool)))
     if want >= len(pool):
         return {s["shot_id"] for s in pool}
@@ -228,34 +259,46 @@ def run(ctx: Context) -> None:
         elif s["method"] == "animate":
             if not s.get("raw"):
                 raise StageError(f"{s['shot_id']} has no AI picture to animate; set it to camera_move.")
-            ctx.progress(f"Animating {s['shot_id']} with Wan 2.2 ({n + 1}/{total}, a few minutes each)",
-                         100 * n / total)
             client = client or Comfy()
             uploaded = client.upload_image(ep.abs(s["raw"]))
-            seed = new_seed()
-            saved, meta = run_template("video_workflow", {
-                "IMAGE": uploaded, "PROMPT": f"{s['motion_prompt']}. {MOTION_SUFFIX}", "SEED": seed,
-                "WIDTH": cfg["video_width"], "HEIGHT": cfg["video_height"], "FRAMES": cfg["video_frames"],
-                "FPS": cfg["video_fps"], "FILENAME_PREFIX": f"fof/{ep.project_id}/{s['shot_id']}",
-            }, ep.path("video", f"{s['shot_id']}-wan-{seed}"), cancelled=ctx.cancelled,
-                on_progress=lambda t, p=None, sid=s["shot_id"], k=n: ctx.progress(
-                    f"Animating {sid} with Wan 2.2 ({k + 1}/{total}): {t}"))
-            clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
-            s["clip"] = {"path": ep.rel(clip), "kind": "animated", "seed": seed, "model": cfg["video_model_name"],
-                         "workflow": meta["workflow"], "digest": digest, "made_at": utc_now(), "ai": True,
-                         "recreation": bool(s.get("recreation"))}
+            prompt = s["motion_prompt"]
+            check: dict[str, Any] = {}
+            for attempt in (1, 2):
+                ctx.progress(f"Animating {s['shot_id']} with Wan 2.2 ({n + 1}/{total}, a few minutes each)"
+                             + (" - second try, camera only" if attempt == 2 else ""), 100 * n / total)
+                seed = new_seed()
+                saved, meta = run_template("video_workflow", {
+                    "IMAGE": uploaded, "PROMPT": f"{prompt} {MOTION_SUFFIX}", "SEED": seed,
+                    "WIDTH": cfg["video_width"], "HEIGHT": cfg["video_height"], "FRAMES": cfg["video_frames"],
+                    "FPS": cfg["video_fps"], "FILENAME_PREFIX": f"fof/{ep.project_id}/{s['shot_id']}",
+                }, ep.path("video", f"{s['shot_id']}-wan-{seed}"), cancelled=ctx.cancelled,
+                    on_progress=lambda t, p=None, sid=s["shot_id"], k=n: ctx.progress(
+                        f"Animating {sid} with Wan 2.2 ({k + 1}/{total}): {t}"))
+                clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
+                check = finishing.check_clip(clip) if vid.get("check_clips", True) else {"ok": True}
+                if check["ok"]:
+                    break
+                ctx.log(f"{s['shot_id']}: the animated clip broke ({check['why']}); "
+                        + ("trying again with camera motion only" if attempt == 1 else "using a 2.5D move instead"))
+                prompt = shotplan.clean_motion("", (s.get("motion") or {}).get("camera", {}).get("words", "")
+                                               or CAMERA_WORDS.get(s["camera"], ""))
+            if not check["ok"]:   # Quality review: a clip that breaks twice moves in 2.5D, which can't break
+                s["method"], s["fallback"] = "parallax", check["why"]
+                s["clip"] = _parallax(ep, s, ctx, vid, _digest(s))
+            else:
+                final = clip
+                if vid.get("finish_ai_clips", True):
+                    ctx.progress(f"Finishing {s['shot_id']}: smoothing, steadying, upscaling, matching colour",
+                                 100 * (n + 0.9) / total)
+                    final = finishing.finish_clip(clip, ep.abs(s["raw"]), ep.path("video", f"{s['shot_id']}-final.mp4"),
+                                                  int(vid["fps"]), int(vid["width"]), int(vid["height"]))
+                s["clip"] = {"path": ep.rel(final), "kind": "animated", "seed": seed, "model": cfg["video_model_name"],
+                             "workflow": meta["workflow"], "digest": digest, "made_at": utc_now(), "ai": True,
+                             "recreation": bool(s.get("recreation")), "raw_clip": ep.rel(clip), "check": check,
+                             "tries": attempt}
         elif s["method"] == "parallax":
             ctx.progress(f"Making a 2.5D move for {s['shot_id']} ({n + 1}/{total})", 100 * n / total)
-            depth = depth_map(ep, s, ctx)
-            out = ep.path("video", f"{s['shot_id']}-parallax.mp4")
-            tl = Timeline([], width=int(vid["width"]), height=int(vid["height"]), fps=int(vid["fps"]))
-            seg = Segment(ep.abs(s["image"]), float(s["seconds"]), camera=s["camera"], label=s["shot_id"],
-                          depth=ep.abs(depth) if depth else Path("estimated"))
-            from .. import media
-            _render_segment(tl, seg, out, media.encoder("libx264"))
-            s["clip"] = {"path": ep.rel(out), "kind": "parallax", "digest": digest, "made_at": utc_now(),
-                         "ai": False, "ai_image": True, "still": s["image"], "camera": s["camera"],
-                         "depth": depth or "estimated"}
+            s["clip"] = _parallax(ep, s, ctx, vid, digest)
         else:
             ctx.progress(f"Making camera move for {s['shot_id']} ({n + 1}/{total})", 100 * n / total)
             out = ep.path("video", f"{s['shot_id']}-move.mp4")
@@ -270,6 +313,19 @@ def run(ctx: Context) -> None:
         s["approved"] = False
         save_plan(ep, p)
     ctx.progress("All clips made. Watch each one and approve or redo.", 100)
+
+
+def _parallax(ep: Episode, s: dict[str, Any], ctx: Context, vid: dict[str, Any], digest: str) -> dict[str, Any]:
+    """A 2.5D camera move over the still (depth parallax): it can't melt or morph."""
+    depth = depth_map(ep, s, ctx)
+    out = ep.path("video", f"{s['shot_id']}-parallax.mp4")
+    tl = Timeline([], width=int(vid["width"]), height=int(vid["height"]), fps=int(vid["fps"]))
+    seg = Segment(ep.abs(s["image"]), float(s["seconds"]), camera=s["camera"], label=s["shot_id"],
+                  depth=ep.abs(depth) if depth else Path("estimated"))
+    from .. import media
+    _render_segment(tl, seg, out, media.encoder("libx264"))
+    return {"path": ep.rel(out), "kind": "parallax", "digest": digest, "made_at": utc_now(),
+            "ai": False, "ai_image": True, "still": s["image"], "camera": s["camera"], "depth": depth or "estimated"}
 
 
 _DEPTH_NODE: dict[str, bool] = {}

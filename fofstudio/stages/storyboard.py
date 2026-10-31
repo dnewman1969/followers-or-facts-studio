@@ -118,90 +118,234 @@ SHOTS_PER_REQUEST = 6   # ask for a few shots at a time so every answer fits com
 
 
 def _plan_shots(sc: dict[str, Any], n: int, style: styles.Style, kinds: list[str], people: list[dict[str, Any]],
-                restrictions: list[str], on_text=None, film: str = "", careful: bool = False) -> list[dict[str, Any]]:
+                restrictions: list[str], on_text=None, film: str = "", careful: bool = False,
+                bible: dict[str, Any] | None = None, recent: list[str] | None = None) -> list[dict[str, Any]]:
+    """The Director AI's shot list for one scene: the narration is cut into n pieces (shotplan.segments) and each
+    shot is planned for ITS words, with why it's used, the emotion and the story point."""
+    from .. import shotplan
+    segs = shotplan.segments(sc["narration"], n)
     out: list[dict[str, Any]] = []
     size = SHOTS_PER_REQUEST
     while len(out) < n:
         k = min(size, n - len(out))
         try:
-            out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text, film, careful)
+            out += _plan_batch(sc, len(out), k, n, style, kinds, people, restrictions, out, on_text, film, careful,
+                               segs=segs, bible=bible, recent=recent)
         except StageError:
             if k <= 2:
                 raise
             size = max(2, k // 2)   # a smaller answer is easier to finish
+    for i, shot in enumerate(out[:n]):
+        shot["covers"] = segs[i]
     return out[:n]
 
 
 REAL_SUBJECTS = ["place", "object", "event", "document", "public_figure", "generic", "victim", "private_person",
                  "child"]
+EMOTIONS = ["fear", "tension", "joy", "hope", "mystery", "excitement", "sadness", "anger", "curiosity", "calm",
+            "resolve"]
 
 
 def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.Style, kinds: list[str],
                 people: list[dict[str, Any]], restrictions: list[str], so_far: list[dict[str, Any]],
-                on_text=None, film: str = "", careful: bool = False) -> list[dict[str, Any]]:
+                on_text=None, film: str = "", careful: bool = False, segs: list[str] | None = None,
+                bible: dict[str, Any] | None = None, recent: list[str] | None = None) -> list[dict[str, Any]]:
+    from .. import bible as biblemod
     from .. import director as vd
-    item = {"kind": {"type": "string", "enum": kinds}, "idea": {"type": "string"}, "person_id": {"type": "string"},
+    from .. import shotplan
+    segs = segs or shotplan.segments(sc["narration"], n)
+    item = {"kind": {"type": "string", "enum": kinds}, "shows": {"type": "string", "enum": shotplan.SHOWS},
+            "idea": {"type": "string"}, "action": {"type": "string"}, "why": {"type": "string"},
+            "emotion": {"type": "string", "enum": EMOTIONS}, "person_id": {"type": "string"},
             **vd.look_schema(careful)}
     if "real" in kinds:
         item["search"] = {"type": "string"}
         item["subject"] = {"type": "string", "enum": REAL_SUBJECTS}
     schema = {"type": "object", "properties": {"shots": {"type": "array", "minItems": k, "maxItems": k, "items": {
         "type": "object", "properties": item,
-        "required": ["kind", "idea", "person_id"]}}}, "required": ["shots"]}
+        "required": ["kind", "shows", "idea", "action", "why", "emotion", "person_id"]}}}, "required": ["shots"]}
     who = ("\nCaricature cast you may use (by person_id; describe what they're DOING from the narration, never "
            f"their looks or name, those are added automatically): {[{'person_id': p['person_id'], 'who': p.get('role_types')} for p in people]}"
            if "caricature" in kinds else "")
-    part = (f"Plan shots {start + 1} to {start + k} of {n} for this scene, in order"
-            + (f" (the narration is split into {n} equal parts; these cover parts {start + 1}-{start + k})." if n > k else ".")
-            + ("\nShots already planned (don't repeat them): " + " | ".join(x["idea"][:90] for x in so_far)
-               if so_far else ""))
+    pieces = "\n".join(f"Shot {start + i + 1} is on screen while Owlbert says: \"{segs[start + i]}\""
+                       for i in range(k))
+    recent_lines = list(recent or []) + [f"[{x.get('shows') or x.get('kind')}] {x['idea'][:80]}" for x in so_far]
+    part = (f"Plan shots {start + 1} to {start + k} of {n} for this scene, in order. Each shot must SHOW what its "
+            f"own words are about:\n{pieces}"
+            + ("\nThe last shots of the film so far (never repeat their subject or composition):\n- "
+               + "\n- ".join(recent_lines[-10:]) if recent_lines else ""))
+    scene_bible = biblemod.for_prompt(bible or {}, sc["scene_id"])
     answer = Ollama(job="storyboard").chat_json([
         {"role": "system", "content": (
-            f"You are the art director for a {style.name} video. Plan a sequence of different shots that "
-            "follow the narration in order, so the pictures change as Owlbert talks and never repeat. Each idea is "
-            "one or two sentences: the subject, the setting, the framing (wide, medium, close-up, overhead...), the "
-            "light and mood, in this style. Vary the framing from shot to shot. Kinds: 'broll' = places, objects, "
-            "documents, crowds seen from behind, visual metaphors; 'owl' = a shot where Owlbert talks to camera: "
-            "describe ONLY the empty place he'll stand in (a desk, a study, a set that fits the scene) and never "
-            "describe him, he's added live from his artwork; 'caricature' = a cartoon "
-            "caricature of one of the cast doing the documented thing the narration describes. "
+            f"You are the film director of a {style.name} documentary. You don't paint; you decide what each "
+            "shot shows and why, like a professional director. Every shot covers its own words of narration and "
+            "must SHOW what those words are about: the thing, the place, the document, the number (as an object: "
+            "stacks of cans, a ledger, a crowd), the action. For an abstract idea use one clear visual metaphor. "
+            "'shows' is what kind of subject the picture is; never the same kind twice in a row, and paperwork "
+            "(documents, maps, calendars) at most twice in a scene unless the words are about a document. 'idea' "
+            "is one or two sentences: the subject, what it's doing, the setting, the framing, the light. 'action' "
+            "is what moves or happens in the shot, in a few words (it becomes the animation). 'why' says why "
+            "this shot and this camera tell this part of the story. 'emotion' is what the audience should feel. "
+            "Kinds: 'broll' = places, objects, documents, crowds seen from behind, visual metaphors; 'owl' = a shot "
+            "where Owlbert talks to camera: describe ONLY the empty place he'll stand in and never describe him, "
+            "he's added from his artwork; 'caricature' = a cartoon caricature of one of the cast doing the "
+            "documented thing the narration describes. "
             + ("'real' = a REAL photo from public archives (Wikimedia Commons, government archives) of a place, "
-               "object, document, event or public figure the narration names: give 'search' (3 to 6 words to search "
-               "for it, e.g. 'Y2K command center 1999') and 'subject' (what it shows); if no free-to-use photo "
-               "exists it becomes a labelled re-creation. Never 'real' for victims, children or private people. "
-               if "real" in kinds else "")
+               "object, document, event or public figure the narration names: give 'search' (3 to 6 words) and "
+               "'subject'; if no free-to-use photo exists it becomes a labelled re-creation. Never 'real' for "
+               "victims, children or private people. " if "real" in kinds else "")
             + "Never name a real person in an idea. Never show a real victim or a real child, in any form (show "
-              "places, objects and documents instead). Never ask for readable text, signs or logos. Use person_id \"\" unless the kind is caricature. "
-            "Keep each idea short and describe only what IS in the picture (never write 'no ...' or "
-            "'without ...': the painter can't use them). For every shot also give its look: location (2-4 words), shot_type, angle, "
-            "camera movement, the main figure's pose ('none' for objects and places), emotion, lighting, palette "
-            "and intensity (0 calm reflection, 4 talk, 5 investigation, 8 action, 10 the biggest moment). Vary them "
-            "like a film director: never three close-ups in a row, mix wide, medium and close, move the camera, "
-            "give the audience calm moments between intense ones, and keep the scene's place and time of day."
-            + (f"\n{film}\nUse that genre look and directing style for every shot: "
-                                         "framing, lighting, palette, camera." if film else ""))},
+              "places, objects and documents instead). Never ask for readable text, signs or logos. Use person_id "
+              "\"\" unless the kind is caricature. Design every shot to move well: one clear main subject with a "
+              "clean silhouette, people seen from behind or far away, no tangled hands, no crowded clutter. "
+              "Describe only what IS in the picture (never 'no ...' or 'without ...'). For every shot also give its "
+              "look: location (2-4 words), shot_type, angle, camera movement, the main figure's pose ('none' for "
+              "objects and places), lighting, palette and intensity (0 calm, 4 talk, 5 investigation, 8 action, 10 "
+              "the biggest moment). Vary them like a director: mix wide, medium and close, move the camera, give "
+              "calm moments between intense ones, and keep the scene's place and time of day."
+            + (f"\n{film}\nUse that genre look and directing style for every shot." if film else ""))},
         {"role": "user", "content": f"Style: {style.look}\nOwlbert's scenes look like: {style.owl_look}\n"
-                                    f"Scene visual note: {sc['visual']}\nNarration: {sc['narration']}\n"
-                                    f"Careful-topic rules: {restrictions or 'none'}{who}\n\n{part}"},
-    ], schema, lenient=True, temperature=0.7, on_text=on_text)
+                                    f"Scene role: {sc.get('role', '')}\nScene visual note: {sc['visual']}\n"
+                                    + (f"{scene_bible}\n" if scene_bible else "")
+                                    + f"Careful-topic rules: {restrictions or 'none'}{who}\n\n{part}"},
+    ], schema, lenient=True, temperature=0.5, on_text=on_text)
     allowed = {p["person_id"] for p in people}
     out = []
-    for x in (answer.get("shots") or [])[:k]:
+    for i, x in enumerate((answer.get("shots") or [])[:k]):
         kind = x.get("kind") if x.get("kind") in kinds else "broll"
         pid = (x.get("person_id") or "").strip()
         if kind == "caricature" and pid not in allowed:
             kind, pid = "broll", ""
-        shot = {"kind": kind, "idea": (x.get("idea") or "").strip() or sc["visual"],
-                "person_id": pid if kind == "caricature" else ""}
+        shot = {"kind": kind, "idea": (x.get("idea") or "").strip() or f"{segs[start + i]}, shown as a clear picture",
+                "person_id": pid if kind == "caricature" else "",
+                "shows": "owl set" if kind == "owl" else "caricature" if kind == "caricature" else
+                (x.get("shows") if x.get("shows") in shotplan.SHOWS else ""),
+                "action": (x.get("action") or "").strip()[:120], "why": (x.get("why") or "").strip()[:240],
+                "emotion": x.get("emotion") if x.get("emotion") in EMOTIONS else ""}
         shot["look"] = vd.infer_look(shot["idea"], x)
         if kind == "real":
             shot["search"] = (x.get("search") or "").strip() or shot["idea"][:60]
             shot["subject"] = x.get("subject") if x.get("subject") in REAL_SUBJECTS else "generic"
         out.append(shot)
-    while len(out) < k:  # the model came back short: fill from the scene's own visual note, varied framing
+    while len(out) < k:  # the model came back short: a plain picture of what those words are about
         framing = ["wide establishing view", "close-up detail", "overhead view", "symbolic image"][(start + len(out)) % 4]
-        out.append({"kind": "broll", "idea": f"{sc['visual']} ({framing})", "person_id": ""})
+        words = segs[start + len(out)]
+        out.append({"kind": "broll", "idea": f"{framing} of {words[:120]}", "person_id": "", "shows": "",
+                    "action": "", "why": "fills the gap the planner left", "emotion": ""})
     return out
+
+
+def _quality_review(ep: Episode, ctx: Context, scenes: list[dict[str, Any]], style: styles.Style,
+                    people: dict[str, dict[str, Any]], bible: dict[str, Any]) -> bool:
+    """The Quality Review Agent (review.py): look at every painted picture, repaint the ones that fail once, answer
+    the nine questions, and re-plan failing scenes once. Returns True if it re-ran the storyboard."""
+    from .. import review as rv
+    sb = settings()["storyboard"]
+    frame_results: dict[str, dict] = {}
+    if sb.get("quality_review", True):
+        budget = int(sb.get("review_repaints", 12))
+        shots_ = [sh for sc in scenes for sh in sc["shots"] if not sh.get("skip") and sh["kind"] != "real"]
+        vision_ok = True
+        for n, shot in enumerate(shots_):
+            if not vision_ok:
+                break
+            pick = shot.get("pick", 0)
+            c = shot["candidates"][pick] if 0 <= pick < len(shot["candidates"]) else None
+            if not c or not c.get("raw") or c.get("real"):
+                continue
+            ctx.check_cancel()
+            ctx.progress(f"Quality review: looking at {shot['shot_id']} ({n + 1}/{len(shots_)})", 96)
+            res = rv.frame_check(ep.abs(c["raw"]), shot, drawn=style.cartoon)
+            if res is None:
+                vision_ok = n > 0     # the first picture got no answer: no vision model running, stop asking
+                continue
+            if not res["ok"] and budget > 0 and not shot.get("by_hand"):
+                budget -= 1
+                ctx.log(f"Quality review: {shot['shot_id']} {'; '.join(res['problems'])}: painting it again")
+                shot["candidates"][pick] = _paint(ep, shot, pick, style, people)
+                again = rv.frame_check(ep.abs(shot["candidates"][pick]["raw"]), shot, drawn=style.cartoon)
+                res = again or res
+                res["repainted"] = True
+            shot["vision"] = res        # (shot["review"] is the Virtual Director's)
+            frame_results[shot["shot_id"]] = res
+        if frame_results:
+            ep.save_storyboard({**ep.storyboard(), "scenes": scenes})
+    review = rv.sequence_review({"scenes": scenes}, bible, frame_results)
+    review["looked_at"] = len(frame_results)
+    redo = [s for s in review["redo_scenes"] if s in {sc["scene_id"] for sc in scenes}][:3]
+    if redo and sb.get("auto_redo", True) and not ctx.options.get("review_round"):
+        ctx.log("Quality review: re-planning " + ", ".join(redo) + " (" + "; ".join(
+            a["why"] for k, a in review["answers"].items() if not a["ok"] and k != "director") + ")")
+        write_json(ep.path("quality-review.json"), {**review, "made_at": utc_now(), "redone": redo})
+        ctx.options["replan"] = list(set(ctx.options.get("replan") or []) | set(redo))
+        ctx.options["review_round"] = 1
+        run(ctx)
+        return True
+    if ctx.options.get("review_round"):
+        review["redone"] = ", ".join(ctx.options.get("replan") or [])
+    write_json(ep.path("quality-review.json"), {**review, "made_at": utc_now()})
+    write_text(ep.path("quality-review.md"), rv.to_markdown(review))
+    ctx.log("Quality review: " + ("approved" if review["approved"] else rv.to_markdown(review).replace("\n", " ")))
+    return False
+
+
+VARY_SCHEMA = {"type": "object", "properties": {"idea": {"type": "string"}, "action": {"type": "string"},
+                                              "why": {"type": "string"}}, "required": ["idea", "action", "why"]}
+
+
+def _vary_subjects(planned: list[dict[str, Any]], style: styles.Style, careful: bool, log=lambda m: None,
+                   skip_hand: bool = True) -> list[str]:
+    """Scene Diversity AI: a shot that shows the same kind of subject as the one before (another desk with
+    documents) or overfills its scene with one kind is planned again by the director AI as a different kind of
+    subject, still about the same words. A run of the same emotional tone gets one shot changed too. Your own
+    shots (Remake with new words) are never changed. Returns notes for the log."""
+    from .. import director as vd
+    from .. import shotplan
+    seq = [shot for e in planned for shot in e["shots"]]
+    for e in planned:
+        for shot in e["shots"]:
+            shot.setdefault("scene_id", e["scene_id"])
+    todo = dict(shotplan.shows_problems(seq))
+    for i in shotplan.emotion_streaks(seq):
+        todo.setdefault(i, f"the {seq[i].get('emotion')} tone has run for too many shots")
+    notes = []
+    llm = None
+    for i, problem in sorted(todo.items()):
+        shot = seq[i]
+        if shot.get("by_hand") and skip_hand or shot["kind"] in ("owl", "caricature", "real"):
+            continue
+        scene_shows = [x.get("shows") for x in seq if x.get("scene_id") == shot.get("scene_id")]
+        options = shotplan.alternative_shows(seq, i, scene_shows)[:5]
+        if not options:
+            continue
+        try:
+            llm = llm or Ollama(job="director")
+            ans = llm.chat_json([
+                {"role": "system", "content": (
+                    f"You are the director of a {style.name} documentary fixing a repetitive shot. Keep what the "
+                    "shot is about (its narration words) but show it as a different KIND of subject, from the list. "
+                    "One or two sentences: the subject, what it's doing, the setting, the framing, the light. One "
+                    "clear main subject, people only from behind or far away, never a name, never readable text, "
+                    "never 'no ...'.")},
+                {"role": "user", "content": f"Narration words: \"{shot.get('covers', '')}\"\nThe shot now: "
+                                            f"{shot['idea']}\nProblem: {problem}\nShow it as one of: "
+                                            f"{', '.join(options)} (start the idea with that kind of subject)."}],
+                VARY_SCHEMA, lenient=True, temperature=0.6)
+        except Exception as exc:  # noqa: BLE001 - the director's framing pass still runs; logged
+            log(f"Scene Diversity couldn't re-plan {shot['shot_id']}: {exc}")
+            break
+        idea = (ans.get("idea") or "").strip()
+        if not idea:
+            continue
+        low = idea.lower()
+        shows = next((o for o in options if o.split()[0] in low), options[0])
+        shot.update(idea=idea, action=(ans.get("action") or "").strip()[:120] or shot.get("action", ""),
+                    why=(ans.get("why") or "").strip()[:240] or shot.get("why", ""), shows=shows,
+                    look=vd.infer_look(idea, shot.get("look")), varied_from=problem)
+        shot["candidates"] = [None] * len(shot.get("candidates") or [None])
+        notes.append(f"{shot['shot_id']}: {problem}; now shows {shows}")
+        log(f"Scene Diversity: {notes[-1]}")
+    return notes
 
 
 # ---------------------------------------------------------------- painting
@@ -278,16 +422,30 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         look = f"{look}. {genre.look}"
     framing = vd.look_words(shot.get("look") or {}, shot["kind"])   # the Virtual Director's framing, light, colour
     idea, _ = promptcheck.clean_prompt(shot["idea"])  # what to draw only; no names, no "no ..."
+    # continuity from the film's bible: the scene's place drawn the same way every time, and its anonymous
+    # characters in the same clothes; and a cleaner composition for shots at medium risk of breaking in motion
+    from .. import bible as biblemod
+    from .. import shotplan
+    bib = biblemod.load(ep)
+    scene_id = shot.get("scene_id") or shot["shot_id"].rsplit("-s", 1)[0]
+    place = biblemod.location_words(bib, scene_id) if shot["kind"] in ("broll", "owl") else ""
+    people_words = ""
+    if shot.get("shows") in ("crowd from behind", "single figure from behind", "hands at work"):
+        people_words = biblemod.character_words(bib, ((bib.get("scenes") or {}).get(scene_id) or {}).get(
+            "characters", []))
+    extra = [f"The place: {place}" if place else "", f"The people: {people_words}" if people_words else "",
+             shotplan.COMPOSE if (shot.get("anim") or {}).get("band") == "medium" else ""]
+    extra = [promptcheck.clean_prompt(x)[0] for x in extra if x]
     if shot["kind"] == "caricature":
         person = people[shot["person_id"]]
         design, _ = promptcheck.clean_prompt(person["design"])
         parts = [look, framing, idea, f"The character: {design}", style.clean, CARICATURE_GUARD]
     elif shot["kind"] == "owl":
-        parts = [look, framing, set_only(idea), OWL_SET, style.clean, GUARD]
+        parts = [look, framing, set_only(idea), *extra, OWL_SET, style.clean, GUARD]
     elif shot["kind"] == "real":   # no free-to-use real picture (or the second version): a labelled re-creation
-        parts = [look, framing, idea, "an illustrated re-creation, clearly hand-drawn", style.clean, GUARD]
+        parts = [look, framing, idea, *extra, "an illustrated re-creation, clearly hand-drawn", style.clean, GUARD]
     else:
-        parts = [look, framing, idea, style.clean, GUARD]
+        parts = [look, framing, idea, *extra, style.clean, GUARD]
     # the medium comes first: a distilled model with a short attention span reads the early words hardest
     full, _ = promptcheck.strip_watch(". ".join(x.strip(" .") for x in parts if x and x.strip(" .")))
     for n in names_in(full, person_names()):   # last guard: a real person's name never reaches the painter
@@ -365,6 +523,10 @@ def run(ctx: Context) -> None:
     board = ep.storyboard() or {}
     old = {s["scene_id"]: s for s in board.get("scenes", [])} if board.get("version") == VERSION else {}
     redo_ids = set(ctx.options.get("remake") or [])   # ["SCENE_002-s03:1", ...] or whole shots "SCENE_002-s03"
+    from .. import bible as biblemod
+    from .. import shotplan
+    ctx.progress("Script analysis: the film's bible of places and characters", 1)
+    bible = biblemod.make(ep, script, on_text=ctx.writing("Writing the film's bible", 1, 3, 400))
     replan = set(ctx.options.get("replan") or [])     # scene ids to plan again
     scenes: list[dict[str, Any]] = []
     planned: list[dict[str, Any]] = []
@@ -400,7 +562,8 @@ def run(ctx: Context) -> None:
             ideas = _plan_shots(sc, need, style, kinds, scene_people, restrictions,
                                 on_text=ctx.writing(f"Planning {need} shots for {sid}", 30 * n / total,
                                                     30 * (n + 0.5) / total, need * 30), film=film,
-                                careful=bool(creative.get("careful")))
+                                careful=bool(creative.get("careful")), bible=bible,
+                                recent=shotplan.recent_for_prompt(planned, []))
             entry["shots"] = [{"shot_id": f"{sid}-s{i + 1:02d}", **idea, "candidates": [None] * n_cands, "pick": 0}
                               for i, idea in enumerate(ideas)]
         planned.append(entry)
@@ -420,6 +583,9 @@ def run(ctx: Context) -> None:
                 if shot["idea"] != before:
                     shot["candidates"] = [None] * len(shot["candidates"])   # painted again without the name
 
+    # Scene Diversity: the same KIND of subject twice in a row, or too often in a scene, is planned again
+    _vary_subjects(planned, style, bool(creative.get("careful")), ctx.log, skip_hand=True)
+
     # the Virtual Director: the quality gate before anything is painted (director.py)
     if settings().get("director", {}).get("enabled", True):
         from .. import director as vd
@@ -437,6 +603,12 @@ def run(ctx: Context) -> None:
         sm = review["summary"]
         ctx.log(f"Virtual Director: {sm['APPROVED']} approved, {sm['REPAIRED']} repaired, {sm['REJECTED']} rejected; "
                 f"variety {sm['variety']}/100.")
+
+    # Animation Validation: every shot's risk of breaking when animated (shotplan.animation_risk)
+    for entry in planned:
+        for shot in entry["shots"]:
+            shot["anim"] = shotplan.animation_risk(shot)
+            shot["scene_id"] = entry["scene_id"]
 
     # painting (the prompt builder adds each shot's framing, light and colour)
     for n, entry in enumerate(planned):
@@ -465,6 +637,8 @@ def run(ctx: Context) -> None:
         ep.save_storyboard({"version": VERSION, "style": style.key, "scenes": scenes + rest,
                             "built_at": utc_now(), "partial": True})
     ep.save_storyboard({"version": VERSION, "style": style.key, "scenes": scenes, "built_at": utc_now()})
+    if _quality_review(ep, ctx, scenes, style, people, bible):
+        return          # it re-planned failing scenes: that run finished the job
     cast.mark_used(ep, {sh.get("person_id") for s in scenes for sh in s["shots"] if sh["kind"] == "caricature"})
     n_shots = sum(len(s["shots"]) for s in scenes)
     ctx.progress(f"{n_shots} shots painted. Look them over; pick a different version or remake any.", 100)
@@ -529,7 +703,10 @@ def shots(ep: Episode) -> list[dict[str, Any]]:
                     item = {"shot_id": shot["shot_id"], "scene_id": s["scene_id"], "type": "ai_image",
                             "kind": shot["kind"], "image": c, "prompt": c["prompt"],
                             "seconds": styles.get(s.get("style")).shot_seconds,
-                            "person_id": shot.get("person_id", ""), "look": shot.get("look") or {}}
+                            "person_id": shot.get("person_id", ""), "look": shot.get("look") or {},
+                            "covers": shot.get("covers", ""), "shows": shot.get("shows", ""),
+                            "action": shot.get("action", ""), "why": shot.get("why", ""),
+                            "emotion": shot.get("emotion", ""), "anim": shot.get("anim") or {}}
                     if shot["kind"] == "owl" and c.get("set"):    # the empty set; Owlbert is added live
                         item["image"] = {**c, "path": c["set"], "raw": c["set_raw"]}
                         if settings()["owl"].get("in_scenes"):
@@ -643,6 +820,16 @@ def check(ep: Episode) -> list[Check]:
     if real_used:
         out.append(Check(WARN, f"{len(real_used)} real picture(s) from free archives (credited on screen and in the "
                                "description). Look at each one: right subject, right licence?"))
+    qr = read_json(ep.path("quality-review.json")) or {}
+    if qr.get("answers"):
+        from .. import review as rv
+        nos = [(q, qr["answers"][k]) for k, q in rv.QUESTIONS if k != "director" and k in qr["answers"]
+               and not qr["answers"][k]["ok"]]
+        for q, a in nos:
+            out.append(Check(WARN, f"Quality review: {q} No: {a['why']}"))
+        if not nos:
+            out.append(Check(OK, "Quality review: all nine questions answered yes "
+                                 f"({qr.get('looked_at', 0)} pictures looked at by the vision model)."))
     return out
 
 

@@ -111,6 +111,8 @@ DEFAULTS: dict[str, Any] = {
         "music_volume": 0.18,
         "duck_music": True,
         "smooth_clips": True,           # blend in-between frames so AI clips (16 fps) play smoothly
+        "check_clips": True,            # catch broken animated clips (sudden jumps, black frames): redo once, then 2.5D
+        "finish_ai_clips": True,        # animated clips: interpolate, deflicker, upscale, match colour to the still
         "open_folder_after_render": True,
     },
     "storyboard": {
@@ -122,6 +124,9 @@ DEFAULTS: dict[str, Any] = {
         "animation_level": "balanced",  # fast (1 in 10 shots animated by Wan) | balanced (1 in 3) | full (every shot)
         "parallax": True,               # every other picture moves in 2.5D (depth) instead of a flat zoom
         "t2v_shots_per_scene": 0,       # Wan 2.2 text-to-video b-roll clips per scene (needs the TI2V-5B model)
+        "quality_review": True,         # the vision model checks every painted picture; failures are repainted
+        "auto_redo": True,              # the Quality Review re-plans failing scenes once, automatically
+        "review_repaints": 12,          # at most this many pictures repainted per run by the review
     },
     "claims": {
         "check_sentences": True,  # after writing, a different model checks every fact sentence against its

@@ -763,6 +763,39 @@ they might be true? (Research "Verifying claims from known liars".)
   look-ups and deep dives (_hunt records them). Another video's finds on shared claims stay out. Older videos
   (and copies of them) list everything, as before, until you press Clear all.
 
+## 2026-10-31 — v0.9.0: the AI directing pipeline (follow the script, vary, animate safely, review)
+
+Dave's brief (Script Analysis → Director AI → Scene Diversity → Storyboard → Animation Validation → images →
+Motion Planner → ComfyUI → finishing → Quality Review). Causes found in the old storyboard: the planner got the
+whole scene's narration and never knew which words a picture was for; pictures were spread evenly over a scene
+whatever was being said; the variety check compared framing but not WHAT is shown (desk + documents again).
+- Script Analysis (bible.py): bible.json with locations (architecture, colours, weather, light, textures, props),
+  anonymous characters (fixed clothes, seen from behind; never victims, families or children, never body/race
+  words) and per scene: location, story beat, emotion, must-show items. Paint prompts add the scene's place and,
+  for people shots, its characters.
+- Director AI (storyboard._plan_batch): shotplan.segments cuts the narration into one piece per shot (whole
+  sentences first); each shot is planned for its own words ("covers") with shows (SHOWS list), action, why,
+  emotion and the look fields; it sees the last 10 shots of the whole film.
+- Scene Diversity (_vary_subjects, shotplan.shows_problems/emotion_streaks): the same kind of subject twice in a
+  row (paperwork counts as one kind) or more than twice a scene, or a long run of one emotion, is re-planned as a
+  different kind about the same words; diversity scores over the last 20 / 50 / all shots (shotplan.diversity).
+- Animation Validation (shotplan.animation_risk): risk 1-100 from subject kind, risky words (hands, faces, crowds,
+  writing, documents, patterns...), extreme close-ups, tilted frames, fast actions. High (65+) never goes to Wan
+  (2.5D instead); medium is painted with a cleaner composition (COMPOSE) and gets no character action.
+- Production cuts each picture where Owlbert starts its words (production._cut_on_words, from words.json).
+- Motion Planner (video.plan): camera / character / environment layers (shotplan.ENVIRONMENT, SPEEDS) ->
+  shotplan.motion_prompt (motion and camera only, no "no ..."); MOTION_SUFFIX has no negation now.
+- Finishing (finishing.py) for Wan clips: check_clip (frame-jump / black-frame detector) -> one retry with a new
+  seed and camera-only motion -> else 2.5D; then interpolation -> deflicker -> Lanczos upscale -> colour matched
+  to the storyboard still (Reinhard in Lab). Settings video.check_clips / finish_ai_clips.
+- Quality Review (review.py): the vision model answers yes/no about each painted picture (shows the plan? writing?
+  clear subject? drawn?); a failing picture is repainted once (review_repaints budget). The nine questions are
+  answered with evidence (quality-review.json/.md, Storyboard checks); failing scenes are re-planned once
+  automatically (storyboard.auto_redo). Storyboard tooltips show the panel (scene/shot, words, shows, camera,
+  action, place, emotion, animation risk, why).
+- Not possible as written: IP-Adapter for Z-Image Turbo (none exists) and pose ControlNet (no pose sources).
+  Consistency comes from the bible text; Qwen-Image-Edit-2511 (Apache-2.0) is the follow-up for identical places.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

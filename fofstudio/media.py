@@ -46,6 +46,14 @@ def fps(path: Path) -> float:
     return 0.0
 
 
+def size(path: Path) -> tuple[int, int]:
+    """(width, height) of a video's first picture stream."""
+    for st in probe(path).get("streams", []):
+        if st.get("codec_type") == "video":
+            return int(st["width"]), int(st["height"])
+    raise StageError(f"{Path(path).name} has no picture.")
+
+
 def has_audio(path: Path) -> bool:
     return any(s.get("codec_type") == "audio" for s in probe(path).get("streams", []))
 

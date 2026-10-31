@@ -1,5 +1,8 @@
 """A whole episode, Database choice to packaged video, with fake AI services (ffmpeg is real)."""
 
+import json
+import re
+
 import pytest
 
 from fofstudio import media, pipeline, researched, scriptfmt, subjects
@@ -153,8 +156,11 @@ def fake_llm(get_packet):
         if "shots" in props:   # storyboard shot ideas
             n = props["shots"].get("minItems", 3)
             kinds = props["shots"]["items"]["properties"]["kind"]["enum"]
+            shows = props["shots"]["items"]["properties"].get("shows", {}).get("enum")
             return {"shots": [{"kind": kinds[i % len(kinds)], "idea": f"shot idea {i} {messages[-1]['content'][-30:]}",
-                               "person_id": ""} for i in range(n)]}
+                               "person_id": "", **({"shows": "document", "action": "the page turns",
+                                                    "why": "shows the record", "emotion": "curiosity"} if shows else {})}
+                              for i in range(n)]}
         if "tricks_taught" in props:   # the length scan
             claims = get_packet()["claims"]
             return {"claims": [{"claim_id": c["claim_id"], "complexity": "some explaining", "why": "a timeline"}
@@ -216,6 +222,23 @@ def fake_llm(get_packet):
                  "claim_ids": ["C-NOPE"], "evidence_ids": ["E-NOPE"], "minutes_guess": 5},
                 {"kind": "clip", "title": "the radio that sold fear", "pitch": "A repeat.", "claim_ids": [cid],
                  "evidence_ids": [], "minutes_guess": 1}]}
+        if "locations" in props and "characters" in props:   # the film's bible
+            ids = [x["scene_id"] for x in json.loads(messages[-1]["content"])["scenes"]]
+            return {"locations": [{"id": "radio_shop", "name": "small-town radio shop", "architecture": "brick front",
+                                   "colours": "amber and teal", "lighting": "warm lamps", "props": "radios, generators"},
+                                  {"id": "court", "name": "county courthouse", "architecture": "stone columns",
+                                   "colours": "grey and gold", "lighting": "cold daylight", "props": "benches"}],
+                    "characters": [{"id": "listener", "role": "a radio listener", "clothing": "red flannel shirt",
+                                    "hair": "grey cap", "build": "medium", "identifiers": "always holds a mug"},
+                                   {"id": "kid", "role": "a frightened child", "clothing": "pyjamas",
+                                    "identifiers": "teddy bear"}],
+                    "scenes": [{"scene_id": sid, "location": "radio_shop" if k % 2 == 0 else "court",
+                                "characters": ["listener", "kid"], "story_beat": f"beat {k}", "emotion": "tension",
+                                "must_show": ["a pile of generators"]} for k, sid in enumerate(ids)]}
+        if set(props) == {"idea", "action", "why"}:   # Scene Diversity re-plans a repeated subject
+            kind = re.search(r"Show it as one of: ([^,(]+)", messages[-1]["content"]).group(1).strip()
+            return {"idea": f"{kind} close to the words, a new subject", "action": "a slow drift",
+                    "why": "breaks the repeat"}
         if "subject" in props and len(props) == 1:   # a style's showcase scene for the style test
             return {"subject": "A small figure with a lantern crosses a rope bridge over a misty gorge toward one "
                                "lit window, seen from behind, low moonlight from the left"}

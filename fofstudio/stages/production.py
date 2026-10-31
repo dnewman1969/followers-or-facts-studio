@@ -15,6 +15,8 @@ editor; the timeline is saved to production.json and the Render stage follows it
 
 from __future__ import annotations
 
+import re
+
 from typing import Any
 
 from .. import bits, media, owl
@@ -104,6 +106,45 @@ def _fit_lengths(ep: Episode, shots: list[dict[str, Any]], total: float) -> list
     return lengths
 
 
+def _cut_on_words(ep: Episode, shots: list[dict[str, Any]], words: list[dict[str, Any]], scene_len: float
+                  ) -> list[float] | None:
+    """How long each shot stays on screen so that each picture comes on as Owlbert starts saying its own words
+    (its 'covers'), and the cards at the end of the scene keep their time. None when the words or their timings
+    aren't there (the old even split is used), or when an animated clip would have to stretch more than it can
+    (it slows to 1.35x at most, then holds its last frame)."""
+    pics = [s for s in shots if s.get("kind") != "card"]
+    cards = shots[len(pics):]
+    if not words or len(pics) < 2 or any(s.get("kind") == "card" for s in shots[:len(pics)]) \
+            or not all(s.get("covers") for s in pics):
+        return None
+    norm = [re.sub(r"[^a-z0-9]", "", w["word"].lower()) for w in words]
+    starts, at = [0.0], 0
+    for s in pics[1:]:
+        want = [x for x in (re.sub(r"[^a-z0-9]", "", w.lower()) for w in s["covers"].split()[:3]) if x]
+        found = next((i for i in range(at, len(norm) - len(want) + 1) if want and norm[i:i + len(want)] == want), None)
+        if found is None:
+            return None
+        at = found + 1
+        starts.append(LEAD + float(words[found]["start"]) - 0.15)   # the cut lands just before the words
+    card_time = sum(float(c.get("seconds") or 4.0) for c in cards)
+    pic_len = scene_len - card_time
+    on_screen = [b - a for a, b in zip(starts, starts[1:])] + [pic_len - starts[-1]]
+    if min(on_screen) < 1.0:
+        return None
+    for s, length in zip(pics, on_screen):
+        clip = s.get("clip") or {}
+        if not clip.get("still") and clip.get("kind") != "camera_move":
+            try:
+                if length > media.duration(ep.abs(clip["path"])) * 1.35 + 1.5:
+                    return None
+            except Exception:  # noqa: BLE001 - an unreadable clip: use the even split
+                return None
+    # each shot's length includes the cross-fade it shares with the next one (the timeline overlaps them)
+    out = [x + FADE for x in on_screen] + [float(c.get("seconds") or 4.0) + FADE for c in cards]
+    out[-1] -= FADE          # the scene takes the same time as before: the last one shares no fade inside it
+    return out
+
+
 def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
     script = load_script(ep)
     narration = read_json(ep.path("audio", "narration.json"), {}) or {}
@@ -122,6 +163,7 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
     tl["video"].append({"id": "intro", "src": intro, "start": 0.0, "duration": round(intro_len, 3),
                         "inpoint": 0.0, "label": "Intro bumper", "kind": "bumper", "ai": False, "scene_id": "INTRO"})
     t = intro_len - SCENE_FADE
+    word_times = _words(ep)
     by_scene: dict[str, list[dict[str, Any]]] = {}
     for s in plan["shots"]:
         by_scene.setdefault(s["scene_id"], []).append(s)
@@ -133,6 +175,9 @@ def assemble(ep: Episode, progress=lambda t, p=None: None) -> dict[str, Any]:
             continue
         scene_len = (LEAD + m["seconds"] + TAIL) if m else sum(s["seconds"] for s in shots)
         lengths = _fit_lengths(ep, shots, scene_len + FADE * (len(shots) - 1))
+        on_cue = _cut_on_words(ep, shots, word_times.get(sc["scene_id"], []), scene_len) if m else None
+        if on_cue:   # each picture comes on as Owlbert starts saying its words (shotplan.segments)
+            lengths = on_cue
         if m:
             tl["speech"].append({"id": f"say-{sc['scene_id']}", "src": m["path"], "start": round(t + LEAD, 3),
                                  "duration": round(m["seconds"], 3), "scene_id": sc["scene_id"],
