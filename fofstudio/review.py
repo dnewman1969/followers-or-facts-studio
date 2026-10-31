@@ -183,13 +183,28 @@ def sequence_review(board: dict[str, Any], bible: dict[str, Any], frame_results:
                              "break" + (f"; {len(broken)} clip(s) broke" if broken else "")
                              + (f"; {len(unclear)} picture(s) have no clear subject" if unclear else "")}
 
-    # 7 pacing
-    lens = [float(sc.get("seconds") or 0) / max(1, len(sc.get("shots", []))) for sc in scenes if sc.get("shots")]
-    avg = sum(lens) / len(lens) if lens else 0
-    slow = [sc["scene_id"] for sc, x in zip([s for s in scenes if s.get("shots")], lens) if x > 12]
-    out["pacing"] = {"ok": (2.5 <= avg <= 8 or not lens) and not slow, "scenes": slow,
-                     "why": f"shots average {avg:.1f} seconds" + (f"; {len(slow)} scene(s) hold one picture over 12 "
-                                                                   "seconds" if slow else "")}
+    # 7 pacing (research: narrated stills with camera moves hold about 5-20 s, around 12 s in long-form
+    # documentaries; feature-film averages under 4 s are the wrong target; judge the median and the spread,
+    # and a shot rhythm that never changes reads as metronomic)
+    lens = []
+    for sc in scenes:
+        shots_ = [sh for sh in sc.get("shots", []) if not sh.get("skip")]
+        if shots_:
+            lens += [float(sc.get("seconds") or 0) / len(shots_)] * len(shots_)
+    lens.sort()
+    med = lens[len(lens) // 2] if lens else 0.0
+    mean = sum(lens) / len(lens) if lens else 0.0
+    cv = ((sum((x - mean) ** 2 for x in lens) / len(lens)) ** 0.5 / mean) if lens and mean else 1.0
+    slow = [sc["scene_id"] for sc in scenes if sc.get("shots")
+            and float(sc.get("seconds") or 0) / max(1, len([x for x in sc["shots"] if not x.get("skip")])) > 15]
+    rushed = med and med < 2.5
+    out["pacing"] = {"ok": bool(not lens or (2.5 <= med <= 12 and not slow)), "scenes": slow,
+                     "median": round(med, 1), "variation": round(cv, 2),
+                     "why": f"shots hold {med:.1f} seconds (median)"
+                            + ("; too fast to take in" if rushed else "")
+                            + (f"; {len(slow)} scene(s) hold one picture over 15 seconds" if slow else "")
+                            + ("; every shot is the same length (metronomic)" if lens and cv < 0.08 and len(lens) > 8
+                               else "")}
 
     # 8 camera
     moves = [(sh.get("look") or {}).get("movement") or "" for sh in seq]

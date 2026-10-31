@@ -1,0 +1,21 @@
+{
+  "_about": "Z-Image Turbo with a guide picture (Z-Image-Turbo-Fun-Controlnet-Union: depth, lineart/canny, pose, HED, MLSD), for Unreal Engine renders of a set or a pose. Written from ComfyUI's Z-Image Fun ControlNet template (node names may need a tweak on first run; if ComfyUI rejects it, the Studio paints without the guide and says so). Needs models/model_patches/Z-Image-Turbo-Fun-Controlnet-Union.safetensors. Placeholders: PROMPT, SEED, WIDTH, HEIGHT, IMAGE, STRENGTH, FILENAME_PREFIX.",
+  "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "z_image_turbo_bf16.safetensors", "weight_dtype": "default"}},
+  "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen_3_4b.safetensors", "type": "lumina2", "device": "default"}},
+  "3": {"class_type": "VAELoader", "inputs": {"vae_name": "ae.safetensors"}},
+  "11": {"class_type": "ModelPatchLoader", "inputs": {"name": "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"}},
+  "12": {"class_type": "LoadImage", "inputs": {"image": "{{IMAGE}}"}},
+  "13": {"class_type": "ImageScale", "inputs": {"image": ["12", 0], "upscale_method": "lanczos", "width": "{{WIDTH}}",
+                                                "height": "{{HEIGHT}}", "crop": "center"}},
+  "14": {"class_type": "ZImageFunControlnet", "inputs": {"model": ["1", 0], "model_patch": ["11", 0], "vae": ["3", 0],
+                                                         "image": ["13", 0], "strength": "{{STRENGTH}}"}},
+  "4": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["14", 0], "shift": 3}},
+  "5": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": "{{PROMPT}}"}},
+  "6": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["5", 0]}},
+  "7": {"class_type": "EmptySD3LatentImage", "inputs": {"width": "{{WIDTH}}", "height": "{{HEIGHT}}", "batch_size": 1}},
+  "8": {"class_type": "KSampler", "inputs": {"model": ["4", 0], "positive": ["5", 0], "negative": ["6", 0],
+                                             "latent_image": ["7", 0], "seed": "{{SEED}}", "steps": 8, "cfg": 1.0,
+                                             "sampler_name": "res_multistep", "scheduler": "simple", "denoise": 1.0}},
+  "9": {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["3", 0]}},
+  "10": {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": "{{FILENAME_PREFIX}}"}}
+}

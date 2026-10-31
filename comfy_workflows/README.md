@@ -6,6 +6,7 @@ The Studio talks to ComfyUI through these files. Each is a ComfyUI workflow in
 | File | Used by | Placeholders |
 |------|---------|--------------|
 | `zimage_turbo_t2i.json` | Images stage | `{{PROMPT}}` `{{SEED}}` `{{WIDTH}}` `{{HEIGHT}}` `{{FILENAME_PREFIX}}` |
+| `zimage_turbo_control.json` | Images stage, when a scene's place has Unreal guide pictures (docs/UNREAL.md) | `{{PROMPT}}` `{{SEED}}` `{{WIDTH}}` `{{HEIGHT}}` `{{IMAGE}}` `{{STRENGTH}}` `{{FILENAME_PREFIX}}` |
 | `wan22_i2v_lightning.json` | Animation stage | `{{IMAGE}}` `{{PROMPT}}` `{{SEED}}` `{{WIDTH}}` `{{HEIGHT}}` `{{FRAMES}}` `{{FPS}}` `{{FILENAME_PREFIX}}` |
 | `acestep_music.json` | Music stage | `{{TAGS}}` `{{LYRICS}}` `{{SECONDS}}` `{{SEED}}` `{{FILENAME_PREFIX}}` |
 

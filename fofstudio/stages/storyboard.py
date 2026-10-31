@@ -243,8 +243,9 @@ def _quality_review(ep: Episode, ctx: Context, scenes: list[dict[str, Any]], sty
     sb = settings()["storyboard"]
     frame_results: dict[str, dict] = {}
     if sb.get("quality_review", True):
-        budget = int(sb.get("review_repaints", 12))
         shots_ = [sh for sc in scenes for sh in sc["shots"] if not sh.get("skip") and sh["kind"] != "real"]
+        # loop guard (research): repaint at most ~30% of the pictures in one review, then it's yours to look at
+        budget = min(int(sb.get("review_repaints", 12)), max(1, round(0.3 * len(shots_))))
         vision_ok = True
         for n, shot in enumerate(shots_):
             if not vision_ok:
@@ -262,9 +263,13 @@ def _quality_review(ep: Episode, ctx: Context, scenes: list[dict[str, Any]], sty
             if not res["ok"] and budget > 0 and not shot.get("by_hand"):
                 budget -= 1
                 ctx.log(f"Quality review: {shot['shot_id']} {'; '.join(res['problems'])}: painting it again")
+                before = shot["candidates"][pick]
                 shot["candidates"][pick] = _paint(ep, shot, pick, style, people)
                 again = rv.frame_check(ep.abs(shot["candidates"][pick]["raw"]), shot, drawn=style.cartoon)
-                res = again or res
+                if again is not None and len(again["problems"]) > len(res["problems"]):
+                    shot["candidates"][pick] = before        # keep the better picture, not the newest
+                    again = res
+                res = dict(again or res)
                 res["repainted"] = True
             shot["vision"] = res        # (shot["review"] is the Virtual Director's)
             frame_results[shot["shot_id"]] = res
@@ -349,10 +354,27 @@ def _vary_subjects(planned: list[dict[str, Any]], style: styles.Style, careful: 
 
 
 # ---------------------------------------------------------------- painting
-def _comfy_image(ep: Episode, name: str, prompt: str, seed: int | None = None) -> tuple[Any, dict[str, Any], int]:
-    """Paint one picture. A fixed seed (the style test) makes every look start from the same noise."""
+def _comfy_image(ep: Episode, name: str, prompt: str, seed: int | None = None, guide: Path | None = None,
+                 log=None) -> tuple[Any, dict[str, Any], int]:
+    """Paint one picture. A fixed seed (the style test) makes every look start from the same noise. With a guide
+    picture (an Unreal Engine render: depth, outlines or a pose; controlmaps.py) the painting follows its layout
+    through the Z-Image Fun ControlNet; if ComfyUI can't run that workflow, the picture is painted from the words
+    alone and the log says why."""
     cfg = settings()["comfyui"]
     seed = seed or new_seed()
+    if guide is not None and cfg.get("control_workflow"):
+        from ..comfy import Comfy
+        try:
+            uploaded = Comfy().upload_image(guide)
+            saved, meta = run_template("control_workflow", {
+                "PROMPT": prompt, "SEED": seed, "WIDTH": cfg["image_width"], "HEIGHT": cfg["image_height"],
+                "IMAGE": uploaded, "STRENGTH": float(cfg.get("control_strength", 0.65)),
+                "FILENAME_PREFIX": f"fof/{ep.project_id}/{name}",
+            }, ep.path("images", "raw", f"{name}-{seed}"))
+            return saved[0], {**meta, "guide": str(guide)}, seed
+        except Exception as exc:  # noqa: BLE001 - painted from words instead; said in the log and the record
+            (log or (lambda m: None))(f"{name}: couldn't use the guide picture {guide.name} ({exc}); painted "
+                                      "from the words alone")
     saved, meta = run_template("image_workflow", {
         "PROMPT": prompt, "SEED": seed, "WIDTH": cfg["image_width"], "HEIGHT": cfg["image_height"],
         "FILENAME_PREFIX": f"fof/{ep.project_id}/{name}",
@@ -450,7 +472,8 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
     full, _ = promptcheck.strip_watch(". ".join(x.strip(" .") for x in parts if x and x.strip(" .")))
     for n in names_in(full, person_names()):   # last guard: a real person's name never reaches the painter
         full = re.sub(rf"\b{re.escape(n)}(?:'s)?\b", "an anonymous figure", full, flags=re.I)
-    raw, meta, seed = _comfy_image(ep, name, full)
+    from .. import controlmaps
+    raw, meta, seed = _comfy_image(ep, name, full, guide=controlmaps.guide_for(ep, shot))
     picture = raw
     extra: dict[str, Any] = {}
     if shot["kind"] == "owl":
@@ -467,6 +490,7 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         labeled = cards.name_caption(labeled, labeled, people[shot["person_id"]]["name"])
     return {"path": ep.rel(labeled), "raw": ep.rel(picture), "prompt": shot["idea"], "full_prompt": full,
             "seed": seed, "model": cfg["image_model_name"], "workflow": meta["workflow"], "made_at": utc_now(),
+            **({"guide": meta["guide"]} if meta.get("guide") else {}),
             **({"recreation": True, "why_not_real": why[:5]} if recreation else {}), **extra}
 
 

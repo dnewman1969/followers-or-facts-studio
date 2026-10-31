@@ -67,7 +67,7 @@ class FakeVoice:
 def fake_run_template(setting_key, values, dest_stem, on_progress=None, cancelled=None):
     dest_stem = Path(dest_stem)
     dest_stem.parent.mkdir(parents=True, exist_ok=True)
-    if setting_key == "image_workflow":
+    if setting_key in ("image_workflow", "control_workflow"):
         img = Image.new("RGB", (values["WIDTH"], values["HEIGHT"]), (40, 60, 100))
         ImageDraw.Draw(img).ellipse((100, 100, 400, 400), fill=(212, 160, 23))
         out = Path(f"{dest_stem}.png")

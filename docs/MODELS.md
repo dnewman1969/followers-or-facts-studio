@@ -100,3 +100,14 @@ The 128 GB of system RAM is what lets the 14B Wan models run on a 12 GB card.
 - Llama 3.2 Vision: worst of the tested models at faces (FaceBench 45.87); not a backup.
 - Any LoRA whose trigger word is a show, studio or brand name (it puts a trademark into saved metadata).
 
+## Added 2026-10-31 (research "AI film director storyboard pipeline")
+
+| Model / tool | Used for | Licence | Notes |
+|---|---|---|---|
+| Z-Image-Turbo-Fun-Controlnet-Union (Alibaba PAI) | Guide pictures from Unreal (depth, outlines, pose) | Believed Apache-2.0 like Z-Image; **check the model card before monetized use** | Optional; `zimage_turbo_control.json` |
+| Unreal Engine renders | Guide pictures | Epic EULA: no royalty on linear content (videos) | MetaHuman covered from UE 5.6; check terms before training on renders |
+| Mixamo characters and animations | Poses for guide pictures | Royalty-free, films allowed (Adobe FAQ) | |
+| DWPose (comfyui_controlnet_aux) | Pose skeletons from mannequin renders | Check the weights' licence | The original OpenPose code is non-commercial: don't use it |
+| OpenCV, NumPy | Clip checks, colour matching (finishing.py) | Apache-2.0, BSD | Already installed |
+| Not allowed | FLUX.2 klein 9B (non-commercial); OpenPose original code (non-commercial); GIMM-VFI (non-commercial) | | |
+

@@ -94,3 +94,34 @@ def test_a_broken_clip_is_caught(tmp_path):
     assert finishing.check_clip(good)["ok"] and not finishing.check_clip(bad)["ok"]
     out = finishing.finish_clip(good, None, tmp_path / "final.mp4", 30, 320, 180)
     assert abs(media.fps(out) - 30) < 0.5 and media.size(out) == (320, 180)
+
+
+def test_unreal_guide_pictures_steer_the_painting(episode, monkeypatch):
+    """Dave (2026-10-31): Unreal Engine renders (depth, outlines, poses) as guide pictures for a place."""
+    from PIL import Image
+
+    from fofstudio import comfy, controlmaps
+    from fofstudio.util import write_json
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    pipeline.approve(ep, "script")
+    pipeline.run_now(ep, "storyboard")
+    sid = ep.storyboard()["scenes"][0]["scene_id"]
+    loc = bible.load(ep)["scenes"][sid]["location"]
+    folder = controlmaps.folder_for_location(loc)
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in ("cam1-depth.png", "cam2-lineart.png"):
+        Image.new("RGB", (64, 36), "gray").save(folder / name)
+    uploaded = []
+    monkeypatch.setattr(comfy.Comfy, "upload_image", lambda self, p: uploaded.append(p) or p.name)
+    shots = [sh for sh in ep.storyboard()["scenes"][0]["shots"] if sh["kind"] == "broll"]
+    assert controlmaps.guide_for(ep, shots[0]).parent == folder
+    pipeline.run_now(ep, "storyboard", {"replan": [sid]})
+    painted = [sh for sh in ep.storyboard()["scenes"][0]["shots"] if sh["kind"] == "broll"]
+    assert uploaded and all(c.get("guide") for sh in painted for c in sh["candidates"] if c)
+    # a scene's own guide pictures win over its place's
+    own = ep.path("control", sid)
+    own.mkdir(parents=True)
+    Image.new("RGB", (64, 36), "white").save(own / "pose.png")
+    assert controlmaps.guide_for(ep, painted[0]) == own / "pose.png"

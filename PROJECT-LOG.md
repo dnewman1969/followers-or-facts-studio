@@ -796,6 +796,25 @@ whatever was being said; the variety check compared framing but not WHAT is show
 - Not possible as written: IP-Adapter for Z-Image Turbo (none exists) and pose ControlNet (no pose sources).
   Consistency comes from the bible text; Qwen-Image-Edit-2511 (Apache-2.0) is the follow-up for identical places.
 
+## 2026-10-31 — v0.9.1: research follow-ups (Unreal guide pictures, animation safety, review tuning)
+
+- Research "AI film director storyboard pipeline" sent and saved to the project (6 notes incl. Unreal poses and
+  the IP-Adapter question: own IP-Adapter not realistic; Unreal guides + edit models + LoRAs instead).
+- Unreal Engine guide pictures (controlmaps.py, docs/UNREAL.md, comfy_workflows/zimage_turbo_control.json with
+  ModelPatchLoader + ZImageFunControlnet, settings comfyui.control_workflow / control_strength): broll shots of a
+  place with guides in <data>/control-maps/<place id>/ (or <episode>/control/<scene id>/) are painted on them;
+  if ComfyUI rejects the workflow the picture is painted from words and the log says so.
+- Animation: a clip that breaks late (at 60%+ of its frames) is trimmed before the break instead of thrown away;
+  check_clip reports break_at and flicker; finishing now matches colour first on the original frames, then
+  interpolates, deflickers only if flicker was found, and upscales last. Motion prompts say "the background
+  stays steady" when nothing else moves. Orbit, crane, drone, tracking, handheld and steadicam moves become a
+  slow push-in for Wan (WAN_UNRELIABLE).
+- Review: documentary pacing band (median 2.5-12 s, over 15 s flagged, metronomic rhythm noted); repaints capped
+  at ~30% of the pictures; a repaint that comes out worse keeps the earlier picture.
+- Next (report's build list): log Dave's keep/drop choices to tune thresholds; yes/no questions per shot written
+  by the planner; DINOv2 repeat check on painted frames; RIFE and SeedVR2 in ComfyUI; first-last-frame clips for
+  planned moves; a capped five-step retry ladder.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

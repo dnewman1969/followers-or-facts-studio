@@ -1,6 +1,6 @@
-"""Finishing an animated clip, in the order of Dave's brief (2026-10-31):
-
-    frame interpolation  ->  temporal consistency  ->  upscale  ->  colour grading  ->  final clip
+"""Finishing an animated clip (Dave's brief, 2026-10-31: frame interpolation -> temporal consistency -> upscale ->
+colour grading -> final clip; the research refined the order: match colours to the still on the original frames,
+then interpolate, deflicker only when flicker was found, and upscale last):
 
   * frame interpolation: Wan makes 16 frames a second; motion-compensated in-between frames bring it to the
     video's frame rate so it doesn't stutter (ffmpeg minterpolate; RIFE in ComfyUI is the upgrade);
@@ -53,10 +53,11 @@ def check_clip(path: Path) -> dict[str, Any]:
     """Is this animated clip broken? Frame-to-frame change on small grey frames: a jump far above the clip's
     usual change means morphing or popping; many black frames mean a failed render. Thresholds are starting
     points from the research, to tune on your own clips."""
-    diffs, dark, last = [], 0, None
+    diffs, dark, last, lum = [], 0, None, []
     for f in _frames(path, (160, 90)):
         g = f.mean(axis=2)
         dark += g.mean() < 8
+        lum.append(float(g.mean()))
         if last is not None:
             diffs.append(float(np.abs(g - last).mean()))
         last = g
@@ -66,8 +67,11 @@ def check_clip(path: Path) -> dict[str, Any]:
     d = np.array(diffs)
     med = float(np.median(d)) + 0.05
     worst = float(d.max())
+    jump_at = int(d.argmax()) + 1
+    steps = np.abs(np.diff(np.array(lum)))
+    flicker = bool(len(steps) > 4 and float(np.median(steps)) > 1.5 and float(np.median(steps)) > 3 * med)
     out = {"frames": n, "median_change": round(med, 2), "biggest_jump": round(worst, 2),
-           "dark_frames": int(dark)}
+           "dark_frames": int(dark), "break_at": jump_at, "flicker": flicker}
     if dark > 0.1 * n:
         return {**out, "ok": False, "why": f"{dark} black frame(s): the render failed part-way"}
     if worst > 12 and worst > 6 * med:
@@ -82,42 +86,50 @@ def _lab_stats(img: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return lab.reshape(-1, 3).mean(0), lab.reshape(-1, 3).std(0) + 1e-3
 
 
+def trim(src: Path, dest: Path, frames: int) -> Path:
+    """Keep the first `frames` frames (a clip that breaks late is cut just before it breaks)."""
+    run([media.ffmpeg(), "-y", "-v", "error", "-i", str(src), "-frames:v", str(max(1, frames)), "-an",
+         "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(dest)],
+        label=f"trimming {src.name}", timeout=600)
+    return dest
+
+
 def finish_clip(src: Path, still: Path | None, dest: Path, fps: int, width: int, height: int,
-                strength: float = 0.6) -> Path:
-    """Interpolate to `fps`, deflicker, upscale to width x height, and match the colours to the still."""
+                strength: float = 0.6, deflicker: bool = False) -> Path:
+    """The finishing order (Dave's brief, refined by the research): colours matched to the storyboard still
+    first (temporal consistency, on the few original frames: cheaper and steadier), then interpolation to the
+    video's frame rate, then deflicker only when the check found flicker, then the upscale last."""
     import cv2
-    tmp = dest.with_name(dest.stem + "-steady.mp4")
+    src_w, src_h = media.size(src)
     src_fps = media.fps(src) or fps
-    chain = []
-    if 0 < src_fps < fps - 0.5:
-        chain.append(f"minterpolate=fps={fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
-    chain += ["deflicker=mode=pm:size=5", f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos",
-              f"crop={width}:{height}", f"fps={fps}"]
-    run([media.ffmpeg(), "-y", "-v", "error", "-i", str(src), "-vf", ",".join(chain), "-an",
-               "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(tmp)],
-              label=f"steadying {src.name}", timeout=1800)
     target = None
     if still and Path(still).exists():
         img = cv2.cvtColor(cv2.imread(str(still)), cv2.COLOR_BGR2RGB)
         target = _lab_stats(img)
+    chain = []
+    if 0 < src_fps < fps - 0.5:
+        chain.append(f"minterpolate=fps={fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
+    if deflicker:
+        chain.append("deflicker=mode=pm:size=5")
+    chain += [f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos", f"crop={width}:{height}",
+              f"fps={fps}"]
     enc = subprocess.Popen([media.ffmpeg(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-                            "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", "-c:v", "libx264", "-crf", "16",
-                            "-preset", "veryfast", "-pix_fmt", "yuv420p", str(dest)],
+                            "-s", f"{src_w}x{src_h}", "-r", f"{src_fps:.4f}", "-i", "-", "-vf", ",".join(chain),
+                            "-c:v", "libx264", "-crf", "16", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(dest)],
                            stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
                            creationflags=0x08000000 if hasattr(subprocess, "STARTUPINFO") else 0)
     try:
-        for f in _frames(tmp, (width, height)):
+        for f in _frames(src):
             if target is not None:
                 lab = cv2.cvtColor(f, cv2.COLOR_RGB2LAB).astype(np.float32)
-                m, s = lab.reshape(-1, 3).mean(0), lab.reshape(-1, 3).std(0) + 1e-3
-                matched = (lab - m) / s * target[1] + target[0]
+                m, sd = lab.reshape(-1, 3).mean(0), lab.reshape(-1, 3).std(0) + 1e-3
+                matched = (lab - m) / sd * target[1] + target[0]
                 lab = lab * (1 - strength) + matched * strength
                 f = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
             enc.stdin.write(np.ascontiguousarray(f).tobytes())
     finally:
         enc.stdin.close()
         enc.wait()
-    tmp.unlink(missing_ok=True)
     if enc.returncode != 0 or not dest.exists():
         raise RuntimeError(f"finishing {src.name} failed")
     return dest

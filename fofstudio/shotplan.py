@@ -241,6 +241,8 @@ def motion_prompt(camera_words: str, speed: str, character: str, environment: li
         parts.append(character)
     if env:
         parts.append(" and ".join(env))
+    else:   # research: say what stays still, so the model doesn't invent motion everywhere
+        parts.append("the background stays steady")
     cam = camera_words or "the camera holds still"
     parts.append(f"{cam}, {speed}" if speed and speed not in cam else cam)
     tidy = [re.sub(r"\s{2,}", " ", NEGATION.sub("", p)).strip(" ,.") for p in parts]   # each layer, one sentence

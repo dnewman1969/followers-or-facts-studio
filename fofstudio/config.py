@@ -66,6 +66,8 @@ DEFAULTS: dict[str, Any] = {
         "url": "http://127.0.0.1:8188",
         "image_workflow": "comfy_workflows/zimage_turbo_t2i.json",
         "image_model_name": "Z-Image Turbo",
+        "control_workflow": "comfy_workflows/zimage_turbo_control.json",   # with an Unreal guide picture
+        "control_strength": 0.65,       # how closely the painting follows the guide (0.4 loose - 0.9 strict)
         "image_width": 1344,
         "image_height": 768,
         "video_workflow": "comfy_workflows/wan22_i2v_lightning.json",

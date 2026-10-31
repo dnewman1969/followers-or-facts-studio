@@ -47,6 +47,9 @@ CAMERA_WORDS = {"zoom_in": "a slow push-in", "zoom_out": "a slow pull-out", "pan
                 "static": "the camera holds still"}
 
 
+WAN_UNRELIABLE = {"orbit", "crane", "drone", "tracking", "handheld", "steadicam"}
+
+
 def plan_path(ep: Episode):
     return ep.path("video", "plan.json")
 
@@ -134,6 +137,13 @@ def plan(ctx: Context) -> None:
                      "risk": risk}
             if cam:   # the Virtual Director chose this shot's camera move on the Storyboard
                 entry["director_move"] = shot["look"]["movement"]
+            if method == "animate" and (shot.get("look") or {}).get("movement") in WAN_UNRELIABLE:
+                # research: orbits, crane, drone and fast tracking moves are often ignored or warp in a 5-second
+                # Wan clip; a slow push-in reads the same and holds together
+                entry["motion_prompt"] = shotplan.motion_prompt("a slow push-in", speed, action, env, risk["band"])
+                entry["camera"] = "zoom_in"
+                entry["wan_move"] = f"push-in instead of {entry.pop('director_move', 'the planned move')} (unreliable " \
+                                    "for the animation model)"
         else:
             entry = {"how_it_plays": f"{shot['type'].replace('_', ' ')} holds on screen: \"{shot.get('text', '')[:80]}\"",
                      "motion_prompt": "", "camera": "zoom_in" if shot["type"] != "title_card" else "static",
@@ -276,6 +286,14 @@ def run(ctx: Context) -> None:
                         f"Animating {sid} with Wan 2.2 ({k + 1}/{total}): {t}"))
                 clip = next((x for x in saved if x.suffix.lower() in (".mp4", ".webm", ".mov")), saved[0])
                 check = finishing.check_clip(clip) if vid.get("check_clips", True) else {"ok": True}
+                if not check["ok"] and check.get("break_at", 0) >= 0.6 * check.get("frames", 1):
+                    # it broke late: keep the good part (research: trim rather than throw it away)
+                    kept = finishing.trim(clip, clip.with_name(clip.stem + "-trim.mp4"), check["break_at"] - 1)
+                    again = finishing.check_clip(kept)
+                    if again["ok"]:
+                        ctx.log(f"{s['shot_id']}: the clip broke near the end ({check['why']}); kept the first "
+                                f"{check['break_at'] - 1} frames")
+                        clip, check = kept, {**again, "trimmed_at": check["break_at"]}
                 if check["ok"]:
                     break
                 ctx.log(f"{s['shot_id']}: the animated clip broke ({check['why']}); "
@@ -291,7 +309,8 @@ def run(ctx: Context) -> None:
                     ctx.progress(f"Finishing {s['shot_id']}: smoothing, steadying, upscaling, matching colour",
                                  100 * (n + 0.9) / total)
                     final = finishing.finish_clip(clip, ep.abs(s["raw"]), ep.path("video", f"{s['shot_id']}-final.mp4"),
-                                                  int(vid["fps"]), int(vid["width"]), int(vid["height"]))
+                                                  int(vid["fps"]), int(vid["width"]), int(vid["height"]),
+                                                  deflicker=bool(check.get("flicker")))
                 s["clip"] = {"path": ep.rel(final), "kind": "animated", "seed": seed, "model": cfg["video_model_name"],
                              "workflow": meta["workflow"], "digest": digest, "made_at": utc_now(), "ai": True,
                              "recreation": bool(s.get("recreation")), "raw_clip": ep.rel(clip), "check": check,
