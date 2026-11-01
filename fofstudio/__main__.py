@@ -3,7 +3,7 @@
     python -m fofstudio app                      open the window (default)
     python -m fofstudio init                     create the data folder, settings and database
     python -m fofstudio doctor                   check Ollama, ComfyUI, ffmpeg, models
-    python -m fofstudio download-models          fetch the Kokoro voice (~340 MB)
+    python -m fofstudio download-models          fetch the Kokoro voice (~340 MB) and the guide model (~2 GB)
     python -m fofstudio import-research [DIR]    (re)import truth-vlog's research CSVs
     python -m fofstudio validate                 check the research database
     python -m fofstudio arcs                     arcs ranked by how well sourced they are
@@ -102,6 +102,26 @@ def cmd_download_models(a) -> None:
             print("  have", download_rhubarb())
         except Exception as exc:  # noqa: BLE001 - Owlbert still talks without it
             print("  Rhubarb Lip Sync couldn't be downloaded:", exc)
+    from . import guidemodel
+    from .util import StageError
+    if guidemodel.have():
+        print("  have", guidemodel.target())
+    elif guidemodel.target() is None:
+        print("  The guide model for Unreal guides: ComfyUI's models folder wasn't found (Settings > paths > "
+              "comfyui_models); skipped.")
+    else:
+        print("  Downloading the guide model for ComfyUI (about 2 GB, once)...")
+        last = [-1]
+
+        def show(done: int, total: int) -> None:
+            pct = int(done * 100 / total) if total else 0
+            if pct // 10 != last[0]:
+                last[0] = pct // 10
+                print(f"    {pct}%  ({done // 1_000_000} of {total // 1_000_000} MB)", flush=True)
+        try:
+            print("  have", guidemodel.download(show), "(restart ComfyUI so it sees it)")
+        except StageError as exc:
+            print("  ", exc)
 
 
 def cmd_import(a) -> None:

@@ -833,6 +833,32 @@ need, that way it will be done correctly."
 - docs/UNREAL.md rewritten as those three steps.
 - Test: the job, the filled-in script compiles, fake Unreal captures become guide pictures the storyboard uses.
 
+## 2026-11-01 — v0.9.3: the Studio runs Unreal itself; the guide model downloads itself
+
+Dave ran the Unreal script by hand and nothing happened; he also didn't know how to get the guide model into
+ComfyUI. His screenshot showed Unreal in Play mode ("Untitled (Play In Editor)"): Unreal hides a script's
+progress bar then and won't add actors, and the errors only went to the Output Log. Research: "Unreal automation
+and guide model setup".
+- `unreal_bridge.start()`: finds Unreal (Settings > paths > unreal_editor, the Epic launcher's
+  LauncherInstalled.dat, the registry, Program Files; version from Engine/Build/Build.version), makes its own
+  project `<data>/unreal/FoFGuides/FoFGuides.uproject` with PythonScriptPlugin and EditorScriptingUtilities on,
+  and opens `UnrealEditor-Cmd.exe <project> -ExecutePythonScript=<script> -unattended -nosplash -log -abslog=...`
+  (runs after the level loads; Unreal closes when the script returns). `check()` reports progress from the
+  script's own run-log.txt, kills Unreal 90 s after it says it finished (in case it's stuck on a question) or when
+  it runs far too long, brings the guides in, and on failure gives the reason plus Unreal's own error lines.
+- The script: stops with a plain message in Play mode; `unreal.load_asset` (no extra plugin); a spawn that
+  returns None is an error; every step and any traceback in run-log.txt; one failed camera doesn't stop the rest;
+  two render targets reused; a warm-up capture before reading; colour is optional (outlines come from depth too);
+  no message boxes when the Studio started it.
+- `guidemodel.py`: finds ComfyUI's models folder (Settings > paths > comfyui_models, else next to main.py, else
+  Documents/ComfyUI) and downloads Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps (~2 GB, Apache-2.0,
+  meant for smaller cards) into models/model_patches, resuming. `download-models` (Update Studio.cmd) gets it;
+  the window has a Download button and checks ComfyUI has the ZImageFunControlnet node and sees the file.
+- Workflow takes the model name from `comfyui.guide_model`; no centre crop; strength 0.75, depth guides +0.1.
+- Unreal guides window rebuilt: Download it / Make guides with Unreal / Stop, live status, details box.
+- Untested against a real Unreal and ComfyUI here: first-open time, the save prompt on close, and the exact
+  Play-mode check are the things to watch on Dave's first run.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

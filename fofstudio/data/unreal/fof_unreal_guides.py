@@ -9,15 +9,18 @@ What it does, by itself:
   4. saves them for the Studio, then removes everything it added. Your level is left as it was.
 The Studio turns them into the guide pictures the painter follows (so a place keeps the same layout in every shot).
 
-How to run it (Unreal Engine 5): open any project, then Tools > Execute Python Script... and pick this file.
-(First time only: Edit > Plugins, search "Python Editor Script Plugin", tick it, restart Unreal.)
-It shows a progress bar and a message when it's done (a minute or two per place).
+Normally the Studio runs it for you (Storyboard > Unreal guides... > Make guides with Unreal): it opens Unreal,
+runs this, and Unreal closes by itself. By hand: in any project, make sure the red Stop button isn't showing
+(not in Play mode), then Tools > Execute Python Script... and pick this file. Everything it does is written to
+run-log.txt next to the pictures.
 """
 
 import json
 import math
 import os
 import struct
+import time
+import traceback
 
 import unreal
 
@@ -50,9 +53,11 @@ def _spawn(cls, loc, rot=(0, 0, 0)):
     location = unreal.Vector(*loc)
     rotation = unreal.Rotator(roll=rot[0], pitch=rot[1], yaw=rot[2])
     sub = _actors()
-    if sub:
-        return sub.spawn_actor_from_class(cls, location, rotation)
-    return unreal.EditorLevelLibrary.spawn_actor_from_class(cls, location, rotation)
+    a = (sub.spawn_actor_from_class(cls, location, rotation) if sub
+         else unreal.EditorLevelLibrary.spawn_actor_from_class(cls, location, rotation))
+    if a is None:
+        raise RuntimeError(f"Unreal refused to add a {cls.__name__} to the level (is the Play button on?)")
+    return a
 
 
 def _destroy(actor):
@@ -64,12 +69,51 @@ def _destroy(actor):
 
 
 MESHES = {}
+LOG = []          # everything that happened, saved next to the pictures as run-log.txt for the Studio to show
+
+
+def note(text):
+    line = time.strftime("%H:%M:%S ") + str(text)
+    LOG.append(line)
+    try:
+        unreal.log("Followers or Facts: " + str(text))
+    except Exception:
+        pass
+
+
+def save_log(out_root):
+    try:
+        os.makedirs(out_root, exist_ok=True)
+        with open(os.path.join(out_root, "run-log.txt"), "w", encoding="utf-8") as f:
+            f.write("\n".join(LOG) + "\n")
+    except Exception:
+        pass
 
 
 def _mesh(path):
     if path not in MESHES:
-        MESHES[path] = unreal.EditorAssetLibrary.load_asset(path)
+        m = unreal.load_asset(path)
+        if m is None:
+            try:
+                m = unreal.EditorAssetLibrary.load_asset(path)
+            except Exception:
+                m = None
+        if m is None:
+            raise RuntimeError(f"Unreal couldn't load its built-in shape {path}")
+        MESHES[path] = m
     return MESHES[path]
+
+
+def playing():
+    """True while the green Play button is on (Play In Editor): Unreal won't add anything to the level then."""
+    for check in (lambda: unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(),
+                  lambda: bool(unreal.EditorLevelLibrary.get_pie_worlds(False)),
+                  lambda: bool(unreal.EditorLevelLibrary.get_game_world())):
+        try:
+            return bool(check())
+        except Exception:
+            continue
+    return False
 
 
 class Set:
@@ -263,8 +307,15 @@ CAMERAS = [   # name, angle around the focus (degrees), distance (x the place's 
 ]
 
 
+TARGETS = {}
+
+
 def _target(fmt):
-    return unreal.RenderingLibrary.create_render_target2d(_world(), WIDTH, HEIGHT, fmt)
+    """Two picture targets made once and reused for every camera (one for depth, one for colour)."""
+    key = str(fmt)
+    if key not in TARGETS:
+        TARGETS[key] = unreal.RenderingLibrary.create_render_target2d(_world(), WIDTH, HEIGHT, fmt)
+    return TARGETS[key]
 
 
 def capture(s, cam, focus, dist, out_dir):
@@ -293,17 +344,24 @@ def capture(s, cam, focus, dist, out_dir):
         comp.set_editor_property("texture_target", rt)
         comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_SCENE_DEPTH)
         comp.capture_scene()
+        comp.capture_scene()          # the second one is after any shaders the first needed have finished
         px = unreal.RenderingLibrary.read_render_target_raw(_world(), rt, False)
+        if len(px) != WIDTH * HEIGHT:
+            raise RuntimeError(f"the depth picture came back with {len(px)} pixels")
         with open(os.path.join(out_dir, f"{name}.depth.bin"), "wb") as f:
             f.write(struct.pack(f"<{len(px)}f", *[p.r for p in px]))
         # layout: the plain grey set, lit, for the outlines
-        rt2 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA8)
-        comp.set_editor_property("texture_target", rt2)
-        comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_FINAL_COLOR_LDR)
-        comp.capture_scene()
-        px2 = unreal.RenderingLibrary.read_render_target(_world(), rt2, True)
-        with open(os.path.join(out_dir, f"{name}.layout.bin"), "wb") as f:
-            f.write(bytes(v for p in px2 for v in (p.r, p.g, p.b)))
+        try:   # optional: the outlines also come from the depth, so a dark colour capture doesn't matter
+            rt2 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA8)
+            comp.set_editor_property("texture_target", rt2)
+            comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_FINAL_COLOR_LDR)
+            comp.capture_scene()
+            comp.capture_scene()
+            px2 = unreal.RenderingLibrary.read_render_target(_world(), rt2, True)
+            with open(os.path.join(out_dir, f"{name}.layout.bin"), "wb") as f:
+                f.write(bytes(v for p in px2 for v in (p.r, p.g, p.b)))
+        except Exception as exc:
+            note(f"  {name}: no layout picture ({exc}); the depth one is enough")
         with open(os.path.join(out_dir, f"{name}.json"), "w") as f:
             json.dump({"width": WIDTH, "height": HEIGHT, "camera": name, "fov": fov,
                        "position_m": [cx, cy, cz], "yaw": yaw, "pitch": pitch}, f)
@@ -315,16 +373,30 @@ def main():
     with open(JOB, encoding="utf-8") as f:
         job = json.load(f)
     out_root = job["out"]
+    auto = bool(job.get("auto"))           # started by the Studio: no message boxes, Unreal closes when done
     places = job["places"]
+    note(f"Started: {len(places)} place(s), Unreal {unreal.SystemLibrary.get_engine_version()}")
+    save_log(out_root)
+    if playing():
+        msg = ("Unreal is in Play mode (the green Play button was pressed), and nothing can be added to the "
+               "level while it plays. Press the red Stop button at the top, then run this script again.")
+        note("STOPPED: " + msg)
+        save_log(out_root)
+        if not auto:
+            unreal.EditorDialog.show_message("Followers or Facts", msg, unreal.AppMsgType.OK)
+        return
     total = len(places) * len(CAMERAS)
-    done_places = []
+    done_places, problems = [], []
     with unreal.ScopedSlowTask(total, "Followers or Facts: building sets and capturing guide pictures") as task:
-        task.make_dialog(True)
+        task.make_dialog(True, True)
         for place in places:
+            name = place.get("name") or place["id"]
             kind = kind_of(place)
             out_dir = os.path.join(out_root, place["id"])
             os.makedirs(out_dir, exist_ok=True)
+            note(f"{name}: building a {kind} set")
             s = Set()
+            got = 0
             try:
                 BUILD[kind](s)
                 focus, dist = FOCUS[kind]
@@ -332,25 +404,62 @@ def main():
                 for cam in CAMERAS:
                     if task.should_cancel():
                         raise KeyboardInterrupt
-                    task.enter_progress_frame(1, f"{place.get('name', place['id'])}: {cam[0]} camera")
-                    capture(s, cam, focus, dist, out_dir)
+                    task.enter_progress_frame(1, f"{name}: {cam[0]} camera")
+                    try:
+                        capture(s, cam, focus, dist, out_dir)
+                        got += 1
+                        note(f"  {cam[0]} camera: saved")
+                    except Exception as exc:
+                        problems.append(f"{name} / {cam[0]}: {exc}")
+                        note(f"  {cam[0]} camera FAILED: {exc}\n{traceback.format_exc()}")
+                    save_log(out_root)
                 with open(os.path.join(out_dir, "place.json"), "w") as f:
                     json.dump({**place, "built_as": kind}, f)
-                done_places.append(f"{place.get('name', place['id'])} ({kind})")
+                if got:
+                    done_places.append(f"{name} ({kind}, {got} angles)")
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:
+                problems.append(f"{name}: {exc}")
+                note(f"{name} FAILED: {exc}\n{traceback.format_exc()}")
             finally:
                 s.clear()
+                save_log(out_root)
     with open(os.path.join(out_root, "done.json"), "w") as f:
-        json.dump({"places": done_places, "cameras": [c[0] for c in CAMERAS]}, f)
-    msg = ("Done! Guide pictures made for:\n- " + "\n- ".join(done_places)
-           + "\n\nGo back to the Studio and press Make pictures (it brings them in by itself).")
-    unreal.log(msg)
-    try:
-        unreal.EditorDialog.show_message("Followers or Facts", msg, unreal.AppMsgType.OK)
-    except Exception:
-        pass
+        json.dump({"places": done_places, "problems": problems, "cameras": [c[0] for c in CAMERAS]}, f)
+    note(f"Finished: {len(done_places)} place(s) done, {len(problems)} problem(s)")
+    save_log(out_root)
+    if not auto:
+        msg = ("Done! Guide pictures made for:\n- " + "\n- ".join(done_places or ["(none)"])
+               + ("\n\nProblems:\n- " + "\n- ".join(problems[:8]) if problems else "")
+               + "\n\nGo back to the Studio and press Make pictures (it brings them in by itself).")
+        try:
+            unreal.EditorDialog.show_message("Followers or Facts", msg, unreal.AppMsgType.OK)
+        except Exception:
+            pass
 
 
 try:
     main()
 except KeyboardInterrupt:
-    unreal.log_warning("Followers or Facts: cancelled. Nothing was left in your level.")
+    note("Cancelled. Nothing was left in your level.")
+except Exception as exc:
+    note(f"ERROR: {exc}\n{traceback.format_exc()}")
+    try:
+        with open(JOB, encoding="utf-8") as f:
+            _auto = bool(json.load(f).get("auto"))
+    except Exception:
+        _auto = False
+    if not _auto:
+        try:
+            unreal.EditorDialog.show_message("Followers or Facts: something went wrong",
+                                             f"{exc}\n\nThe details are in run-log.txt next to the pictures.",
+                                             unreal.AppMsgType.OK)
+        except Exception:
+            pass
+finally:
+    try:
+        with open(JOB, encoding="utf-8") as f:
+            save_log(json.load(f)["out"])
+    except Exception:
+        pass

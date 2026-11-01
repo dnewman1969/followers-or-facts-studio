@@ -22,6 +22,8 @@ DEFAULTS: dict[str, Any] = {
         # back to the copy shipped in seed/ when this folder doesn't exist.
         "truth_vlog_research": "C:/Projects/truth-vlog/research",
         "comfyui_dir": "F:/AI/ComfyUI",
+        "comfyui_models": "",          # ComfyUI's models folder, if the Studio can't find it by itself
+        "unreal_editor": "",           # Unreal's folder (e.g. C:/Program Files/Epic Games/UE_5.6), if not found
         "ffmpeg": "ffmpeg",
         "ffprobe": "ffprobe",
         "font_regular": "",
@@ -67,7 +69,9 @@ DEFAULTS: dict[str, Any] = {
         "image_workflow": "comfy_workflows/zimage_turbo_t2i.json",
         "image_model_name": "Z-Image Turbo",
         "control_workflow": "comfy_workflows/zimage_turbo_control.json",   # with an Unreal guide picture
-        "control_strength": 0.65,       # how closely the painting follows the guide (0.4 loose - 0.9 strict)
+        "control_strength": 0.75,       # how closely the painting follows the guide (0.65 loose - 1.0 strict; depth +0.1)
+        # the guide model (Alibaba PAI, Apache-2.0): the "lite" one suits a 12 GB card; download-models gets it
+        "guide_model": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps.safetensors",
         "image_width": 1344,
         "image_height": 768,
         "video_workflow": "comfy_workflows/wan22_i2v_lightning.json",

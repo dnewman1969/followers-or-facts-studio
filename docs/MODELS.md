@@ -104,7 +104,7 @@ The 128 GB of system RAM is what lets the 14B Wan models run on a 12 GB card.
 
 | Model / tool | Used for | Licence | Notes |
 |---|---|---|---|
-| Z-Image-Turbo-Fun-Controlnet-Union (Alibaba PAI) | Guide pictures from Unreal (depth, outlines, pose) | Believed Apache-2.0 like Z-Image; **check the model card before monetized use** | Optional; `zimage_turbo_control.json` |
+| Z-Image-Turbo-Fun-Controlnet-Union 2.1, lite 2602 8-step (Alibaba PAI) | Guide pictures from Unreal (depth, outlines, pose) | Apache-2.0 (model card tag; commercial use allowed) | ~2 GB, `models/model_patches/`; `download-models` / Unreal guides window get it; needs ComfyUI's ZImageFunControlnet node (Dec 2025+) |
 | Unreal Engine renders | Guide pictures | Epic EULA: no royalty on linear content (videos) | MetaHuman covered from UE 5.6; check terms before training on renders |
 | Mixamo characters and animations | Poses for guide pictures | Royalty-free, films allowed (Adobe FAQ) | |
 | DWPose (comfyui_controlnet_aux) | Pose skeletons from mannequin renders | Check the weights' licence | The original OpenPose code is non-commercial: don't use it |

@@ -368,7 +368,9 @@ def _comfy_image(ep: Episode, name: str, prompt: str, seed: int | None = None, g
             uploaded = Comfy().upload_image(guide)
             saved, meta = run_template("control_workflow", {
                 "PROMPT": prompt, "SEED": seed, "WIDTH": cfg["image_width"], "HEIGHT": cfg["image_height"],
-                "IMAGE": uploaded, "STRENGTH": float(cfg.get("control_strength", 0.65)),
+                "IMAGE": uploaded, "STRENGTH": float(cfg.get("control_strength", 0.75)) + (0.1 if "depth" in guide.name else 0),
+                "GUIDE_MODEL": cfg.get("guide_model") or "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps"
+                                                          ".safetensors",
                 "FILENAME_PREFIX": f"fof/{ep.project_id}/{name}",
             }, ep.path("images", "raw", f"{name}-{seed}"))
             return saved[0], {**meta, "guide": str(guide)}, seed

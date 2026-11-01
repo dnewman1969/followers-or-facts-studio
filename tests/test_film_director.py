@@ -174,3 +174,150 @@ def test_unreal_script_job_and_bringing_its_captures_in(episode):
     assert px[384, 650] > px[600, 100] and px[5, 5] == 0      # near is bright, far is dark, sky is black
     assert not unreal_bridge.pending() and not out.exists()    # the raw files are tidied away
     assert unreal_bridge.status(ep)[0]["guides"] >= 2
+
+
+def test_studio_finds_unreal_and_makes_its_own_project(data, tmp_path, monkeypatch):
+    """Dave (2026-11-01): nothing happened when he ran the script by hand; the Studio now finds Unreal itself and
+    uses a small project of its own with the Python plugin switched on."""
+    import json
+
+    from fofstudio import unreal_bridge as ub
+    for ver, minor in (("5.4", 4), ("5.6", 6)):
+        root = tmp_path / "Epic Games" / f"UE_{ver}"
+        (root / "Engine" / "Binaries" / "Win64").mkdir(parents=True)
+        (root / "Engine" / "Binaries" / "Win64" / "UnrealEditor-Cmd.exe").write_text("")
+        (root / "Engine" / "Build").mkdir(parents=True)
+        (root / "Engine" / "Build" / "Build.version").write_text(json.dumps({"MajorVersion": 5, "MinorVersion": minor}))
+    listing = tmp_path / "LauncherInstalled.dat"
+    listing.write_text(json.dumps({"InstallationList": [
+        {"InstallLocation": str(tmp_path / "Epic Games" / f"UE_{v}"), "AppName": f"UE_{v}"} for v in ("5.4", "5.6")]
+        + [{"InstallLocation": "C:/nowhere", "AppName": "Fortnite"}]}))
+    monkeypatch.setattr(ub, "LAUNCHER_LIST", listing)
+    exe, ver = ub.find_editor()
+    assert ver == "5.6" and exe.name == "UnrealEditor-Cmd.exe" and "UE_5.6" in str(exe)
+    proj = json.loads(ub.make_project(ver).read_text())
+    assert proj["EngineAssociation"] == "5.6"
+    assert {p["Name"] for p in proj["Plugins"] if p["Enabled"]} >= {"PythonScriptPlugin", "EditorScriptingUtilities"}
+    from fofstudio import config
+    config.settings()["paths"]["unreal_editor"] = str(tmp_path / "Epic Games" / "UE_5.4")
+    assert ub.find_editor()[1] == "5.4"                         # Settings wins
+
+
+def _fake_unreal(monkeypatch, ub, behave):
+    """Stand in for Unreal: read the job the script would read, then do what `behave` says."""
+    import re
+
+    class Proc:
+        def __init__(self, cmd, **kw):
+            self.cmd = cmd
+            script = next(a.split("=", 1)[1] for a in cmd if a.startswith("-ExecutePythonScript="))
+            job_path = re.search(r'JOB = r"([^"]+)"', Path(script).read_text(encoding="utf-8")).group(1)
+            behave(json_load(job_path))
+            self.code = 0
+
+        def poll(self):
+            return self.code
+
+        def kill(self):
+            self.code = -9
+    monkeypatch.setattr(ub.subprocess, "Popen", Proc)
+
+
+def json_load(path):
+    import json
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def test_one_button_runs_unreal_and_brings_the_guides_in(episode, tmp_path, monkeypatch):
+    import json
+
+    import numpy as np
+
+    from fofstudio import config, controlmaps
+    from fofstudio import unreal_bridge as ub
+    from fofstudio.util import write_json
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    pipeline.approve(ep, "script")
+    pipeline.run_now(ep, "storyboard")
+    editor = tmp_path / "UE_5.6" / "Engine" / "Binaries" / "Win64" / "UnrealEditor-Cmd.exe"
+    editor.parent.mkdir(parents=True)
+    editor.write_text("")
+    config.settings()["paths"]["unreal_editor"] = str(editor)
+
+    def works(job):
+        assert job["auto"] is True                              # no message boxes, Unreal closes by itself
+        place = job["places"][0]["id"]
+        out = Path(job["out"]) / place
+        out.mkdir(parents=True, exist_ok=True)
+        d = np.full((384, 672), 1500.0, "<f4")
+        d[150:250, 300:400] = 300.0
+        d.tofile(out / "wide.depth.bin")
+        write_json(out / "wide.json", {"width": 672, "height": 384, "camera": "wide"})
+        (Path(job["out"]) / "run-log.txt").write_text("01:00:00 Started\n01:00:05 Finished: 1 place(s) done\n")
+        write_json(Path(job["out"]) / "done.json", {"places": [place], "problems": []})
+    _fake_unreal(monkeypatch, ub, works)
+    r = ub.start(ep)
+    assert r["version"] in ("5.6", "5.5", "5.4") or r["version"]
+    out = ub.check()
+    assert out["state"] == "done" and sum(len(v) for v in out["made"].values()) >= 2   # depth + lines from depth
+    place = json_load(ub.folder() / "job.json")["places"][0]["id"]
+    assert (controlmaps.folder_for_location(place) / "wide-lines.png").exists()
+    assert ub.check()["state"] == "idle"
+
+    def play_mode(job):                                         # Dave's first try: the Play button was on
+        (Path(job["out"]) / "run-log.txt").write_text(
+            "01:00:00 Started\n01:00:00 STOPPED: Unreal is in Play mode (the green Play button was pressed).\n")
+    _fake_unreal(monkeypatch, ub, play_mode)
+    ub.start(ep)
+    bad = ub.check()
+    assert bad["state"] == "failed" and "Play mode" in bad["text"]
+    assert json.loads((ub.folder() / "job.json").read_text())["auto"] is True
+
+
+def test_guide_model_downloads_into_comfyuis_model_patches(data, tmp_path, monkeypatch):
+    import requests
+
+    from fofstudio import config, guidemodel
+    comfy = tmp_path / "ComfyUI"
+    (comfy / "models" / "vae").mkdir(parents=True)
+    (comfy / "main.py").write_text("")
+    config.settings()["paths"]["comfyui_dir"] = str(comfy)
+    assert guidemodel.models_folder() == comfy / "models"
+    assert guidemodel.target() == comfy / "models" / "model_patches" / guidemodel.filename()
+    assert "lite" in guidemodel.filename()                      # the one meant for a 12 GB card
+    blob = b"x" * 150_000_000
+    seen = []
+
+    class Resp:
+        def __init__(self, start):
+            self.status_code = 206 if start else 200
+            self.body = blob[start:]
+            self.headers = {"Content-Length": str(len(self.body))}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            for i in range(0, len(self.body), chunk_size):
+                yield self.body[i:i + chunk_size]
+
+    def get(url, headers=None, stream=True, timeout=60):
+        seen.append((url, headers))
+        start = int(headers["Range"].split("=")[1].rstrip("-")) if headers else 0
+        return Resp(start)
+    monkeypatch.setattr(requests, "get", get)
+    part = guidemodel.target().with_name(guidemodel.filename() + ".part")
+    part.parent.mkdir(parents=True)
+    part.write_bytes(blob[:40_000_000])                         # an interrupted earlier download
+    got = guidemodel.download()
+    assert got.stat().st_size == len(blob) and guidemodel.have() and not part.exists()
+    assert seen[0][0].startswith("https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1/")
+    assert seen[0][1] == {"Range": "bytes=40000000-"}           # carried on where it left off

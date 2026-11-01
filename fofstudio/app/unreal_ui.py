@@ -1,65 +1,100 @@
-"""The "Unreal guides..." window on the Storyboard page: three numbered steps, each with one button, so Unreal
-Engine can build a rough 3D set for every place in this video and the Studio paints over it (unreal_bridge.py)."""
+"""The "Unreal guides..." window on the Storyboard page. Dave (2026-11-01): ran the script by hand, saw nothing.
+Now it's one button: the Studio opens Unreal itself, runs the script, Unreal closes by itself, and the guides come
+in. The window shows what Unreal is doing, and if it fails, why, in plain words (unreal_bridge.py). The guide
+model for ComfyUI is downloaded from here too (guidemodel.py)."""
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QApplication, QDialog, QFrame, QLabel, QPushButton, QVBoxLayout
+import threading
 
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtWidgets import (QDialog, QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar, QPushButton,
+                               QVBoxLayout)
+
+from .. import guidemodel
 from .. import unreal_bridge as ub
 from ..util import StageError
-from .common import GREEN, MUTED, error, open_path
-
-STEP2 = ("<b>2. In Unreal Engine</b> (any project, an empty one is fine):<br>"
-         "&nbsp;&nbsp;• <i>First time only:</i> Edit &gt; Plugins &gt; search <b>Python</b> &gt; tick "
-         "<b>Python Editor Script Plugin</b> &gt; restart Unreal.<br>"
-         "&nbsp;&nbsp;• Tools &gt; <b>Execute Python Script...</b> &gt; pick <b>fof_unreal_guides.py</b> in the "
-         "folder that just opened.<br>"
-         "&nbsp;&nbsp;A progress bar shows while it builds and photographs each place (about a minute). "
-         "It tidies up after itself and says <b>Done</b>. You don't have to save anything in Unreal.")
+from .common import GREEN, MUTED, RED, error, open_path
 
 
 class UnrealDialog(QDialog):
+    got = Signal(int, int)
+    finished_download = Signal(str, bool)
+
     def __init__(self, parent, ep) -> None:
         super().__init__(parent)
         self.ep = ep
         self.setWindowTitle("Unreal guides")
-        self.resize(640, 460)
+        self.resize(680, 600)
         lay = QVBoxLayout(self)
         intro = QLabel("Unreal builds a rough 3D set for each place in this video and photographs it from six "
-                       "angles. The Studio paints its pictures on top, so the rooms stay the same from shot to "
-                       "shot and the camera angles really change.")
+                       "angles. The Studio paints its pictures on top, so a place looks the same from shot to "
+                       "shot and the camera angles really change. You don't need to do anything in Unreal.")
         intro.setWordWrap(True)
         intro.setObjectName("muted")
         lay.addWidget(intro)
 
+        # 1. the guide model
         lay.addWidget(self._line())
-        lay.addWidget(QLabel("<b>1. Make the job for Unreal</b>"))
-        self.make_btn = QPushButton("Make the Unreal job and open its folder")
-        self.make_btn.setObjectName("primary")
-        self.make_btn.clicked.connect(self._make)
-        lay.addWidget(self.make_btn)
-        self.job_note = QLabel("")
-        self.job_note.setWordWrap(True)
-        lay.addWidget(self.job_note)
+        lay.addWidget(QLabel("<b>1. The guide model for ComfyUI</b> (once, about 2 GB)"))
+        row = QHBoxLayout()
+        self.model_note = QLabel("")
+        self.model_note.setWordWrap(True)
+        row.addWidget(self.model_note, 1)
+        self.get_btn = QPushButton("Download it")
+        self.get_btn.clicked.connect(self._download)
+        row.addWidget(self.get_btn)
+        lay.addLayout(row)
+        self.bar = QProgressBar()
+        self.bar.hide()
+        lay.addWidget(self.bar)
 
+        # 2. Unreal
         lay.addWidget(self._line())
-        step2 = QLabel(STEP2)
-        step2.setWordWrap(True)
-        lay.addWidget(step2)
-
-        lay.addWidget(self._line())
-        lay.addWidget(QLabel("<b>3. Back here</b>: just press <b>Make pictures</b>. The Studio picks up what "
-                             "Unreal made by itself. Or check now:"))
-        self.bring_btn = QPushButton("Bring in what Unreal made")
-        self.bring_btn.clicked.connect(self._bring)
-        lay.addWidget(self.bring_btn)
-        self.status = QLabel("")
+        lay.addWidget(QLabel("<b>2. Make the guides</b>"))
+        row = QHBoxLayout()
+        self.go_btn = QPushButton("Make guides with Unreal")
+        self.go_btn.setObjectName("primary")
+        self.go_btn.clicked.connect(self._start)
+        row.addWidget(self.go_btn, 1)
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.clicked.connect(self._stop)
+        row.addWidget(self.stop_btn)
+        lay.addLayout(row)
+        self.status = QLabel("Unreal opens, works on its own (leave it be) and closes when it's finished. "
+                             "The first time takes longest (10-20 minutes) while it prepares its shaders.")
         self.status.setWordWrap(True)
-        lay.addWidget(self.status, 1)
+        lay.addWidget(self.status)
+        self.details = QPlainTextEdit()
+        self.details.setReadOnly(True)
+        self.details.setPlaceholderText("What Unreal is doing shows here.")
+        lay.addWidget(self.details, 1)
+
+        # 3.
+        lay.addWidget(self._line())
+        lay.addWidget(QLabel("<b>3. Then press Make pictures.</b> The guides are used by themselves."))
+        self.counts = QLabel("")
+        self.counts.setWordWrap(True)
+        self.counts.setObjectName("muted")
+        lay.addWidget(self.counts)
+
+        row = QHBoxLayout()
+        folder_btn = QPushButton("Open the Unreal folder")
+        folder_btn.clicked.connect(lambda: (ub.folder().mkdir(parents=True, exist_ok=True), open_path(ub.folder())))
+        row.addWidget(folder_btn)
+        row.addStretch(1)
         close = QPushButton("Close")
         close.clicked.connect(self.accept)
-        lay.addWidget(close)
-        self._show_status()
+        row.addWidget(close)
+        lay.addLayout(row)
+
+        self.got.connect(self._progress)
+        self.finished_download.connect(self._downloaded)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(2000)
+        self._model_state()
+        self._tick()
 
     @staticmethod
     def _line() -> QFrame:
@@ -67,43 +102,94 @@ class UnrealDialog(QDialog):
         f.setFrameShape(QFrame.HLine)
         return f
 
-    def _make(self) -> None:
+    # ------------------------------------------------------------- the guide model
+    def _model_state(self) -> None:
+        if guidemodel.have():
+            ok, why = guidemodel.comfy_ready()
+            self.model_note.setText(f"<span style='color:{GREEN if ok else RED}'>Downloaded. {why}</span>")
+            self.get_btn.setEnabled(False)
+        elif guidemodel.target() is None:
+            self.model_note.setText(f"<span style='color:{RED}'>Couldn't find ComfyUI's models folder. Settings "
+                                    "&gt; paths &gt; comfyui_models: paste the folder that has checkpoints, vae, "
+                                    "loras in it.</span>")
+            self.get_btn.setEnabled(False)
+        else:
+            self.model_note.setText(f"Not downloaded yet. It goes in {guidemodel.target().parent}.")
+            self.get_btn.setEnabled(True)
+
+    def _download(self) -> None:
+        self.get_btn.setEnabled(False)
+        self.get_btn.setText("Downloading...")
+        self.bar.setRange(0, 100)
+        self.bar.setValue(0)
+        self.bar.show()
+
+        def work() -> None:
+            try:
+                guidemodel.download(lambda d, t: self.got.emit(d, t))
+                self.finished_download.emit("Downloaded. Restart ComfyUI so it sees the new model.", True)
+            except StageError as exc:
+                self.finished_download.emit(str(exc), False)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _progress(self, done: int, total: int) -> None:
+        if total:
+            self.bar.setValue(int(done * 100 / total))
+            self.bar.setFormat(f"{done // 1_000_000} of {total // 1_000_000} MB")
+
+    def _downloaded(self, text: str, ok: bool) -> None:
+        self.bar.hide()
+        self.get_btn.setText("Download it")
+        self._model_state()
+        if not ok:
+            error(self, text)
+            self.get_btn.setEnabled(True)
+        else:
+            self.model_note.setText(f"<span style='color:{GREEN}'>{text}</span>")
+
+    # ------------------------------------------------------------- Unreal
+    def _start(self) -> None:
         try:
-            r = ub.prepare(self.ep)
+            r = ub.start(self.ep)
         except StageError as exc:
             error(self, str(exc))
             return
-        names = ", ".join(p["name"] or p["id"] for p in r["places"])
-        self.job_note.setText(f"<span style='color:{GREEN}'>Ready: {len(r['places'])} place(s): {names}.</span><br>"
-                              f"The file to run is <b>{r['script']}</b>")
-        open_path(r["script"].parent)
+        self.details.clear()
+        self.status.setText(f"Opening Unreal {r['version']} for {len(r['places'])} place(s)... Leave Unreal be; "
+                            "it closes by itself.")
+        self._tick()
 
-    def _bring(self) -> None:
-        self.bring_btn.setEnabled(False)
-        self.bring_btn.setText("Bringing them in...")
-        QApplication.processEvents()
-        try:
-            r = ub.bring_in()
-        finally:
-            self.bring_btn.setText("Bring in what Unreal made")
-            self.bring_btn.setEnabled(True)
-        if not r["made"] and not r["problems"]:
-            self.status.setText(f"<span style='color:{MUTED}'>Nothing new from Unreal yet. Run step 2 first."
-                                "</span><br>" + self._counts())
-            return
-        n = sum(len(v) for v in r["made"].values())
-        text = f"<span style='color:{GREEN}'>Brought in {n} guide picture(s).</span>"
-        if r["problems"]:
-            text += "<br>Some angles didn't work (the others are fine):<br>" + "<br>".join(r["problems"][:6])
-        self.status.setText(text + "<br>" + self._counts())
+    def _stop(self) -> None:
+        ub.stop()
+        self.status.setText("Stopped.")
 
-    def _counts(self) -> str:
-        rows = ub.status(self.ep)
-        if not rows:
-            return ""
-        return "<br>".join(f"{r['name']}: {r['guides']} guide picture(s)" for r in rows)
+    def _tick(self) -> None:
+        busy = ub.running()
+        self.go_btn.setEnabled(not busy)
+        self.stop_btn.setEnabled(busy)
+        r = ub.check()
+        if r["state"] == "running":
+            mins = f" ({r['minutes']} min)" if r.get("minutes") else ""
+            self.status.setText(f"Working{mins}: {r['text']}")
+        elif r["state"] == "done":
+            text = f"<span style='color:{GREEN}'>{r['text']} Now press Make pictures.</span>"
+            if r["problems"]:
+                text += "<br>Some angles didn't work (the others are fine):<br>" + "<br>".join(r["problems"][:6])
+            self.status.setText(text)
+        elif r["state"] == "failed":
+            self.status.setText(f"<span style='color:{RED}'>{r['text']}</span>")
+            if r.get("errors"):
+                self.details.setPlainText("\n".join(r.get("log", [])) + "\n\nFrom Unreal's own log:\n" +
+                                          "\n".join(r["errors"]))
+                return
+        if r.get("log") and r["state"] != "idle":
+            self.details.setPlainText("\n".join(r["log"]))
+        self.counts.setText("Guide pictures so far: " + ", ".join(
+            f"{s['name']} {s['guides']}" for s in ub.status(self.ep)) if self.ep else "")
 
-    def _show_status(self) -> None:
-        c = self._counts()
-        if c:
-            self.status.setText("Guide pictures so far:<br>" + c)
+    def done(self, result: int) -> None:   # Unreal keeps working if the window is closed; it's checked next time
+        self.timer.stop()
+        super().done(result)
+
+
+_ = MUTED
