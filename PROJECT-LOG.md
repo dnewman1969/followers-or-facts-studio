@@ -876,6 +876,28 @@ for RGBA8, RGBA16F and RGBA32F targets; for R32F it quietly returns nothing.
 - Tests: Unreal-saved .hdr/.png pictures become guides; zero pictures is a failure; the script itself, run
   against a pretend Unreal that reads back nothing, switches to saving files after one try.
 
+## 2026-11-02 — v0.9.5: Unreal gets time to draw
+
+Dave's second automatic run (Unreal 5.8.4, five places): reading pixels worked and all 30 cameras saved, but
+every depth picture was empty ("saw nothing"). Unreal's log shows the whole script ran inside the editor's
+second frame, so nothing had been drawn yet. Research: "Unreal capture timing blank depth".
+- The script now works frame by frame (`set_keep_python_script_alive` + `register_slate_post_tick_callback`):
+  waits 60 frames for Unreal to finish opening, 8 after building each set, 2 after placing each camera, 1
+  between captures; closes Unreal itself with `quit_editor` when the Studio started it. If stepping isn't
+  available it does it all at once, as before.
+- Every depth picture is checked in Unreal: at least 1% must hit the set, else it waits longer and tries again
+  (4 tries); the log says what each picture held ("92% hit something, 280-1460 cm" / "every value was 0").
+- Before each set's pictures `AutomationLibrary.finish_loading_before_screenshot()` (shapes, materials and
+  shaders ready); Unreal's "slow down in the background" setting is switched off for the run; if a picture is
+  still empty after two tries the camera draws the whole level instead of only the set's list.
+- After the report ("Unreal capture timing blank depth"): the depth target is cleared to -1 before each
+  capture, so the log can tell "never drew" (-1) from "drew but saw nothing" (huge) from a real picture; the log
+  says how many set pieces the camera's list holds; whole-level mode, once needed, stays on and is recorded in
+  each camera's JSON; a first place where every camera fails stops the run early (no 25-minute timeout); a log
+  line is written before stepping starts, so "it never started" is visible.
+- The Studio says what the numbers were when a picture is unusable, and keeps the files in
+  `<data>/unreal/failed/` instead of deleting them.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

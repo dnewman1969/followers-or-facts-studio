@@ -57,6 +57,7 @@ def prepare(ep: Episode, auto: bool = False) -> dict[str, Any]:
     out_dir().mkdir(parents=True, exist_ok=True)
     for old in ("done.json", "run-log.txt"):
         (out_dir() / old).unlink(missing_ok=True)
+    shutil.rmtree(folder() / "failed", ignore_errors=True)
     job = {"out": str(out_dir()), "places": places, "episode": ep.project_id, "made_at": utc_now(), "auto": auto}
     write_json(folder() / "job.json", job)
     script = folder() / "fof_unreal_guides.py"
@@ -315,7 +316,10 @@ def _depth(d: np.ndarray, size: tuple[int, int], name: str = "depth") -> np.ndar
     valid = np.isfinite(d) & (d > 0) & (d < 60000)       # nothing there comes back huge (a half-float file caps
                                                           # it near 65504 cm) or 0; the sets are well under 600 m
     if not valid.any():
-        raise StageError(f"{name} saw nothing (the set wasn't in front of the camera)")
+        fin = d[np.isfinite(d)]
+        what = (f"every value was {fin.min():g}" if fin.size and fin.min() == fin.max() else
+                f"values only from {fin.min():g} to {fin.max():g}" if fin.size else "no readable values")
+        raise StageError(f"{name} saw nothing ({what})")
     near, far = np.percentile(d[valid], 1), np.percentile(d[valid], 99)
     norm = np.zeros_like(d, dtype=np.float32)
     norm[valid] = 1.0 - np.clip((d[valid] - near) / max(1e-3, far - near), 0, 1)
@@ -375,11 +379,17 @@ def bring_in() -> dict[str, Any]:
                     made.setdefault(place, []).append(f"{cam}-lines.png")
             if dmap is None and rgb is None:
                 raise StageError("Unreal left no picture for this camera")
+            bad = None
         except Exception as exc:  # noqa: BLE001 - one bad camera (even an OpenCV error) is reported, not a crash
             problems.append(f"{place}/{cam}: {exc}")
+            bad = folder() / "failed" / place      # kept, so what Unreal saved can be looked at
+            bad.mkdir(parents=True, exist_ok=True)
         for f in (meta_path, depth_f, layout_f):
-            if f:
-                f.unlink(missing_ok=True)
+            if f and f.exists():
+                if bad:
+                    shutil.move(str(f), str(bad / f.name))
+                else:
+                    f.unlink()
     for place_dir in list(out_dir().glob("*")) if out_dir().is_dir() else []:
         if place_dir.is_dir() and not [j for j in place_dir.glob("*.json") if j.name != "place.json"]:
             if (place_dir / "place.json").exists():

@@ -405,3 +405,54 @@ def test_unreal_script_saves_the_file_itself_when_reading_pixels_gives_nothing(t
     fake.RenderingLibrary.read_render_target_raw.return_value = px
     assert ns["save_picture"]("rt", str(tmp_path), "low.depth", ".hdr", raw=True) == "low.depth.bin"
     assert (tmp_path / "low.depth.bin").stat().st_size == 4 * len(px)
+
+
+def test_unreal_script_waits_for_frames_and_retries_an_empty_picture(tmp_path, monkeypatch):
+    """Dave's run 2026-11-02: everything ran inside Unreal's second frame and every depth picture came back
+    empty. Now the script works frame by frame, checks each depth picture, and waits and tries again."""
+    import json
+    import runpy
+    import sys
+    from unittest import mock
+
+    class P:
+        def __init__(self, r):
+            self.r = r
+    n = 672 * 384
+    blank = [P(0.0)] * n
+    good = [P(300.0 if i % 672 < 300 else 1500.0) for i in range(n)]
+    reads = []
+
+    def read(world, rt, normalize):
+        reads.append(1)
+        return blank if len(reads) == 1 else good           # the very first picture is empty, then fine
+    fake = mock.MagicMock()
+    fake.get_editor_subsystem.return_value.is_in_play_in_editor.return_value = False
+    fake.RenderingLibrary.read_render_target_raw.side_effect = read
+    fake.RenderingLibrary.export_render_target.side_effect = \
+        lambda world, rt, folder, name: Path(folder, name).write_bytes(b"png")
+    ticks = {}
+    fake.register_slate_post_tick_callback.side_effect = lambda fn: ticks.setdefault("fn", fn) and "handle"
+    monkeypatch.setitem(sys.modules, "unreal", fake)
+    job = tmp_path / "job.json"
+    job.write_text(json.dumps({"out": str(tmp_path / "out"), "auto": True,
+                               "places": [{"id": "loc_001", "name": "Radio Studio", "architecture": "radio studio"}]}))
+    src = Path("fofstudio/data/unreal/fof_unreal_guides.py").read_text(encoding="utf-8")
+    script = tmp_path / "fof_unreal_guides.py"
+    script.write_text(src.replace("{{JOB_PATH}}", str(job)), encoding="utf-8")
+    runpy.run_path(str(script), run_name="fof_test")
+    fake.EditorPythonScripting.set_keep_python_script_alive.assert_any_call(True)   # Unreal stays open
+    assert "fn" in ticks and not (tmp_path / "out" / "done.json").exists()          # nothing done yet
+    for _ in range(5000):
+        ticks["fn"](0.016)
+        if (tmp_path / "out" / "done.json").exists():
+            break
+    done = json.loads((tmp_path / "out" / "done.json").read_text())
+    assert done["problems"] == [] and "Radio Studio" in done["places"][0]
+    out = tmp_path / "out" / "loc_001"
+    assert {f"{c}.depth.bin" for c in ("wide", "medium", "low", "high", "close", "side")} <= \
+        {f.name for f in out.iterdir()}
+    log = (tmp_path / "out" / "run-log.txt").read_text()
+    assert "the depth picture was empty (every value was 0)" in log and "waiting and trying again" in log
+    assert "hit something, 300-1500 cm" in log
+    fake.SystemLibrary.quit_editor.assert_called_once()                              # closes when done

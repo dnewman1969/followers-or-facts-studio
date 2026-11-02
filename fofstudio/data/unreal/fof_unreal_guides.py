@@ -387,7 +387,48 @@ def save_picture(rt, out_dir, stem, ext, raw, for_file=None):
     return got
 
 
-def capture(s, cam, focus, dist, out_dir):
+START_WAIT = 60       # frames to let Unreal finish opening before the first set (Dave's run: all in frame 2)
+SET_WAIT = 8          # frames after building a set, so Unreal has drawn it once
+RETRIES = 4           # a camera whose picture comes back empty waits longer and tries again
+
+
+def settle():
+    """Let Unreal finish preparing what it needs to draw (shapes, materials, shaders) before a picture."""
+    try:
+        unreal.AutomationLibrary.finish_loading_before_screenshot()
+    except Exception as exc:
+        if "settle" not in HOW:
+            HOW["settle"] = "no"
+            note(f"(couldn't wait for Unreal to finish preparing: {exc})")
+
+
+def keep_full_speed():
+    """Unreal slows itself down when its window isn't in front; the Studio's window usually is."""
+    try:
+        perf = unreal.get_default_object(unreal.EditorPerformanceSettings)
+        perf.set_editor_property("throttle_cpu_when_not_foreground", False)
+    except Exception as exc:
+        note(f"(couldn't stop Unreal slowing down in the background: {exc})")
+
+
+def depth_summary(px):
+    """The depth values (cm), how many of them hit something, and their range - so a blank picture is caught
+    in Unreal, retried, and described in the log instead of reaching the Studio as 'saw nothing'."""
+    vals = [p.r for p in px]
+    hits = [v for v in vals if 0 < v < 60000]
+    if hits:
+        return vals, len(hits), f"{len(hits) * 100 // len(vals)}% hit something, {min(hits):.0f}-{max(hits):.0f} cm"
+    lo, hi = min(vals), max(vals)
+    what = f"every value was {lo:g}" if lo == hi else f"values only from {lo:g} to {hi:g}"
+    if lo == hi == -1:
+        what += ": the camera never drew"
+    elif lo >= 60000:
+        what += ": the camera drew but saw nothing"
+    return vals, 0, what
+
+
+def capture_steps(s, cam, focus, dist, out_dir):
+    """One camera, as steps: each `yield n` lets Unreal draw n frames before the next step."""
     name, angle, far, height, fov = cam
     fx, fy, fz = focus
     a = math.radians(angle)
@@ -402,107 +443,173 @@ def capture(s, cam, focus, dist, out_dir):
         comp.set_editor_property("fov_angle", fov)
         comp.set_editor_property("capture_every_frame", False)
         comp.set_editor_property("capture_on_movement", False)
-        try:   # only the set we built, never whatever else is in your level
-            comp.set_editor_property("primitive_render_mode",
-                                     unreal.SceneCapturePrimitiveRenderMode.PRM_USE_SHOW_ONLY_LIST)
-            comp.set_editor_property("show_only_actors", list(s.actors))
-        except Exception:
-            pass
-        # depth: how far each point is, in centimetres
-        # (RGBA32F, not R32F: Unreal only hands pixels back for RGBA8 / RGBA16F / RGBA32F, and for anything
-        # else quietly returns nothing - Unreal 5.8.4 on Dave's PC, 2026-11-01)
+        if HOW.get("mode") != "whole level":
+            try:   # only the set we built, never whatever else is in your level
+                comp.set_editor_property("primitive_render_mode",
+                                         unreal.SceneCapturePrimitiveRenderMode.PRM_USE_SHOW_ONLY_LIST)
+                comp.set_editor_property("show_only_actors", list(s.actors))
+                if "mode" not in HOW:
+                    held = len(comp.get_editor_property("show_only_actors") or [])
+                    note(f"  (the camera's set list holds {held} of {len(s.actors)} pieces)")
+                    HOW["mode"] = "set only"
+            except Exception as exc:
+                note(f"  (couldn't limit the camera to the set: {exc}; it draws the whole level)")
+                HOW["mode"] = "whole level"
+        yield 2
+        # depth: how far each point is, in centimetres. RGBA32F, not R32F: Unreal only hands pixels back for
+        # RGBA8 / RGBA16F / RGBA32F and for anything else quietly returns nothing (Unreal 5.8.4, 2026-11-01)
         rt = _target(unreal.TextureRenderTargetFormat.RTF_RGBA32F)
         comp.set_editor_property("texture_target", rt)
         comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_SCENE_DEPTH)
-        comp.capture_scene()
-        comp.capture_scene()          # the second one is after any shaders the first needed have finished
-
-        def half_float():             # for saving to a file, Unreal writes a .hdr only from an RGBA16F picture
-            rt16 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA16F)
+        depth_file, why = None, ""
+        for attempt in range(RETRIES):
+            try:     # -1 everywhere afterwards means the camera never drew at all
+                unreal.RenderingLibrary.clear_render_target2d(_world(), rt, unreal.LinearColor(-1.0, -1.0, -1.0, 1.0))
+            except Exception:
+                pass
+            comp.capture_scene()
+            yield 1
+            comp.capture_scene()
+            if HOW.get("depth") == "export":
+                break
+            px = _as_pixels(unreal.RenderingLibrary.read_render_target_raw(_world(), rt, False))
+            if "depth" not in HOW:
+                note(f"  (depth: reading pixels {'worked' if px else 'gave nothing'})")
+            if not px:
+                HOW["depth"] = "export"
+                break
+            HOW["depth"] = "read"
+            vals, hits, why = depth_summary(px)
+            if hits >= len(vals) // 100:          # at least 1% of the picture is the set
+                with open(os.path.join(out_dir, f"{name}.depth.bin"), "wb") as f:
+                    f.write(struct.pack(f"<{len(vals)}f", *vals))
+                depth_file = f"{name}.depth.bin"
+                note(f"  {name} camera depth: {why}")
+                break
+            note(f"  {name} camera: the depth picture was empty ({why}); waiting and trying again")
+            settle()
+            if attempt == 1 and HOW.get("mode") != "whole level":
+                # still empty: draw everything in the level, in case the set list is the problem (and keep
+                # doing so for the rest of the run)
+                try:
+                    comp.set_editor_property("primitive_render_mode",
+                                             unreal.SceneCapturePrimitiveRenderMode.PRM_RENDER_SCENE_PRIMITIVES)
+                    HOW["mode"] = "whole level"
+                    note(f"  {name} camera: now drawing the whole level, not just the set")
+                except Exception as exc:
+                    note(f"  (couldn't switch to the whole level: {exc})")
+            yield 15 * (attempt + 1)
+        if depth_file is None and HOW.get("depth") == "export":
+            rt16 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA16F)   # Unreal writes .hdr only from RGBA16F
             comp.set_editor_property("texture_target", rt16)
             comp.capture_scene()
-            return rt16
-        depth_file = save_picture(rt, out_dir, f"{name}.depth", ".hdr", raw=True, for_file=half_float)
-        # layout: the plain grey set, lit, for the outlines
+            yield 1
+            comp.capture_scene()
+            depth_file = save_picture(rt16, out_dir, f"{name}.depth", ".hdr", raw=False)
+        if depth_file is None:
+            raise RuntimeError(f"Unreal drew nothing for this camera, even after waiting ({why})")
+        # layout: the plain grey set, lit, for the outlines (optional: outlines also come from the depth)
         layout_file = None
-        try:   # optional: the outlines also come from the depth, so a dark colour capture doesn't matter
+        try:
             rt2 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA8)
             comp.set_editor_property("texture_target", rt2)
             comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_FINAL_COLOR_LDR)
             comp.capture_scene()
+            yield 1
             comp.capture_scene()
             layout_file = save_picture(rt2, out_dir, f"{name}.layout", ".png", raw=False)
         except Exception as exc:
             note(f"  {name}: no layout picture ({exc}); the depth one is enough")
         with open(os.path.join(out_dir, f"{name}.json"), "w") as f:
             json.dump({"width": WIDTH, "height": HEIGHT, "camera": name, "fov": fov,
-                       "depth_file": depth_file, "layout_file": layout_file,
+                       "depth_file": depth_file, "layout_file": layout_file, "mode": HOW.get("mode"),
                        "position_m": [cx, cy, cz], "yaw": yaw, "pitch": pitch}, f)
     finally:
         _destroy(cap)
 
 
-def main():
-    with open(JOB, encoding="utf-8") as f:
-        job = json.load(f)
+def capture(s, cam, focus, dist, out_dir):
+    """The same, all at once (for running by hand where Unreal can't step frame by frame)."""
+    for _ in capture_steps(s, cam, focus, dist, out_dir):
+        pass
+
+
+STATE = {"job": None, "done_places": [], "problems": []}
+
+
+def work():
+    """The whole job, as steps (see capture_steps)."""
+    job = STATE["job"]
     out_root = job["out"]
-    auto = bool(job.get("auto"))           # started by the Studio: no message boxes, Unreal closes when done
-    places = job["places"]
-    note(f"Started: {len(places)} place(s), Unreal {unreal.SystemLibrary.get_engine_version()}")
+    note(f"Started: {len(job['places'])} place(s), Unreal {unreal.SystemLibrary.get_engine_version()}")
     save_log(out_root)
+    keep_full_speed()
+    yield START_WAIT
     if playing():
         msg = ("Unreal is in Play mode (the green Play button was pressed), and nothing can be added to the "
                "level while it plays. Press the red Stop button at the top, then run this script again.")
         note("STOPPED: " + msg)
-        save_log(out_root)
-        if not auto:
+        if not job.get("auto"):
             unreal.EditorDialog.show_message("Followers or Facts", msg, unreal.AppMsgType.OK)
         return
-    total = len(places) * len(CAMERAS)
-    done_places, problems = [], []
-    with unreal.ScopedSlowTask(total, "Followers or Facts: building sets and capturing guide pictures") as task:
-        task.make_dialog(True, True)
-        for place in places:
-            name = place.get("name") or place["id"]
-            kind = kind_of(place)
-            out_dir = os.path.join(out_root, place["id"])
-            os.makedirs(out_dir, exist_ok=True)
-            note(f"{name}: building a {kind} set")
-            s = Set()
-            got = 0
-            try:
-                BUILD[kind](s)
-                focus, dist = FOCUS[kind]
-                s.lights(focus)
-                for cam in CAMERAS:
-                    if task.should_cancel():
-                        raise KeyboardInterrupt
-                    task.enter_progress_frame(1, f"{name}: {cam[0]} camera")
-                    try:
-                        capture(s, cam, focus, dist, out_dir)
-                        got += 1
-                        note(f"  {cam[0]} camera: saved")
-                    except Exception as exc:
-                        problems.append(f"{name} / {cam[0]}: {exc}")
-                        note(f"  {cam[0]} camera FAILED: {exc}\n{traceback.format_exc()}")
-                    save_log(out_root)
-                with open(os.path.join(out_dir, "place.json"), "w") as f:
-                    json.dump({**place, "built_as": kind}, f)
-                if got:
-                    done_places.append(f"{name} ({kind}, {got} angles)")
-            except KeyboardInterrupt:
-                raise
-            except Exception as exc:
-                problems.append(f"{name}: {exc}")
-                note(f"{name} FAILED: {exc}\n{traceback.format_exc()}")
-            finally:
-                s.clear()
+    for place in job["places"]:
+        name = place.get("name") or place["id"]
+        kind = kind_of(place)
+        out_dir = os.path.join(out_root, place["id"])
+        os.makedirs(out_dir, exist_ok=True)
+        note(f"{name}: building a {kind} set")
+        s = Set()
+        got = 0
+        try:
+            BUILD[kind](s)
+            focus, dist = FOCUS[kind]
+            s.lights(focus)
+            yield SET_WAIT
+            settle()
+            for cam in CAMERAS:
+                try:
+                    yield from capture_steps(s, cam, focus, dist, out_dir)
+                    got += 1
+                    note(f"  {cam[0]} camera: saved")
+                except Exception as exc:
+                    STATE["problems"].append(f"{name} / {cam[0]}: {exc}")
+                    note(f"  {cam[0]} camera FAILED: {exc}\n{traceback.format_exc()}")
                 save_log(out_root)
+            with open(os.path.join(out_dir, "place.json"), "w") as f:
+                json.dump({**place, "built_as": kind}, f)
+            if got:
+                STATE["done_places"].append(f"{name} ({kind}, {got} angles)")
+            elif not STATE["done_places"]:
+                note("Every camera of the first place failed, so the rest would too; stopping here.")
+                STATE["problems"].append("Stopped after the first place: no camera got a picture")
+                return
+        except Exception as exc:
+            STATE["problems"].append(f"{name}: {exc}")
+            note(f"{name} FAILED: {exc}\n{traceback.format_exc()}")
+        finally:
+            s.clear()
+            save_log(out_root)
+        yield 2
+
+
+def finish():
+    job = STATE["job"]
+    out_root = job["out"]
+    done_places, problems = STATE["done_places"], STATE["problems"]
     with open(os.path.join(out_root, "done.json"), "w") as f:
         json.dump({"places": done_places, "problems": problems, "cameras": [c[0] for c in CAMERAS]}, f)
     note(f"Finished: {len(done_places)} place(s) done, {len(problems)} problem(s)")
     save_log(out_root)
-    if not auto:
+    if job.get("auto"):          # started by the Studio: close Unreal (the Studio also makes sure it closes)
+        try:
+            unreal.EditorPythonScripting.set_keep_python_script_alive(False)
+        except Exception:
+            pass
+        try:
+            unreal.SystemLibrary.quit_editor()
+        except Exception:
+            pass
+    else:
         msg = ("Done! Guide pictures made for:\n- " + "\n- ".join(done_places or ["(none)"])
                + ("\n\nProblems:\n- " + "\n- ".join(problems[:8]) if problems else "")
                + "\n\nGo back to the Studio and press Make pictures (it brings them in by itself).")
@@ -512,10 +619,64 @@ def main():
             pass
 
 
+class Runner:
+    """Does one step of work() each time Unreal draws a frame, waiting as many frames as a step asks for."""
+
+    def __init__(self):
+        self.steps = work()
+        self.wait = 0
+        self.handle = None
+        self.ended = False
+
+    def tick(self, _delta=0.0):
+        if self.ended:
+            return
+        if self.wait > 0:
+            self.wait -= 1
+            return
+        try:
+            self.wait = int(next(self.steps) or 0)
+        except StopIteration:
+            self.end()
+        except Exception as exc:
+            note(f"ERROR: {exc}\n{traceback.format_exc()}")
+            self.end()
+
+    def end(self):
+        self.ended = True
+        if self.handle is not None:
+            try:
+                unreal.unregister_slate_post_tick_callback(self.handle)
+            except Exception:
+                pass
+        try:
+            finish()
+        except Exception as exc:
+            note(f"ERROR while finishing: {exc}\n{traceback.format_exc()}")
+            save_log(STATE["job"]["out"])
+
+
+def main():
+    with open(JOB, encoding="utf-8") as f:
+        STATE["job"] = json.load(f)
+    runner = Runner()
+    note("Script loaded; starting frame by frame")
+    save_log(STATE["job"]["out"])
+    try:
+        unreal.EditorPythonScripting.set_keep_python_script_alive(True)   # don't close Unreal when this returns
+        runner.handle = unreal.register_slate_post_tick_callback(runner.tick)
+        RUNNERS.append(runner)        # keep it alive between frames
+    except Exception as exc:          # no frame-by-frame here: do it all at once, as before
+        note(f"(stepping frame by frame isn't available: {exc}; doing it all at once)")
+        while not runner.ended:
+            runner.wait = 0
+            runner.tick()
+
+
+RUNNERS = []
+
 try:
     main()
-except KeyboardInterrupt:
-    note("Cancelled. Nothing was left in your level.")
 except Exception as exc:
     note(f"ERROR: {exc}\n{traceback.format_exc()}")
     try:
