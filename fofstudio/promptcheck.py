@@ -70,3 +70,34 @@ def clean_prompt(text: str) -> tuple[str, list[str]]:
     """A prompt ready for the image model: no negations, no watchlist words. Returns (prompt, words removed)."""
     text, hits = strip_watch(text)
     return positive_only(text), hits
+
+
+# Words the image model would paint as visible text (Dave's storyboard 2026-11-02 had "11:9", "16:9" and "10.9"
+# painted in: nearly every style ended with ", 16:9", and the camcorder one asked for a "date timestamp in corner").
+# The picture's shape is set by its width and height, so these words only ever add text to the picture.
+_RATIO = re.compile(r"(?:\bextreme\s+widescreen\s+)?\b\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?\b(?:\s+(?:frame|aspect(?:\s+ratio)?|"
+                    r"cinematic\s+composition|composition|format))?", re.I)
+_TEXT_ASK = re.compile(r"[^,.;]*\b(?:time\s*stamp|timestamps?|time\s*code|date\s+stamp|captions?|subtitles?|"
+                       r"title\s+cards?|lettering|labels?|signage|headlines?|on-screen\s+text|written\s+text|"
+                       r"numbers?\s+in\s+the\s+corner)\b[^,.;]*", re.I)
+
+
+_SAYS = re.compile(r"\s*\b(?:[Ll]abell?ed|[Tt]itled|[Ee]ntitled|that\s+reads|with\s+the\s+(?:words?|text|label|title))\b"
+                   r"[^,.;]*")
+# "reading", "marked", "stamped" only count when what follows is the text itself (a quote, a capital, a number):
+# "a reading lamp", "a man reading", "a stamped envelope" stay
+_SAYS_IF_TEXT = re.compile(r"\s*\b(?:reading|reads|marked|stamped|printed\s+with)\s+(?=[\"'\u201c\u2018A-Z0-9])[^,.;]*")
+
+
+def no_text_cues(text: str) -> str:
+    """Remove aspect ratios, timestamps, captions, labels and similar requests that make the model paint text.
+    "a document labelled HR 645" keeps the document and loses what it says."""
+    t = _RATIO.sub("", text or "")
+    t = _SAYS.sub("", t)
+    t = _SAYS_IF_TEXT.sub("", t)
+    t = _TEXT_ASK.sub("", t)
+    t = re.sub(r"\s*,\s*(?=[,.;])", "", t)          # a comma left in front of other punctuation
+    t = re.sub(r"(?:\s*[,;]\s*){2,}", ", ", t)
+    t = re.sub(r"\.\s*[,;]\s*", ". ", t)
+    t = re.sub(r"\s{2,}", " ", t)
+    return t.strip(" ,;")

@@ -168,6 +168,19 @@ LEVELS = {"fast": 0.1, "balanced": 0.34, "full": 1.0}
 MINUTES_PER_CLIP = 6.0     # Wan 2.2 14B + Lightning, ~5 s at 480p, on an RTX 3060 12 GB
 
 
+def _may_hold_an_owl(shot: dict[str, Any]) -> bool:
+    """The animation director's rule (research "AI film crew production pipeline"): Owlbert moves only through
+    his own rig. A scene picture that was planned or prompted with an owl in it may have a painted owl, which
+    the animation model pulls off model (Dave's clips 2026-11-02), so it moves in 2.5D instead."""
+    import re as _re
+    img = shot.get("image") or {}
+    if img.get("set"):          # Owlbert's empty set: he was taken out before painting and is added live
+        return bool(_re.search(r"\b(?:owlbert|owls?|birds?)\b", str(img.get("full_prompt") or ""), _re.I))
+    words = " ".join(str(x or "") for x in (shot.get("prompt"), shot.get("idea"), shot.get("camera_sees"),
+                                              img.get("full_prompt")))
+    return bool(_re.search(r"\b(?:owlbert|owls?|birds?|the professor)\b", words, _re.I))
+
+
 def choose_animated(ep: Episode, shots: list[dict[str, Any]], level: str) -> set[str]:
     """Which pictures Wan animates, for the chosen level: spread evenly through the video, illustrative
     shots first. Never evidence cards, never Owlbert's empty sets (he's animated live on top already),
@@ -184,7 +197,8 @@ def choose_animated(ep: Episode, shots: list[dict[str, Any]], level: str) -> set
     # Animation Validation: a picture at high risk of breaking never goes to the animation model (2.5D instead)
     pool = [s for s in shots if s["type"] == "ai_image" and not s.get("owl_live") and not s["image"].get("real")
             and not (careful and script_roles.get(s["scene_id"]) == "harm")
-            and (s.get("anim") or shotplan.animation_risk(s))["band"] != "high"]
+            and (s.get("anim") or shotplan.animation_risk(s))["band"] != "high"
+            and not _may_hold_an_owl(s)]
     want = len(pool) if share >= 1 else max(1 if pool else 0, round(share * len(pool)))
     if want >= len(pool):
         return {s["shot_id"] for s in pool}

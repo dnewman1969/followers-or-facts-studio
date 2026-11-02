@@ -41,6 +41,9 @@ OWL_WORDS = re.compile(r"\b(?:professor\s+)?owlbert(?:'s)?\b|\bowls?\b|\bthe pro
                        re.IGNORECASE)
 
 
+OWLBERT_WORDS = re.compile(r"\b(?:owlbert|professor\s+owl|the\s+owl\b|our\s+host|the\s+narrator)\b", re.I)
+
+
 def set_only(idea: str) -> str:
     """The picture idea for an Owlbert shot with Owlbert taken out: the painter makes the empty set, and the
     real Owlbert is added on top (otherwise it paints its own owl and there are two)."""
@@ -213,6 +216,10 @@ def _plan_batch(sc: dict[str, Any], start: int, k: int, n: int, style: styles.St
     out = []
     for i, x in enumerate((answer.get("shots") or [])[:k]):
         kind = x.get("kind") if x.get("kind") in kinds else "broll"
+        if kind in ("broll", "real") and "owl" in kinds and OWLBERT_WORDS.search(x.get("idea") or ""):
+            # a scene shot that has Owlbert in it is an Owlbert shot: he comes from his own artwork, never
+            # painted by the model (Dave's storyboard 2026-11-02 had a red owl the painter invented)
+            kind = "owl"
         pid = (x.get("person_id") or "").strip()
         if kind == "caricature" and pid not in allowed:
             kind, pid = "broll", ""
@@ -368,7 +375,8 @@ def _comfy_image(ep: Episode, name: str, prompt: str, seed: int | None = None, g
             uploaded = Comfy().upload_image(guide)
             saved, meta = run_template("control_workflow", {
                 "PROMPT": prompt, "SEED": seed, "WIDTH": cfg["image_width"], "HEIGHT": cfg["image_height"],
-                "IMAGE": uploaded, "STRENGTH": float(cfg.get("control_strength", 0.75)) + (0.1 if "depth" in guide.name else 0),
+                "IMAGE": uploaded, "STRENGTH": float(cfg.get("control_strength", 0.7)),
+                "GUIDE_END": float(cfg.get("control_end", 0.4)),
                 "GUIDE_MODEL": cfg.get("guide_model") or "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps"
                                                           ".safetensors",
                 "FILENAME_PREFIX": f"fof/{ep.project_id}/{name}",
@@ -445,7 +453,8 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
     if genre and genre.look:
         look = f"{look}. {genre.look}"
     framing = vd.look_words(shot.get("look") or {}, shot["kind"])   # the Virtual Director's framing, light, colour
-    idea, _ = promptcheck.clean_prompt(shot["idea"])  # what to draw only; no names, no "no ..."
+    # what to draw: the storyboard artist's frozen moment (crew.py), else the director's idea; no names, no "no ..."
+    idea, _ = promptcheck.clean_prompt(shot.get("camera_sees") or shot["idea"])
     # continuity from the film's bible: the scene's place drawn the same way every time, and its anonymous
     # characters in the same clothes; and a cleaner composition for shots at medium risk of breaking in motion
     from .. import bible as biblemod
@@ -472,6 +481,10 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         parts = [look, framing, idea, *extra, style.clean, GUARD]
     # the medium comes first: a distilled model with a short attention span reads the early words hardest
     full, _ = promptcheck.strip_watch(". ".join(x.strip(" .") for x in parts if x and x.strip(" .")))
+    full = promptcheck.no_text_cues(full)          # no ratios, timestamps or labels painted into the picture
+    if shot["kind"] != "caricature":                # and no numbers, quotes or a painted owl (crew.painter_safe)
+        from .. import crew
+        full = crew.painter_safe(full, owl_allowed=False)
     for n in names_in(full, person_names()):   # last guard: a real person's name never reaches the painter
         full = re.sub(rf"\b{re.escape(n)}(?:'s)?\b", "an anonymous figure", full, flags=re.I)
     from .. import controlmaps
@@ -553,6 +566,12 @@ def run(ctx: Context) -> None:
     from .. import shotplan
     ctx.progress("Script analysis: the film's bible of places and characters", 1)
     bible = biblemod.make(ep, script, on_text=ctx.writing("Writing the film's bible", 1, 3, 400))
+    from .. import crew
+    crew.log(ep, "breakdown", f"broke down {len(script['scenes'])} scenes: {len(bible.get('locations') or {})} "
+                              f"places, {len(bible.get('characters') or {})} anonymous figures")
+    ctx.progress("Production designer: dressing every place", 3)
+    bible = crew.design_sets(ep, bible, style, log_line=ctx.log,
+                             on_text=ctx.writing("Production designer: dressing the sets", 3, 5, 600))
     replan = set(ctx.options.get("replan") or [])     # scene ids to plan again
     scenes: list[dict[str, Any]] = []
     planned: list[dict[str, Any]] = []
@@ -635,6 +654,19 @@ def run(ctx: Context) -> None:
         for shot in entry["shots"]:
             shot["anim"] = shotplan.animation_risk(shot)
             shot["scene_id"] = entry["scene_id"]
+
+    # the storyboard artist writes each shot as one frozen moment the camera sees, from the approved fields;
+    # the script supervisor checks every shot before anything is painted (crew.py)
+    for n, entry in enumerate(planned):
+        ctx.check_cancel()
+        if any(not (c and ep.abs(c["path"]).exists()) for sh in entry["shots"] for c in sh["candidates"]) or \
+                any(sh["shot_id"] in redo_ids or any(r.startswith(sh["shot_id"] + ":") for r in redo_ids)
+                    for sh in entry["shots"]):
+            ctx.progress(f"Storyboard artist: drawing up {entry['scene_id']}", 32 + 6 * n / max(1, total))
+            crew.camera_sees(ep, entry, bible, style, log_line=ctx.log,
+                             on_text=ctx.writing(f"Storyboard artist: {entry['scene_id']}", 32 + 6 * n / max(1, total),
+                                                 32 + 6 * (n + 1) / max(1, total), 120 * len(entry["shots"])))
+    crew.supervise(ep, planned, bible, log_line=ctx.log)
 
     # painting (the prompt builder adds each shot's framing, light and colour)
     for n, entry in enumerate(planned):

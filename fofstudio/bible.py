@@ -137,8 +137,10 @@ def location_words(bible: dict[str, Any], scene_id: str) -> str:
     loc = (bible.get("locations") or {}).get(sc.get("location") or "")
     if not loc:
         return ""
-    parts = [loc.get("name"), loc.get("architecture"), loc.get("colours"), loc.get("weather"), loc.get("lighting"),
-             loc.get("textures")]
+    parts = [loc.get("name"), loc.get("era"), loc.get("architecture"), loc.get("palette") or loc.get("colours"),
+             loc.get("weather"), loc.get("light") or loc.get("lighting"), loc.get("textures")]
+    if loc.get("dressing"):          # the production designer's set pieces (crew.design_sets)
+        parts.append("set pieces: " + ", ".join(loc["dressing"][:8]))
     return ", ".join(p for p in parts if p)
 
 

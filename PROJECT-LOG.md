@@ -910,6 +910,38 @@ it waits, each frame called the script's tick again, and it tried to start the n
   `bMonitorEditorPerformance=False`); the script's own attempt is a quiet second try via `load_class`.
 - Test: the pretend Unreal now draws frames inside "wait until ready", as 5.8 does; the old script fails it.
 
+## 2026-11-02 — v0.10.0: a film crew between the script and the painter
+
+Dave's first full run with Unreal guides: Unreal worked (29 of 30 cameras), but the storyboard pictures looked like
+the plain grey blockout, had "11:9"/"16:9"/"10.9" painted in, a red owl the painter invented stood in a grey
+room, and Owlbert animated badly. His words: "it's like taking the screen instructions literal ... think of it
+like the way a movie is made, with the script writer, director, scene designer, script supervisor". Research:
+"AI film crew production pipeline" (production roles and order; published AI film crews; interpreting not
+copying; step-by-step production software). The one role whose removal hurt published systems most is the one
+the Studio lacked: the storyboard artist between the plan and the painter.
+- `crew.py`: the crew as role cards (job, fixed answer form, house rules) with Python checks:
+  breakdown clerk (bible.make), **production designer** (`design_sets`: era, 6-10 set pieces with materials and
+  wear, palette, light direction and source, per place, kept until the bible changes), director (existing
+  planner), layout artist (camera size/angle, `controlmaps.guide_for` camera matcher), **storyboard artist**
+  (`camera_sees`: one frozen moment per shot from the approved fields, 40-110 words, painted instead of the
+  director's sentence), **script supervisor** (`supervise`: Owlbert out of scene shots, numbers out, jump cuts
+  noted, a continuity record per shot), animation director (video). Every step in `crew.json`.
+- `crew.painter_safe`: the last check before the painter: no digits (decades and film sizes said in words), no
+  quotes, colons, ratios, timestamps, labels, staging words ("then", "enters"), real names, owls or birds.
+- `promptcheck.no_text_cues`: nearly every style ended ", 16:9" and the camcorder look asked for a "date timestamp
+  in corner": ratios, timestamps, captions and what labels say are taken out of picture and motion prompts.
+- Guides: depth only, the camera matching the shot (wide/medium/low/high/close/side), only for places and people
+  (never close-ups of documents or objects), strength 0.7 and `end_percent` 0.4 so the guide sets the layout and
+  the prompt the materials and style.
+- A scene shot whose idea names Owlbert becomes an Owlbert shot (empty set + his rig); a picture that may hold a
+  painted owl is never sent to Wan (2.5D instead).
+- Vision check per picture adds "looks like a bare grey blockout?" and "a bird or owl anywhere?".
+- Storyboard page: **Crew & sets...** window (the crew and what each did; the dressed sets, editable; every
+  shot's card from narration to what the camera sees). Shot hover shows the director's plan and what was painted.
+- Next (the report's phases): Breakdown & Bible as its own page and lock; item statuses, versions, "out of date"
+  marking and a review inbox; an Animatic page and lock before any clip is made; blurred depth and wall masks;
+  Owlbert hero moves with first-and-last-frame from his rig; calibrate the vision checks against Dave's calls.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

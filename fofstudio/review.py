@@ -67,12 +67,22 @@ def frame_check(image_path, shot: dict[str, Any], drawn: bool = True, llm=None) 
     except OSError:
         return None
     subject = shot.get("shows") or shot.get("kind", "")
-    idea = (shot.get("idea") or "")[:160]
-    qs = [f"Does the picture mainly show {subject}: {idea}?",
-          "Is there any readable writing, lettering or numbers in the picture?",
-          "Is there one clear main subject that stands out from the background?"]
+    idea = (shot.get("camera_sees") or shot.get("idea") or "")[:160]
+    # (key, question, the answer that's a problem, what to say) - the last two from the film crew research:
+    # Dave's pictures 2026-11-02 looked like grey blockouts and had owls the painter invented
+    asks = [("shows", f"Does the picture mainly show {subject}: {idea}?", False, "doesn't show what was planned"),
+            ("text", "Is there any readable writing, lettering or numbers in the picture?", True, "has writing in it"),
+            ("subject", "Is there one clear main subject that stands out from the background?", False,
+             "no clear main subject (it may break when animated)"),
+            ("blockout", "Does it look like an empty, untextured grey 3D model with plain bare walls?", True,
+             "looks like a bare grey blockout, not a designed set")]
+    if shot.get("kind") != "owl":
+        asks.append(("bird", "Is there a bird or an owl anywhere in the picture?", True,
+                     "has a bird or owl in it (Owlbert only comes from his own artwork)"))
     if drawn:
-        qs.append("Is it a drawing, painting or illustration (not a photograph)?")
+        asks.append(("drawn", "Is it a drawing, painting or illustration (not a photograph)?", False,
+                     "looks like a photograph, not the drawn style"))
+    qs = [a[1] for a in asks]
     prompt = ("Answer each question with only yes or no, one per line, like '1. yes'.\n"
               + "\n".join(f"{n}. {q}" for n, q in enumerate(qs, 1)))
     try:
@@ -95,15 +105,7 @@ def frame_check(image_path, shot: dict[str, Any], drawn: bool = True, llm=None) 
         answers = {n: w == "yes" for n, w in enumerate(words[:len(qs)], 1)} if len(words) >= len(qs) else answers
     if len(answers) < len(qs):
         return None
-    problems = []
-    if not answers[1]:
-        problems.append("doesn't show what was planned")
-    if answers[2]:
-        problems.append("has writing in it")
-    if not answers[3]:
-        problems.append("no clear main subject (it may break when animated)")
-    if drawn and not answers.get(4, True):
-        problems.append("looks like a photograph, not the drawn style")
+    problems = [say for n, (_, _, bad, say) in enumerate(asks, 1) if n in answers and answers[n] == bad]
     return {"ok": not problems, "problems": problems, "answers": answers}
 
 

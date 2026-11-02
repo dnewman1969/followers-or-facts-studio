@@ -45,16 +45,39 @@ def guides(ep: Episode, scene_id: str) -> list[Path]:
     return []
 
 
+# Which shots a room layout helps: places and people in them. A close-up of a document, an object or a symbol
+# has nothing to do with the room's layout, so it's painted freely (research "AI film crew production pipeline").
+LAYOUT_SHOWS = {"", "place", "building", "crowd from behind", "single figure from behind", "broadcast or media",
+                "machine or technology"}
+# the Unreal camera that matches the shot the director asked for
+CAMERA_FOR = {"establishing": "wide", "wide": "wide", "tracking": "wide", "crane": "high", "dolly": "medium",
+              "medium": "medium", "two shot": "medium", "over-the-shoulder": "side", "reaction": "close",
+              "close-up": "close", "silhouette": "side", "bird's eye": "high", "worm's eye": "low",
+              "high angle": "high", "overhead": "high", "low angle": "low", "ground level": "low"}
+
+
 def guide_for(ep: Episode, shot: dict) -> Path | None:
-    """The guide picture for this shot, or None. Owlbert sets and caricatures are painted freely."""
-    if shot.get("kind") not in ("broll",):
+    """The guide picture for this shot, or None. Owlbert sets, caricatures and close-ups of things are painted
+    freely. Depth guides are preferred (outlines of a grey blockout have no edges on its walls, so they made the
+    paintings plain and grey); the camera is the one matching the shot's framing."""
+    if shot.get("kind") not in ("broll",) or shot.get("shows", "") not in LAYOUT_SHOWS:
+        return None
+    look = shot.get("look") or {}
+    if look.get("shot_type") in ("extreme close-up",):
         return None
     scene_id = shot.get("scene_id") or shot["shot_id"].rsplit("-s", 1)[0]
     found = guides(ep, scene_id)
     if not found:
         return None
+    depth = [p for p in found if "depth" in p.stem] or found
+    want = CAMERA_FOR.get(look.get("angle", "")) if look.get("angle") not in ("", "eye level", None) else None
+    want = want or CAMERA_FOR.get(look.get("shot_type", ""))
+    if want:
+        match = [p for p in depth if p.stem.split("-")[0] == want]
+        if match:
+            return match[0]
     try:
         n = int(shot["shot_id"].rsplit("-s", 1)[1]) - 1
     except (IndexError, ValueError):
         n = 0
-    return found[n % len(found)]
+    return depth[n % len(depth)]

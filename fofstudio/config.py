@@ -69,7 +69,9 @@ DEFAULTS: dict[str, Any] = {
         "image_workflow": "comfy_workflows/zimage_turbo_t2i.json",
         "image_model_name": "Z-Image Turbo",
         "control_workflow": "comfy_workflows/zimage_turbo_control.json",   # with an Unreal guide picture
-        "control_strength": 0.75,       # how closely the painting follows the guide (0.65 loose - 1.0 strict; depth +0.1)
+        "control_strength": 0.7,        # how closely the painting follows the guide's layout (0.6 loose - 0.9 strict)
+        "control_end": 0.4,             # the guide steers only the first 40% of the painting: the layout, not the
+                                        # look (all the way through, the paintings came out as plain grey blockouts)
         # the guide model (Alibaba PAI, Apache-2.0): the "lite" one suits a 12 GB card; download-models gets it
         "guide_model": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps.safetensors",
         "image_width": 1344,

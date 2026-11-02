@@ -1,5 +1,5 @@
 {
-  "_about": "Z-Image Turbo with a guide picture (Z-Image-Turbo-Fun-Controlnet-Union: depth, lineart/canny, pose, HED, MLSD), for Unreal Engine renders of a set or a pose. Written from ComfyUI's Z-Image Fun ControlNet template (node names may need a tweak on first run; if ComfyUI rejects it, the Studio paints without the guide and says so). Needs models/model_patches/<comfyui.guide_model> (python -m fofstudio download-models gets it). Placeholders: GUIDE_MODEL, PROMPT, SEED, WIDTH, HEIGHT, IMAGE, STRENGTH, FILENAME_PREFIX.",
+  "_about": "Z-Image Turbo with a guide picture (Z-Image-Turbo-Fun-Controlnet-Union: depth, lineart/canny, pose, HED, MLSD), for Unreal Engine renders of a set or a pose. Written from ComfyUI's Z-Image Fun ControlNet template (node names may need a tweak on first run; if ComfyUI rejects it, the Studio paints without the guide and says so). Needs models/model_patches/<comfyui.guide_model> (python -m fofstudio download-models gets it). The guide steers only the first part of the painting (GUIDE_END), so the layout comes from Unreal and the materials, props and style from the prompt. Placeholders: GUIDE_END, GUIDE_MODEL, PROMPT, SEED, WIDTH, HEIGHT, IMAGE, STRENGTH, FILENAME_PREFIX.",
   "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "z_image_turbo_bf16.safetensors", "weight_dtype": "default"}},
   "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen_3_4b.safetensors", "type": "lumina2", "device": "default"}},
   "3": {"class_type": "VAELoader", "inputs": {"vae_name": "ae.safetensors"}},
@@ -8,7 +8,8 @@
   "13": {"class_type": "ImageScale", "inputs": {"image": ["12", 0], "upscale_method": "lanczos", "width": "{{WIDTH}}",
                                                 "height": "{{HEIGHT}}", "crop": "disabled"}},
   "14": {"class_type": "ZImageFunControlnet", "inputs": {"model": ["1", 0], "model_patch": ["11", 0], "vae": ["3", 0],
-                                                         "image": ["13", 0], "strength": "{{STRENGTH}}"}},
+                                                         "image": ["13", 0], "strength": "{{STRENGTH}}",
+                                                         "start_percent": 0.0, "end_percent": "{{GUIDE_END}}"}},
   "4": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["14", 0], "shift": 3}},
   "5": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": "{{PROMPT}}"}},
   "6": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["5", 0]}},

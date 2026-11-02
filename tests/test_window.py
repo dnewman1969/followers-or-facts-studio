@@ -384,3 +384,23 @@ def test_style_test_window_starts_over_and_rates(app, episode, monkeypatch):
     d._go()
     assert d.page.ran[0] == "styletest"
     assert not app.problems, app.problems
+
+
+def test_crew_window_shows_the_crew_sets_and_shot_cards(app, episode):
+    """Dave 2026-11-02: think of it like a film crew. The Crew & sets window shows who did what, lets him change
+    a set, and shows each shot's card."""
+    from fofstudio import bible, crew
+    from fofstudio.app.crew_ui import CrewDialog
+    _finish(episode)
+    d = CrewDialog(None, episode)
+    tabs = d.findChild(__import__("PySide6.QtWidgets", fromlist=["QTabWidget"]).QTabWidget)
+    assert [tabs.tabText(i) for i in range(tabs.count())] == ["The crew", "Sets", "Shot cards"]
+    crew_html = tabs.widget(0).toPlainText()
+    assert "Production designer" in crew_html and "Script supervisor" in crew_html and "dressed" in crew_html
+    assert "Camera sees (painted)" in tabs.widget(2).toPlainText()
+    d.dressing.setPlainText("a dented filing cabinet\nan owl clock with 12 numbers\n")
+    d._save_set()
+    loc = next(iter(bible.load(episode)["locations"].values()))
+    assert loc["dressing"][0] == "a dented filing cabinet" and not any("owl" in x or "12" in x for x in loc["dressing"])
+    assert crew.entries(episode)[-1]["role"] == "dave"
+    assert not app.problems

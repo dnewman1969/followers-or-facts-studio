@@ -1,6 +1,7 @@
 """The AI directing pipeline (Dave, 2026-10-31): shots follow the script, don't repeat, animate safely, and a
 quality review redoes what fails."""
 
+import re
 from pathlib import Path
 
 from fofstudio import bible, pipeline, review, shotplan
@@ -68,8 +69,12 @@ def test_quality_review_answers_and_repaints(episode, monkeypatch):
 
     def vision(self, messages, model=None, **kw):
         looked.append(messages[0]["content"])
-        # the first picture "has writing in it": it gets painted again once
-        return "1. yes\n2. yes\n3. yes\n4. yes" if len(looked) == 1 else "1. yes\n2. no\n3. yes\n4. yes"
+        # the first picture "has writing in it": it gets painted again once; otherwise no writing, no grey
+        # blockout, no stray bird
+        qs = [ln for ln in messages[0]["content"].splitlines() if ln[:1].isdigit()]
+        bad = ("writing", "grey 3D model", "bird")
+        return "\n".join(f"{n}. " + ("yes" if (any(b in q for b in bad) == (len(looked) == 1 and "writing" in q))
+                                      else "no") for n, q in enumerate(qs, 1))
     monkeypatch.setattr(Ollama, "chat", vision)
     pipeline.run_now(ep, "storyboard")
     seq = [sh for sc in ep.storyboard()["scenes"] for sh in sc["shots"]]
@@ -111,20 +116,28 @@ def test_unreal_guide_pictures_steer_the_painting(episode, monkeypatch):
     loc = bible.load(ep)["scenes"][sid]["location"]
     folder = controlmaps.folder_for_location(loc)
     folder.mkdir(parents=True, exist_ok=True)
-    for name in ("cam1-depth.png", "cam2-lineart.png"):
+    for name in ("wide-depth.png", "close-depth.png", "wide-lines.png"):
         Image.new("RGB", (64, 36), "gray").save(folder / name)
     uploaded = []
     monkeypatch.setattr(comfy.Comfy, "upload_image", lambda self, p: uploaded.append(p) or p.name)
     shots = [sh for sh in ep.storyboard()["scenes"][0]["shots"] if sh["kind"] == "broll"]
-    assert controlmaps.guide_for(ep, shots[0]).parent == folder
+    room = dict(shots[0], shows="place", look={"shot_type": "wide", "angle": "eye level"})
+    assert controlmaps.guide_for(ep, room) == folder / "wide-depth.png"          # depth, the matching camera
+    near = dict(room, look={"shot_type": "close-up", "angle": "eye level"})
+    assert controlmaps.guide_for(ep, near) == folder / "close-depth.png"
+    # 2026-11-02: a close-up of a document or an object has nothing to do with the room's layout
+    assert controlmaps.guide_for(ep, dict(room, shows="document")) is None
+    assert controlmaps.guide_for(ep, dict(room, look={"shot_type": "extreme close-up"})) is None
     pipeline.run_now(ep, "storyboard", {"replan": [sid]})
     painted = [sh for sh in ep.storyboard()["scenes"][0]["shots"] if sh["kind"] == "broll"]
-    assert uploaded and all(c.get("guide") for sh in painted for c in sh["candidates"] if c)
+    for sh in painted:
+        guided = controlmaps.guide_for(ep, sh) is not None
+        assert all(bool(c.get("guide")) == guided for c in sh["candidates"] if c), sh["shows"]
     # a scene's own guide pictures win over its place's
     own = ep.path("control", sid)
     own.mkdir(parents=True)
     Image.new("RGB", (64, 36), "white").save(own / "pose.png")
-    assert controlmaps.guide_for(ep, painted[0]) == own / "pose.png"
+    assert controlmaps.guide_for(ep, room) == own / "pose.png"
 
 
 def test_unreal_script_job_and_bringing_its_captures_in(episode):
@@ -462,3 +475,92 @@ def test_unreal_script_waits_for_frames_and_retries_an_empty_picture(tmp_path, m
     assert "hit something, 300-1500 cm" in log
     fake.SystemLibrary.quit_editor.assert_called_once()                              # closes when done
     assert fake.AutomationLibrary.finish_loading_before_screenshot.called and "ERROR" not in log
+
+
+def test_pictures_get_no_ratios_timestamps_or_labels():
+    """Dave's storyboard 2026-11-02 had "11:9", "16:9" and "10.9" painted in: nearly every style ended with
+    ", 16:9" and the camcorder look asked for a "date timestamp in corner"."""
+    import json
+
+    from fofstudio import shotplan
+    from fofstudio.promptcheck import no_text_cues
+    cam = ("analog camcorder home video still, chroma bleed and colour smear, harsh on-camera light, "
+           "blocky date timestamp in corner, 16:9")
+    assert no_text_cues(cam) == ("analog camcorder home video still, chroma bleed and colour smear, harsh "
+                                 "on-camera light")
+    assert no_text_cues("extreme widescreen 2.39:1 frame, dusty light, 16:9") == "dusty light"
+    assert no_text_cues("a desk with a document labelled HR 645, warm lamp") == "a desk with a document, warm lamp"
+    for keep in ("a reading lamp on a desk", "a man reading a newspaper", "a stamped envelope, cream paper texture"):
+        assert no_text_cues(keep) == keep
+    styles = json.loads(Path("fofstudio/data/styles.json").read_text(encoding="utf-8"))
+    items = styles if isinstance(styles, list) else list(styles.get("styles", styles).values()) \
+        if isinstance(styles.get("styles", styles), dict) else styles.get("styles")
+    for st in items:
+        out = no_text_cues(st["look"])
+        assert not __import__("re").search(r"\d+\s*:\s*\d+|timestamp", out), (st["key"], out)
+    motion = shotplan.motion_prompt("the camera pushes in, 16:9", "slowly", "", ["dust drifts"], "low")
+    assert "16:9" not in motion
+
+
+def test_a_scene_shot_with_owlbert_in_it_becomes_an_owlbert_shot():
+    from fofstudio.stages.storyboard import OWLBERT_WORDS
+    assert OWLBERT_WORDS.search("Owlbert stands at a small, cluttered desk in the corner of the studio")
+    assert OWLBERT_WORDS.search("Professor Owl points at the map")
+    assert not OWLBERT_WORDS.search("an owl-shaped weathervane on a barn roof at dusk")
+
+
+def test_the_painter_is_never_handed_text_numbers_or_an_owl(data):
+    """Dave 2026-11-02: "it's like taking the screen instructions literally". The last check before the painter."""
+    from fofstudio.crew import numbers_as_words, painter_safe
+    assert numbers_as_words("1980s cel anime, 35mm film grain") == "nineteen-eighties cel anime, thirty-five millimetre film grain"
+    out = painter_safe("A medium view: Owlbert stands at a desk with a document labelled HR 645 in 1999, \"FEMA\" "
+                       "papers, an owl statue on a shelf, 16:9, then the shot begins")
+    assert not re.search(r"\d|owl|:|\"|then|shot begins", out, re.I), out
+    assert "desk" in out and "document" in out
+    assert "owl" in painter_safe("an owl on a branch", owl_allowed=True)
+
+
+def test_the_crew_dresses_the_sets_draws_up_frames_and_supervises(episode):
+    """Production designer → storyboard artist → script supervisor, before anything is painted; the painter
+    paints the frozen moment, and every step is in the crew log."""
+    from fofstudio import crew
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    pipeline.approve(ep, "script")
+    pipeline.run_now(ep, "storyboard")
+    b = bible.load(ep)
+    loc = next(iter(b["locations"].values()))
+    assert len(loc["dressing"]) >= 6 and loc["palette"] and "left" in loc["light"]
+    sid = next(iter(b["scenes"]))
+    assert "set pieces: cracked green leather armchair" in bible.location_words(b, sid)
+    shots = [sh for s in ep.storyboard()["scenes"] for sh in s["shots"] if sh["kind"] in ("broll", "owl")]
+    assert shots and all(sh.get("camera_sees") for sh in shots)
+    for sh in shots:
+        assert not re.search(r"\d", sh["camera_sees"]) and "typed page" in sh["camera_sees"]
+        painted = sh["candidates"][0]["full_prompt"]
+        assert "typed page" in painted and not re.search(r"\d+\s*:\s*\d+|\bowl\b|timestamp", painted, re.I)
+        assert sh["continuity"]["owlbert"] == ("rig" if sh["kind"] == "owl" else "none")
+    roles = {e["role"] for e in crew.entries(ep)}
+    assert {"breakdown", "designer", "artist", "supervisor"} <= roles
+    # a second run keeps the dressed sets; a frame is only drawn again when its shot's plan changed
+    before = len(crew.entries(ep))
+    kept = {sh["shot_id"]: (sh["idea"], sh["camera_sees"]) for s in ep.storyboard()["scenes"] for sh in s["shots"]
+            if sh.get("camera_sees")}
+    pipeline.run_now(ep, "storyboard")
+    assert not [e for e in crew.entries(ep)[before:] if e["role"] == "designer"]
+    for s in ep.storyboard()["scenes"]:
+        for sh in s["shots"]:
+            if sh.get("camera_sees"):
+                assert sh["camera_sees_from"] == sh["idea"]
+                if sh["shot_id"] in kept and kept[sh["shot_id"]][0] == sh["idea"]:
+                    assert sh["camera_sees"] == kept[sh["shot_id"]][1]
+
+
+def test_a_picture_that_may_hold_a_painted_owl_is_never_animated_by_wan():
+    from fofstudio.stages.video import _may_hold_an_owl
+    assert _may_hold_an_owl({"prompt": "Owlbert stands at a small desk", "image": {"full_prompt": "a desk"}})
+    assert not _may_hold_an_owl({"prompt": "a typed page under a lamp", "image": {"full_prompt": "a typed page"}})
+    # Owlbert's own empty set is fine: he was taken out before painting and is added from his rig
+    assert not _may_hold_an_owl({"prompt": "Owlbert by the window", "image": {"set": "x.png",
+                                                                             "full_prompt": "an empty quiet set"}})

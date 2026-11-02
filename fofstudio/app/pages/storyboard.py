@@ -43,7 +43,10 @@ def panel_text(shot: dict) -> str:
             f"Why: {shot['why']}" if shot.get("why") else "",
             ("Review: " + "; ".join(shot["vision"]["problems"])) if (shot.get("vision") or {}).get("problems") else ""]
     text = "\n".join(r for r in rows if r)
-    return f"{text}\n\n{shot.get('idea', '')}" if text else ""
+    body = shot.get('idea', '')
+    if shot.get("camera_sees"):      # the storyboard artist's frozen moment is what was painted (crew.py)
+        body = f"Director's plan: {body}\n\nCamera sees (painted): {shot['camera_sees']}"
+    return f"{text}\n\n{body}" if text else body
 
 
 class ShotTile(QFrame):
@@ -214,6 +217,11 @@ class StoryboardPage(StagePage):
         self.test_btn.setToolTip("Paint the same test pictures in the new looks and mixes, then Keep or Drop each")
         self.test_btn.clicked.connect(self._test_styles)
         row.addWidget(self.test_btn)
+        self.crew_btn = QPushButton("Crew && sets...")
+        self.crew_btn.setToolTip("The film crew that turns the script into pictures: what each one did, the sets "
+                                 "the production designer dressed (you can change them), and every shot's card")
+        self.crew_btn.clicked.connect(self._crew)
+        row.addWidget(self.crew_btn)
         self.unreal_btn = QPushButton("Unreal guides...")
         self.unreal_btn.setToolTip("Let Unreal Engine build a rough 3D set for each place, so the rooms match from "
                                    "shot to shot and the camera angles really change (three easy steps)")
@@ -231,6 +239,13 @@ class StoryboardPage(StagePage):
             return
         from ..styletest_ui import StyleTestDialog
         StyleTestDialog(self, self).exec()
+
+    def _crew(self) -> None:
+        if not self.ep:
+            return
+        from ..crew_ui import CrewDialog
+        CrewDialog(self, self.ep).exec()
+        self.force_refresh()
 
     def _unreal(self) -> None:
         if not self.ep:
@@ -278,6 +293,7 @@ class StoryboardPage(StagePage):
         self.review_btn.setEnabled(bool(self.ep) and self.ep.path("director-review.md").exists() and not busy)
         self.test_btn.setEnabled(bool(self.ep) and not busy and not self.busy("styletest"))
         self.unreal_btn.setEnabled(bool(self.ep) and not busy)
+        self.crew_btn.setEnabled(bool(self.ep) and not busy)
         sig = (busy, str(board))
         if sig == self._sig:
             return

@@ -239,6 +239,19 @@ def fake_llm(get_packet):
             kind = re.search(r"Show it as one of: ([^,(]+)", messages[-1]["content"]).group(1).strip()
             return {"idea": f"{kind} close to the words, a new subject", "action": "a slow drift",
                     "why": "breaks the repeat"}
+        if "places" in props:   # the production designer dresses the sets
+            places = json.loads(messages[-1]["content"])["places"]
+            return {"places": [{"id": p["id"], "era": "nineteen-nineties", "palette": "warm amber and teal",
+                                "light_from": "left", "light_source": "a desk lamp",
+                                "dressing": ["cracked green leather armchair", "brass desk lamp with a dented shade",
+                                             "stacked yellowed newspapers", "rain-streaked window with blinds",
+                                             "worn oak floorboards", "a tangle of black cables"]} for p in places]}
+        if "frames" in props:   # the storyboard artist's frozen moments
+            shots = json.loads(messages[-1]["content"])["shots"]
+            return {"frames": [{"shot_id": sh["shot_id"], "camera_sees": (
+                f"A {sh['camera'] or 'medium'} view of a typed page on a worn oak desk under a brass desk lamp, "
+                "the paper curling at one corner, stacked yellowed newspapers behind it, warm amber light from the "
+                f"left at night, amber and teal colours ({sh['shot_id']})")} for sh in shots]}
         if "subject" in props and len(props) == 1:   # a style's showcase scene for the style test
             return {"subject": "A small figure with a lantern crosses a rope bridge over a misty gorge toward one "
                                "lit window, seen from behind, low moonlight from the left"}

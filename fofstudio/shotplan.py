@@ -246,4 +246,5 @@ def motion_prompt(camera_words: str, speed: str, character: str, environment: li
     cam = camera_words or "the camera holds still"
     parts.append(f"{cam}, {speed}" if speed and speed not in cam else cam)
     tidy = [re.sub(r"\s{2,}", " ", NEGATION.sub("", p)).strip(" ,.") for p in parts]   # each layer, one sentence
-    return ". ".join(t for t in tidy if t) + "."
+    from .promptcheck import no_text_cues
+    return no_text_cues(". ".join(t for t in tidy if t)) + "."
