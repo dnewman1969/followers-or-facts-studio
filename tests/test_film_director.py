@@ -321,3 +321,87 @@ def test_guide_model_downloads_into_comfyuis_model_patches(data, tmp_path, monke
     assert got.stat().st_size == len(blob) and guidemodel.have() and not part.exists()
     assert seen[0][0].startswith("https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1/")
     assert seen[0][1] == {"Range": "bytes=40000000-"}           # carried on where it left off
+
+
+def test_unreal_58_saved_pictures_and_nothing_made_is_a_failure(episode, tmp_path, monkeypatch):
+    """Dave's run 2026-11-01 (Unreal 5.8.4): reading pixels in Python gave nothing, every camera "failed" and the
+    window still said Done in green. Now Unreal saves the pictures itself (.hdr depth, .png colour) and the
+    Studio reads those; a run that makes no pictures is reported as a failure."""
+    import cv2
+    import numpy as np
+
+    from fofstudio import config, controlmaps
+    from fofstudio import unreal_bridge as ub
+    from fofstudio.util import write_json
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    pipeline.approve(ep, "script")
+    pipeline.run_now(ep, "storyboard")
+    editor = tmp_path / "UE_5.8" / "Engine" / "Binaries" / "Win64" / "UnrealEditor-Cmd.exe"
+    editor.parent.mkdir(parents=True)
+    editor.write_text("")
+    config.settings()["paths"]["unreal_editor"] = str(editor)
+
+    def saves_files(job):
+        place = job["places"][0]["id"]
+        out = Path(job["out"]) / place
+        out.mkdir(parents=True, exist_ok=True)
+        d = np.zeros((384, 672, 3), np.float32)               # Unreal puts the depth in red (BGR index 2)
+        d[..., 2] = 1500.0
+        d[150:250, 300:400, 2] = 300.0
+        d[:120, :, 2] = 65504.0                               # nothing there: a half-float file caps it here
+        cv2.imwrite(str(out / "wide.depth.hdr"), d)
+        lay = np.zeros((384, 672, 3), np.uint8)
+        lay[150:250, 300:400] = 180
+        cv2.imwrite(str(out / "wide.layout.png"), lay)
+        write_json(out / "wide.json", {"width": 672, "height": 384, "camera": "wide",
+                                       "depth_file": "wide.depth.hdr", "layout_file": "wide.layout.png"})
+        write_json(Path(job["out"]) / "done.json", {"places": [place], "problems": []})
+    _fake_unreal(monkeypatch, ub, saves_files)
+    ub.start(ep)
+    r = ub.check()
+    assert r["state"] == "done", r
+    place = json_load(ub.folder() / "job.json")["places"][0]["id"]
+    depth = np.array(__import__("PIL.Image", fromlist=["Image"]).open(
+        controlmaps.folder_for_location(place) / "wide-depth.png").convert("L"))
+    assert depth[384, 700] > depth[600, 100] + 100            # the near box is brighter than the far wall
+    assert depth[600, 100] < 60 and depth[40, 600] == 0       # not a flat white guide; empty background black
+    assert (controlmaps.folder_for_location(place) / "wide-lines.png").exists()
+    assert not (Path(json_load(ub.folder() / "job.json")["out"]) / place).exists()   # tidied away
+
+    def nothing(job):                                         # every camera failed, as on Dave's first run
+        (Path(job["out"]) / "run-log.txt").write_text("06:28:51 Started\n06:28:53 Finished: 0 place(s) done\n")
+        write_json(Path(job["out"]) / "done.json", {"places": [], "problems": [
+            "The Internet Map / wide: object of type 'NoneType' has no len()"]})
+    _fake_unreal(monkeypatch, ub, nothing)
+    ub.start(ep)
+    bad = ub.check()
+    assert bad["state"] == "failed" and "no guide pictures" in bad["text"] and "NoneType" in bad["text"]
+
+
+def test_unreal_script_saves_the_file_itself_when_reading_pixels_gives_nothing(tmp_path, monkeypatch):
+    import runpy
+    import sys
+    from unittest import mock
+
+    fake = mock.MagicMock()
+    fake.RenderingLibrary.read_render_target_raw.return_value = None          # what Unreal 5.8.4 did
+    fake.RenderingLibrary.read_render_target.return_value = None
+
+    def export(world, rt, folder, name):
+        Path(folder, name).write_bytes(b"#?RADIANCE fake")
+    fake.RenderingLibrary.export_render_target.side_effect = export
+    monkeypatch.setitem(sys.modules, "unreal", fake)
+    script = Path("fofstudio/data/unreal/fof_unreal_guides.py")
+    ns = runpy.run_path(str(script), run_name="fof_test")          # its main() fails quietly: no job file here
+    assert ns["save_picture"]("rt", str(tmp_path), "wide.depth", ".hdr", raw=True) == "wide.depth.hdr"
+    assert ns["HOW"]["depth"] == "export"
+    assert ns["save_picture"]("rt", str(tmp_path), "medium.depth", ".hdr", raw=True) == "medium.depth.hdr"
+    assert fake.RenderingLibrary.read_render_target_raw.call_count == 1   # tried once, then straight to saving
+    # and when reading does work (older Unreal), the exact numbers are written raw
+    ns["HOW"].clear()
+    px = [mock.Mock(r=float(i % 50)) for i in range(ns["WIDTH"] * ns["HEIGHT"])]
+    fake.RenderingLibrary.read_render_target_raw.return_value = px
+    assert ns["save_picture"]("rt", str(tmp_path), "low.depth", ".hdr", raw=True) == "low.depth.bin"
+    assert (tmp_path / "low.depth.bin").stat().st_size == 4 * len(px)

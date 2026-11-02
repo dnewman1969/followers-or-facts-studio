@@ -318,6 +318,75 @@ def _target(fmt):
     return TARGETS[key]
 
 
+HOW = {}          # which way of getting the pixels out worked, found on the first camera and then reused
+
+
+def _as_pixels(result):
+    """Unreal versions differ in what read_render_target_raw gives back: a list of colours, a (ok, list)
+    pair, or nothing at all (5.8.4 gave None, Dave's run 2026-11-01). Returns the list, or None."""
+    if result is None:
+        return None
+    if isinstance(result, tuple):
+        for part in result:
+            if isinstance(part, (list, tuple)) and len(part) == WIDTH * HEIGHT:
+                return part
+        return None
+    try:
+        return result if len(result) == WIDTH * HEIGHT else None
+    except TypeError:
+        return None
+
+
+def _exported(out_dir, stem):
+    for f in sorted(os.listdir(out_dir)):
+        if f.startswith(stem + ".") and not f.endswith((".bin", ".json")) and \
+                os.path.getsize(os.path.join(out_dir, f)) > 0:
+            return f
+    return None
+
+
+def save_picture(rt, out_dir, stem, ext, raw, for_file=None):
+    """Save a captured picture next to the others and return its file name. Two ways, the first that works:
+    1. read the pixels into Python and write them raw (exact depth in centimetres);
+    2. let Unreal write the file itself (export_render_target: .hdr for depth, .png for colour). It never adds
+       the extension itself; `for_file` gives the picture in the format that file needs."""
+    first = stem.split(".")[-1] not in HOW
+    kind = stem.split(".")[-1]
+    if raw and HOW.get(kind) in (None, "read"):     # colour goes straight to a .png (faster and just as exact)
+        try:
+            if raw:
+                px = _as_pixels(unreal.RenderingLibrary.read_render_target_raw(_world(), rt, False))
+            else:
+                px = _as_pixels(unreal.RenderingLibrary.read_render_target(_world(), rt, True))
+            if first:
+                note(f"  ({kind}: reading pixels {'worked' if px else 'gave nothing'})")
+            if px:
+                path = os.path.join(out_dir, stem + ".bin")
+                with open(path, "wb") as f:
+                    if raw:
+                        f.write(struct.pack(f"<{len(px)}f", *[p.r for p in px]))
+                    else:
+                        f.write(bytes(v for p in px for v in (p.r, p.g, p.b)))
+                HOW[kind] = "read"
+                return stem + ".bin"
+        except Exception as exc:
+            if first:
+                note(f"  ({kind}: reading pixels failed: {exc})")
+    try:
+        if for_file:
+            rt = for_file()
+        unreal.RenderingLibrary.export_render_target(_world(), rt, out_dir, stem + ext)
+    except Exception as exc:
+        raise RuntimeError(f"Unreal couldn't save the {kind} picture ({exc})")
+    got = _exported(out_dir, stem)
+    if not got:
+        raise RuntimeError(f"Unreal didn't save the {kind} picture (neither way worked)")
+    if first or HOW.get(kind) != "export":
+        note(f"  ({kind}: Unreal saved the picture itself as {got})")
+    HOW[kind] = "export"
+    return got
+
+
 def capture(s, cam, focus, dist, out_dir):
     name, angle, far, height, fov = cam
     fx, fy, fz = focus
@@ -340,30 +409,34 @@ def capture(s, cam, focus, dist, out_dir):
         except Exception:
             pass
         # depth: how far each point is, in centimetres
-        rt = _target(unreal.TextureRenderTargetFormat.RTF_R32F)
+        # (RGBA32F, not R32F: Unreal only hands pixels back for RGBA8 / RGBA16F / RGBA32F, and for anything
+        # else quietly returns nothing - Unreal 5.8.4 on Dave's PC, 2026-11-01)
+        rt = _target(unreal.TextureRenderTargetFormat.RTF_RGBA32F)
         comp.set_editor_property("texture_target", rt)
         comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_SCENE_DEPTH)
         comp.capture_scene()
         comp.capture_scene()          # the second one is after any shaders the first needed have finished
-        px = unreal.RenderingLibrary.read_render_target_raw(_world(), rt, False)
-        if len(px) != WIDTH * HEIGHT:
-            raise RuntimeError(f"the depth picture came back with {len(px)} pixels")
-        with open(os.path.join(out_dir, f"{name}.depth.bin"), "wb") as f:
-            f.write(struct.pack(f"<{len(px)}f", *[p.r for p in px]))
+
+        def half_float():             # for saving to a file, Unreal writes a .hdr only from an RGBA16F picture
+            rt16 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA16F)
+            comp.set_editor_property("texture_target", rt16)
+            comp.capture_scene()
+            return rt16
+        depth_file = save_picture(rt, out_dir, f"{name}.depth", ".hdr", raw=True, for_file=half_float)
         # layout: the plain grey set, lit, for the outlines
+        layout_file = None
         try:   # optional: the outlines also come from the depth, so a dark colour capture doesn't matter
             rt2 = _target(unreal.TextureRenderTargetFormat.RTF_RGBA8)
             comp.set_editor_property("texture_target", rt2)
             comp.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_FINAL_COLOR_LDR)
             comp.capture_scene()
             comp.capture_scene()
-            px2 = unreal.RenderingLibrary.read_render_target(_world(), rt2, True)
-            with open(os.path.join(out_dir, f"{name}.layout.bin"), "wb") as f:
-                f.write(bytes(v for p in px2 for v in (p.r, p.g, p.b)))
+            layout_file = save_picture(rt2, out_dir, f"{name}.layout", ".png", raw=False)
         except Exception as exc:
             note(f"  {name}: no layout picture ({exc}); the depth one is enough")
         with open(os.path.join(out_dir, f"{name}.json"), "w") as f:
             json.dump({"width": WIDTH, "height": HEIGHT, "camera": name, "fov": fov,
+                       "depth_file": depth_file, "layout_file": layout_file,
                        "position_m": [cx, cy, cz], "yaw": yaw, "pitch": pitch}, f)
     finally:
         _destroy(cap)

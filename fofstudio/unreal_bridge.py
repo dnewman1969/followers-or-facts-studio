@@ -250,9 +250,14 @@ def check() -> dict[str, Any]:
         r = bring_in()
         info = read_json(out_dir() / "done.json") if (out_dir() / "done.json").exists() else {}
         n = sum(len(v) for v in r["made"].values())
+        problems = (info or {}).get("problems", []) + r["problems"]
         _RUN.clear()
+        if not n:      # Unreal ran, but no pictures came out: that's a failure, not "Done"
+            return {"state": "failed", "log": lines, "errors": editor_errors(), "problems": problems,
+                    "text": "Unreal ran, but no guide pictures came out. "
+                            + (f"The first problem: {problems[0]}" if problems else "")}
         return {"state": "done", "text": f"Done: {n} guide picture(s) made.", "made": r["made"],
-                "problems": (info or {}).get("problems", []) + r["problems"], "log": lines}
+                "problems": problems, "log": lines}
     errors = editor_errors()
     _RUN.clear()
     why = next((ln.split("STOPPED: ", 1)[1] for ln in lines if "STOPPED: " in ln), "")
@@ -272,37 +277,72 @@ def pending() -> list[Path]:
     return sorted(p for p in out_dir().glob("*/*.json") if p.name != "place.json")
 
 
-def _depth(raw: Path, w: int, h: int, size: tuple[int, int]) -> np.ndarray:
-    """Unreal's depth (centimetres per pixel) as 0..255 at the painting's size: near = white, far = dark."""
+def _read_depth(path: Path, w: int, h: int) -> np.ndarray:
+    """Unreal's depth in centimetres per pixel, from either kind of file the script leaves: raw numbers
+    (<cam>.depth.bin) or a picture Unreal wrote itself (<cam>.depth.hdr / .exr, Unreal 5.8)."""
+    if path.suffix == ".bin":
+        d = np.fromfile(path, dtype="<f4")
+        if d.size != w * h:
+            raise StageError(f"{path.name} isn't the size Unreal said it was")
+        return d.reshape(h, w)
+    if path.suffix.lower() == ".exr":
+        os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
     import cv2
-    d = np.fromfile(raw, dtype="<f4")
-    if d.size != w * h:
-        raise StageError(f"{raw.name} isn't the size Unreal said it was")
-    d = d.reshape(h, w)
-    valid = np.isfinite(d) & (d > 0) & (d < 1e6)         # the sky / nothing comes back huge
+    img = cv2.imread(str(path), cv2.IMREAD_ANYDEPTH | cv2.IMREAD_ANYCOLOR)
+    if img is None:
+        raise StageError(f"{path.name} couldn't be opened")
+    if img.dtype != np.float32:   # Unreal wrote a PNG (only RGBA16F pictures become .hdr): depth squashed to 0-1
+        raise StageError(f"{path.name} isn't a depth picture that can be read (Unreal saved a plain PNG)")
+    return img[..., 2] if img.ndim == 3 else img          # depth is in red (OpenCV gives blue, green, red)
+
+
+def _read_rgb(path: Path, w: int, h: int) -> np.ndarray:
+    if path.suffix == ".bin":
+        rgb = np.fromfile(path, dtype=np.uint8)
+        if rgb.size != w * h * 3:
+            raise StageError(f"{path.name} isn't the size Unreal said it was")
+        return rgb.reshape(h, w, 3)
+    import cv2
+    img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if img is None:
+        raise StageError(f"{path.name} couldn't be opened")
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+
+def _depth(d: np.ndarray, size: tuple[int, int], name: str = "depth") -> np.ndarray:
+    """Depth in centimetres as 0..255 at the painting's size: near = white, far = dark."""
+    import cv2
+    valid = np.isfinite(d) & (d > 0) & (d < 60000)       # nothing there comes back huge (a half-float file caps
+                                                          # it near 65504 cm) or 0; the sets are well under 600 m
     if not valid.any():
-        raise StageError(f"{raw.name} saw nothing (the set wasn't in front of the camera)")
+        raise StageError(f"{name} saw nothing (the set wasn't in front of the camera)")
     near, far = np.percentile(d[valid], 1), np.percentile(d[valid], 99)
-    norm = np.zeros_like(d)
+    norm = np.zeros_like(d, dtype=np.float32)
     norm[valid] = 1.0 - np.clip((d[valid] - near) / max(1e-3, far - near), 0, 1)
     return cv2.resize((norm * 255).astype(np.uint8), size, interpolation=cv2.INTER_LANCZOS4)
 
 
-def _lines(layout: Path | None, depth: np.ndarray | None, w: int, h: int, size: tuple[int, int]) -> np.ndarray:
+def _lines(rgb: np.ndarray | None, depth: np.ndarray | None, size: tuple[int, int]) -> np.ndarray:
     """Outlines: where the depth jumps (the edge of every wall, desk and figure) plus the creases the lighting
     shows in the plain grey layout picture. Either alone is enough, so a dark capture still gives outlines."""
     import cv2
     edges = np.zeros((size[1], size[0]), np.uint8)
     if depth is not None:
         edges |= cv2.Canny(cv2.GaussianBlur(depth, (5, 5), 0), 12, 36)
-    if layout is not None and layout.exists():
-        rgb = np.fromfile(layout, dtype=np.uint8)
-        if rgb.size != w * h * 3:
-            raise StageError(f"{layout.name} isn't the size Unreal said it was")
-        grey = cv2.cvtColor(rgb.reshape(h, w, 3), cv2.COLOR_RGB2GRAY)
-        grey = cv2.resize(grey, size, interpolation=cv2.INTER_CUBIC)
+    if rgb is not None:
+        grey = cv2.resize(cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY), size, interpolation=cv2.INTER_CUBIC)
         edges |= cv2.Canny(cv2.GaussianBlur(grey, (5, 5), 0), 30, 90)
     return edges
+
+
+def _files(meta_path: Path, meta: dict, cam: str, kind: str) -> Path | None:
+    named = meta.get(f"{kind}_file")
+    if named and meta_path.with_name(named).exists():
+        return meta_path.with_name(named)
+    for f in sorted(meta_path.parent.glob(f"{cam}.{kind}.*")):
+        if f.suffix != ".json" and f.stat().st_size > 0:
+            return f
+    return None
 
 
 def bring_in() -> dict[str, Any]:
@@ -320,26 +360,28 @@ def bring_in() -> dict[str, Any]:
         cam = meta.get("camera") or meta_path.stem
         dest = folder_for_location(place)
         dest.mkdir(parents=True, exist_ok=True)
+        depth_f, layout_f = _files(meta_path, meta, cam, "depth"), _files(meta_path, meta, cam, "layout")
         try:
-            depth = meta_path.with_name(f"{cam}.depth.bin")
-            layout = meta_path.with_name(f"{cam}.layout.bin")
             w, h = int(meta["width"]), int(meta["height"])
-            dmap = _depth(depth, w, h, size) if depth.exists() else None
+            dmap = _depth(_read_depth(depth_f, w, h), size, depth_f.name) if depth_f else None
             if dmap is not None:
                 Image.fromarray(dmap, "L").convert("RGB").save(dest / f"{cam}-depth.png")
                 made.setdefault(place, []).append(f"{cam}-depth.png")
-            if dmap is not None or layout.exists():
-                lines = _lines(layout, dmap, w, h, size)
+            rgb = _read_rgb(layout_f, w, h) if layout_f else None
+            if dmap is not None or rgb is not None:
+                lines = _lines(rgb, dmap, size)
                 if lines.any():
                     Image.fromarray(lines, "L").convert("RGB").save(dest / f"{cam}-lines.png")
                     made.setdefault(place, []).append(f"{cam}-lines.png")
-        except (StageError, KeyError, ValueError, OSError) as exc:
+            if dmap is None and rgb is None:
+                raise StageError("Unreal left no picture for this camera")
+        except Exception as exc:  # noqa: BLE001 - one bad camera (even an OpenCV error) is reported, not a crash
             problems.append(f"{place}/{cam}: {exc}")
-            continue
-        for f in (meta_path, meta_path.with_name(f"{cam}.depth.bin"), meta_path.with_name(f"{cam}.layout.bin")):
-            f.unlink(missing_ok=True)
+        for f in (meta_path, depth_f, layout_f):
+            if f:
+                f.unlink(missing_ok=True)
     for place_dir in list(out_dir().glob("*")) if out_dir().is_dir() else []:
-        if place_dir.is_dir() and not any(p.suffix == ".bin" for p in place_dir.iterdir()):
+        if place_dir.is_dir() and not [j for j in place_dir.glob("*.json") if j.name != "place.json"]:
             if (place_dir / "place.json").exists():
                 folder_for_location(place_dir.name).mkdir(parents=True, exist_ok=True)
                 shutil.copy2(place_dir / "place.json", folder_for_location(place_dir.name) / "place.json")

@@ -859,6 +859,23 @@ and guide model setup".
 - Untested against a real Unreal and ComfyUI here: first-open time, the save prompt on close, and the exact
   Play-mode check are the things to watch on Dave's first run.
 
+## 2026-11-01 — v0.9.4: Unreal 5.8's pictures come out
+
+Dave's first automatic run worked up to the pictures: the Studio found Unreal 5.8.4, opened it, and the script
+built all eight sets in two seconds, but every camera "failed" (`read_render_target_raw` gave None) and the
+window still said Done in green. Research ("Unreal render target readback fix"): Unreal only hands pixels back
+for RGBA8, RGBA16F and RGBA32F targets; for R32F it quietly returns nothing.
+- Depth is captured into an RGBA32F target (depth in cm in red, read raw, exact).
+- If reading pixels ever gives nothing again, the script tries once, then has Unreal save each picture itself:
+  depth recaptured into RGBA16F and saved as .hdr (export_render_target needs the extension in the name),
+  colour as .png. The Studio reads .bin, .hdr/.exr and .png (`_read_depth`, `_read_rgb`).
+- A run that makes no pictures is a failure in the window (with the first problem), not "Done".
+- Depth at 60,000 cm or more counts as "nothing there" (a half-float file caps empty background near 65,504,
+  which made a test guide flat white); depth is read from red only; a depth file that isn't float (a squashed
+  PNG) is refused; any error on one camera is reported, not a crash; colour goes straight to a PNG.
+- Tests: Unreal-saved .hdr/.png pictures become guides; zero pictures is a failure; the script itself, run
+  against a pretend Unreal that reads back nothing, switches to saving files after one try.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.
