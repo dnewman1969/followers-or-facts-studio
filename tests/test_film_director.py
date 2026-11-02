@@ -196,6 +196,8 @@ def test_studio_finds_unreal_and_makes_its_own_project(data, tmp_path, monkeypat
     exe, ver = ub.find_editor()
     assert ver == "5.6" and exe.name == "UnrealEditor-Cmd.exe" and "UE_5.6" in str(exe)
     proj = json.loads(ub.make_project(ver).read_text())
+    ini = (ub.folder() / ub.PROJECT / "Config" / "DefaultEditorSettings.ini").read_text()
+    assert "bThrottleCPUWhenNotForeground=False" in ini           # Unreal doesn't slow down behind the Studio
     assert proj["EngineAssociation"] == "5.6"
     assert {p["Name"] for p in proj["Plugins"] if p["Enabled"]} >= {"PythonScriptPlugin", "EditorScriptingUtilities"}
     from fofstudio import config
@@ -433,6 +435,9 @@ def test_unreal_script_waits_for_frames_and_retries_an_empty_picture(tmp_path, m
         lambda world, rt, folder, name: Path(folder, name).write_bytes(b"png")
     ticks = {}
     fake.register_slate_post_tick_callback.side_effect = lambda fn: ticks.setdefault("fn", fn) and "handle"
+    # Unreal 5.8 draws frames inside "wait until ready", and each frame calls the script's tick again
+    # (Dave's run 2026-11-02: "generator already executing")
+    fake.AutomationLibrary.finish_loading_before_screenshot.side_effect = lambda: [ticks["fn"](0.0) for _ in range(3)]
     monkeypatch.setitem(sys.modules, "unreal", fake)
     job = tmp_path / "job.json"
     job.write_text(json.dumps({"out": str(tmp_path / "out"), "auto": True,
@@ -456,3 +461,4 @@ def test_unreal_script_waits_for_frames_and_retries_an_empty_picture(tmp_path, m
     assert "the depth picture was empty (every value was 0)" in log and "waiting and trying again" in log
     assert "hit something, 300-1500 cm" in log
     fake.SystemLibrary.quit_editor.assert_called_once()                              # closes when done
+    assert fake.AutomationLibrary.finish_loading_before_screenshot.called and "ERROR" not in log

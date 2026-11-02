@@ -404,11 +404,14 @@ def settle():
 
 def keep_full_speed():
     """Unreal slows itself down when its window isn't in front; the Studio's window usually is."""
+    # The Studio's project also switches it off in Config/DefaultEditorSettings.ini; this is a second try.
     try:
-        perf = unreal.get_default_object(unreal.EditorPerformanceSettings)
+        cls = getattr(unreal, "EditorPerformanceSettings", None) or \
+            unreal.load_class(None, "/Script/UnrealEd.EditorPerformanceSettings")
+        perf = unreal.get_default_object(cls)
         perf.set_editor_property("throttle_cpu_when_not_foreground", False)
-    except Exception as exc:
-        note(f"(couldn't stop Unreal slowing down in the background: {exc})")
+    except Exception:
+        pass
 
 
 def depth_summary(px):
@@ -627,20 +630,28 @@ class Runner:
         self.wait = 0
         self.handle = None
         self.ended = False
+        self.busy = False
 
     def tick(self, _delta=0.0):
-        if self.ended:
+        # Some steps make Unreal draw frames while they work (waiting for shapes and shaders), and each frame
+        # calls this again: ignore those calls until the step is finished (Dave's run 2026-11-02 stopped with
+        # "generator already executing" here).
+        if self.ended or self.busy:
             return
         if self.wait > 0:
             self.wait -= 1
             return
+        self.busy = True
         try:
             self.wait = int(next(self.steps) or 0)
         except StopIteration:
             self.end()
         except Exception as exc:
             note(f"ERROR: {exc}\n{traceback.format_exc()}")
+            STATE["problems"].append(f"the script stopped: {exc}")
             self.end()
+        finally:
+            self.busy = False
 
     def end(self):
         self.ended = True

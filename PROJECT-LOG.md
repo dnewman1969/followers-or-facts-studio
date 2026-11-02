@@ -898,6 +898,18 @@ second frame, so nothing had been drawn yet. Research: "Unreal capture timing bl
 - The Studio says what the numbers were when a picture is unusable, and keeps the files in
   `<data>/unreal/failed/` instead of deleting them.
 
+## 2026-11-02 — v0.9.6: one step at a time
+
+Dave's third run: the frame-by-frame stepping worked (frames 2 → 63 → 72) and Unreal closed itself, but the run
+stopped with "generator already executing". `finish_loading_before_screenshot()` makes Unreal draw frames while
+it waits, each frame called the script's tick again, and it tried to start the next step mid-step.
+- `Runner.tick` ignores calls that arrive while a step is still running; an error that stops the script is now
+  also listed as a problem (the window said "0 problems" before).
+- Unreal 5.8's Python has no `EditorPerformanceSettings`, so the Studio's project switches the background
+  slow-down off in `Config/DefaultEditorSettings.ini` (`bThrottleCPUWhenNotForeground=False`,
+  `bMonitorEditorPerformance=False`); the script's own attempt is a quiet second try via `load_class`.
+- Test: the pretend Unreal now draws frames inside "wait until ready", as 5.8 does; the old script fails it.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

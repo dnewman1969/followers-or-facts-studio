@@ -148,10 +148,12 @@ def make_project(version: str) -> Path:
         "Plugins": [{"Name": "PythonScriptPlugin", "Enabled": True},
                     {"Name": "EditorScriptingUtilities", "Enabled": True}]})
     ini = proj / "Config" / "DefaultEditorSettings.ini"
-    if not ini.exists():   # don't stop to ask anything on the way in or out
-        ini.write_text("[/Script/UnrealEd.EditorLoadingSavingSettings]\nbRestoreOpenAssetTabsOnRestart=False\n"
-                       "[/Script/UnrealEd.EditorPerProjectUserSettings]\nbShowStartupTips=False\n",
-                       encoding="utf-8")
+    # always rewritten (it's the Studio's own project): don't ask anything, don't slow down in the background
+    ini.write_text("[/Script/UnrealEd.EditorLoadingSavingSettings]\nbRestoreOpenAssetTabsOnRestart=False\n"
+                   "[/Script/UnrealEd.EditorPerProjectUserSettings]\nbShowStartupTips=False\n"
+                   "[/Script/UnrealEd.EditorPerformanceSettings]\nbThrottleCPUWhenNotForeground=False\n"
+                   "bMonitorEditorPerformance=False\n",
+                   encoding="utf-8")
     return uproject
 
 
