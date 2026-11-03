@@ -26,6 +26,7 @@ from ..config import settings
 from ..episode import Episode
 from ..llm import Ollama
 from ..scriptfmt import CHANGES, MOODS, MOVES, PROPS, ROLES, parse, quotes_in, render
+from ..speakable import spoken_source, unspeakable
 from ..util import StageError, normalize_for_match, read_json, reading_grade, utc_now, write_json, write_text
 from .base import BLOCK, OK, WARN, Check, Context
 
@@ -225,9 +226,18 @@ Hard rules (breaking any of them makes the script unusable):
    harm (what it did to people). Start with an "intro" scene and end with a "verdict" scene.
    A "tell" scene names the manipulation trick; a "toolkit" scene gives the question to ask next time.
    Show the myth only once, clearly as something someone sold; open and close on the fact.
-9. VISUAL describes a picture for an illustrator: scrapbook documentary style, objects,
+9. Tell it like a story told to a friend, not a list of evidence (research "Animated documentary
+   storytelling craft"): link every scene to the last with "but" or "so" (a turn or a consequence), never
+   "and then"; each scene gives ONE new fact the viewer didn't have, with what someone wanted and what got in
+   the way. Name a source by how it's said aloud (the facts' "say_it_as": "a 2019 Senate report", "court
+   records"), before the fact, at most once or twice a scene; never a title, a web address, a file name, a
+   case or docket number, or an ID. Round numbers the way people say them ("nearly two thousand"). Most
+   sentences under 22 words, and start them differently. A punchy line ("No one stopped him.") is used once
+   in the whole film, never as a refrain. Open and close on the truth; say the false claim once, briefly,
+   as what someone sold.
+10. VISUAL describes a picture for an illustrator: scrapbook documentary style, objects,
    places, documents, moods. No real people's faces, no readable text, no logos.
-10. ON_SCREEN_TEXT is at most 8 words (a date, a place, a short label) or empty."""
+11. ON_SCREEN_TEXT is at most 8 words (a date, a place, a short label) or empty."""
 
 
 def selected_packet(ep: Episode, check: bool = True) -> dict[str, Any]:
@@ -299,8 +309,8 @@ def _packet_for_prompt(packet: dict[str, Any]) -> str:
             "harm": c.get("harm_summary"), "who_benefited": c.get("who_benefited"),
             "society_effect": c.get("society_effect"),
             "people": [f"{p['name']} ({p['link_role']})" for p in c["people"]],
-            "sources": [{"source_id": s["source_id"], "type": s["source_type"], "title": s["title"],
-                         "publisher": s.get("publisher"), "date": s.get("date"),
+            "sources": [{"source_id": s["source_id"], "type": s["source_type"], "say_it_as": spoken_source(s),
+                         "date": s.get("date"),
                          "what_it_shows": s.get("summary") or s.get("supports_field") or ""}
                         for s in c["sources"]],
             "verified_quotes": [{"excerpt_id": e["excerpt_id"], "source_id": e["source_id"],
@@ -471,7 +481,8 @@ def _facts_for(scene: dict[str, Any], packet: dict[str, Any]) -> str:
             out.append({"claim_id": c["claim_id"], "claim": c["short_title"], "verdict": c["falsity_status"],
                         "summary": c.get("claim_summary"), "who_benefited": c.get("who_benefited"),
                         "harm": c.get("harm_summary"), "year": c.get("first_known_year"),
-                        "sources": [{"source_id": s["source_id"], "title": s["title"], "date": s.get("date"),
+                        # how to name it aloud, never its title (titles can be web addresses or file names)
+                        "sources": [{"source_id": s["source_id"], "say_it_as": spoken_source(s),
                                      "what_it_shows": s.get("summary") or ""} for s in srcs],
                         "verified_quotes": [{"excerpt_id": e["excerpt_id"], "source_id": e["source_id"],
                                              "text": e["text"]} for e in quotes]})
@@ -611,6 +622,14 @@ def dedupe_scenes(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> list[
         if reps and len(keep) - len(reps) >= 1:
             notes.append(f"{sc['scene_id']}: took out {len(reps)} sentence(s) an earlier scene already said")
             keep = [x for x in keep if x not in reps]
+        # a short punchy line an earlier scene already said ("No one stopped him."): it lands once (Dave,
+        # 2026-11-02: "the script repeats the same info way too much")
+        said = {x.strip().lower().rstrip(".!?") for e in scenes[:i] for x in _sents(e.get("narration", ""))
+                if 1 < len(x.split()) <= 7}
+        refrain = [x for x in keep if 1 < len(x.split()) <= 7 and x.strip().lower().rstrip(".!?") in said]
+        if refrain and len(keep) - len(refrain) >= 1:
+            notes.append(f"{sc['scene_id']}: took out a line said before (\"{refrain[0][:60]}\")")
+            keep = [x for x in keep if x not in refrain]
         sc["narration"] = " ".join(keep)
     return notes
 
@@ -705,6 +724,23 @@ def _problems(sc: dict[str, Any], target: int, packet: dict[str, Any] | None = N
     stock = [p for p in STOCK_PHRASES if p in low]
     if stock:
         out.append(f"Remove these stock phrases: {', '.join(stock)}.")
+    said = unspeakable(sc.get("narration", ""))
+    if said:
+        out.append(f"Never read references aloud ({', '.join(said[:3])}): name the source the way it's said "
+                   "(say_it_as) or leave it out; the full source goes on screen.")
+    cites = len(re.findall(r"\b(?:according to|records? show|reports?(?:ed)? that|documents? show|the source|"
+                           r"(?:court|police|government) records|a \d{4} (?:report|study|ruling))\b", low))
+    if cites > 2:
+        out.append(f"It sounds like a reference list ({cites} citations in one scene). Tell what happened as a "
+                   "story; name a source at most twice.")
+    if earlier:   # a short punchy line from an earlier scene, said again (a refrain)
+        before = {x.strip().lower().rstrip(".!?") for e in earlier for x in re.split(r"(?<=[.!?])\s+",
+                  e.get("narration", "")) if 1 < len(x.split()) <= 7}
+        again = [x for x in re.split(r"(?<=[.!?])\s+", sc.get("narration", ""))
+                 if 1 < len(x.split()) <= 7 and x.strip().lower().rstrip(".!?") in before]
+        if again:
+            out.append("These short lines were already said in an earlier scene (a refrain): "
+                       + "; ".join(f'"{x}"' for x in again[:3]) + ". Use each punchy line once in the film.")
     if packet is not None:
         _, bad = quote_report(sc, packet)
         if bad:
@@ -1104,6 +1140,10 @@ def check(ep: Episode) -> list[Check]:
 
     for sc in scenes:
         sid = sc["scene_id"]
+        said = unspeakable(sc.get("narration", ""))
+        if said:   # a hand edit put a reference in the spoken words; saving takes it out
+            out.append(Check(WARN, f"{sid}: Owlbert would read out {', '.join(said[:3])}. References belong on "
+                                   "screen, not in the narration: press Save and they're taken out."))
         fix_refs(sc, packet, fill=False)  # read E-numbers in the sources list as quotes (for hand edits)
         for cid in sc["claim_ids"]:
             if cid not in claim_sources:
@@ -1210,6 +1250,16 @@ def repeat_checks(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> list[
     stock = sorted({p for sc in scenes for p in stock_phrases(sc["narration"])})
     if stock:
         out.append(Check(WARN, f"Stock phrases that make it sound machine-written: {', '.join(stock[:6])}."))
+    lines: dict[str, list[str]] = {}       # short punchy lines said in more than one scene (a refrain)
+    for sc in scenes:
+        for x in re.split(r"(?<=[.!?])\s+", sc.get("narration", "")):
+            if 1 < len(x.split()) <= 7:
+                lines.setdefault(x.strip().lower().rstrip(".!?"), []).append(sc["scene_id"])
+    refrains = {k: v for k, v in lines.items() if len(set(v)) > 1}
+    if refrains:
+        k, v = next(iter(refrains.items()))
+        out.append(Check(WARN, f"{len(refrains)} short line(s) are said in more than one scene, like \"{k}\" in "
+                               f"{', '.join(sorted(set(v))[:4])}: a punchy line lands once. Press Fix repeats."))
     quoted: dict[int, list[str]] = {}
     for sc in scenes:
         for e in sc.get("excerpt_ids", []):

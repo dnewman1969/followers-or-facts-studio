@@ -146,6 +146,7 @@ def parse(text: str) -> dict[str, Any]:
 
 
 def render(title: str, scenes: list[dict[str, Any]], header: dict[str, str] | None = None) -> str:
+    from .speakable import speakable
     lines = [f"# {title}", ""]
     if header:
         lines.append(" · ".join(f"**{k}:** {v}" for k, v in header.items()))
@@ -157,7 +158,8 @@ def render(title: str, scenes: list[dict[str, Any]], header: dict[str, str] | No
         role = f" | {sc['role']}" if sc.get("role") else ""
         lines += [f"## {sc['scene_id']}{role}{est}", "",
                   "### VISUAL", sc.get("visual", "").strip() or "-", "",
-                  "### NARRATION", sc.get("narration", "").strip() or "-", "",
+                  # what Owlbert says out loud never holds a web address, file name, case number or source ID
+                  "### NARRATION", speakable(sc.get("narration", "").strip()) or "-", "",
                   "### ON_SCREEN_TEXT", sc.get("on_screen_text", "").strip() or "-", "",
                   "### SOURCES",
                   f"claims: {', '.join(sc.get('claim_ids') or []) or '-'} | "

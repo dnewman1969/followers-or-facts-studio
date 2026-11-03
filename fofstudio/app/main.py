@@ -9,7 +9,7 @@ import traceback
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (QApplication, QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-                               QMainWindow, QMessageBox, QStackedWidget, QVBoxLayout, QWidget)
+                               QMainWindow, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import APP_NAME, __version__, db, jobs, pipeline
 from ..comfy import Comfy
@@ -89,6 +89,12 @@ class MainWindow(QMainWindow):
         for t in TOOLS:
             self.nav.addItem("     " + t)
         ll.addWidget(self.nav, 1)
+        # the production diary and logs of this video, packed in one zip to send to Claude (diary.py)
+        self.diary_btn = QPushButton("Send to Claude...")
+        self.diary_btn.setToolTip("Pack this video's production diary and logs (no pictures, clips or sound) into "
+                                  "one small zip, and open its folder so you can attach it in the chat")
+        self.diary_btn.clicked.connect(self._send_to_claude)
+        ll.addWidget(self.diary_btn)
         body.addWidget(left)
         self.stack = QStackedWidget()
         self.pages = [DatabasePage(self), ResearchPage(self), StoriesPage(self), ScriptPage(self),
@@ -134,6 +140,19 @@ class MainWindow(QMainWindow):
             self.picker.setCurrentIndex(1)
         self.picker.blockSignals(False)
         self._pick_episode()
+
+    def _send_to_claude(self) -> None:
+        from .. import diary
+        from .common import open_path
+        if not self.ep:
+            self.toast.show_message("Pick a video first (Working on)", "warn")
+            return
+        path = diary.bundle(self.ep)
+        open_path(path.parent)
+        QMessageBox.information(self, "Send to Claude", f"Packed {path.name} ({path.stat().st_size // 1024} KB) "
+                                f"in the folder that just opened. Attach it in the chat with Claude.\n\n"
+                                "It holds the production diary, the script, the plans and the logs; no "
+                                "pictures, clips or sound.")
 
     def _pick_episode(self) -> None:
         pid = self.picker.currentData()

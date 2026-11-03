@@ -132,6 +132,8 @@ def approve(ep: Episode, name: str, note: str = "") -> list[Check]:
     if blocking:
         raise StageError("Can't approve yet:\n- " + "\n- ".join(c.message for c in blocking))
     ep.record(name, "approved", note)
+    from . import diary
+    diary.note(ep, f"you approved {name}" + (f" ({note})" if note else ""))
     return results
 
 
@@ -177,14 +179,25 @@ def run_now(ep: Episode, name: str, options: dict[str, Any] | None = None, log=p
     ep.record(name, "running")
     if not stage(name).hidden:
         invalidate_after(ep, name)
-    ctx = Context(ep, options or {}, log=log, progress=progress, cancelled=cancelled)
+    said: list[str] = []          # what the step said while working, for the production diary
+
+    def log_and_keep(line: str) -> None:
+        said.append(str(line))
+        log(line)
+    ctx = Context(ep, options or {}, log=log_and_keep, progress=progress, cancelled=cancelled)
+    from . import diary
     try:
         stage(name).run(ctx)
     except StageError as exc:
         ep.record(name, "cancelled" if str(exc) == "Cancelled." else "failed", str(exc)[:2000])
+        if not stage(name).hidden:
+            diary.write(ep, name, "cancelled" if str(exc) == "Cancelled." else "failed", log_lines=said,
+                        error=str(exc)[:600])
         raise
     except Exception as exc:
         ep.record(name, "failed", f"{type(exc).__name__}: {exc}"[:2000])
+        if not stage(name).hidden:
+            diary.write(ep, name, "failed", log_lines=said, error=f"{type(exc).__name__}: {exc}"[:600])
         raise
     if stage(name).hidden:
         ep.record(name, "approved", "done")
@@ -192,4 +205,6 @@ def run_now(ep: Episode, name: str, options: dict[str, Any] | None = None, log=p
     results = checks(ep, name)
     ep.record(name, "awaiting_approval",
               "; ".join(c.message for c in results if c.level == BLOCK)[:1000])
+    diary.write(ep, name, "done, waiting for your OK", checks=[f"{c.level}: {c.message}" for c in results],
+                log_lines=said)
     return results

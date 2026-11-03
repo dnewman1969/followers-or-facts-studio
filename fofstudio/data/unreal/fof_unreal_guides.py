@@ -450,7 +450,11 @@ def capture_steps(s, cam, focus, dist, out_dir):
             try:   # only the set we built, never whatever else is in your level
                 comp.set_editor_property("primitive_render_mode",
                                          unreal.SceneCapturePrimitiveRenderMode.PRM_USE_SHOW_ONLY_LIST)
-                comp.set_editor_property("show_only_actors", list(s.actors))
+                try:     # Unreal 5.8 won't set the list as a property ("cannot be edited on templates")
+                    for actor in s.actors:
+                        comp.show_only_actor_components(actor)
+                except Exception:
+                    comp.set_editor_property("show_only_actors", list(s.actors))
                 if "mode" not in HOW:
                     held = len(comp.get_editor_property("show_only_actors") or [])
                     note(f"  (the camera's set list holds {held} of {len(s.actors)} pieces)")
@@ -569,6 +573,20 @@ def work():
             s.lights(focus)
             yield SET_WAIT
             settle()
+            if "warmed" not in HOW:   # the first camera of a run always came back empty (Dave's runs): one
+                HOW["warmed"] = True  # throwaway picture first
+                try:
+                    warm = _spawn(unreal.SceneCapture2D, (0, -500, 170), (0, 0, 90))
+                    wc = warm.capture_component2d
+                    wc.set_editor_property("texture_target", _target(unreal.TextureRenderTargetFormat.RTF_RGBA32F))
+                    wc.set_editor_property("capture_source", unreal.SceneCaptureSource.SCS_SCENE_DEPTH)
+                    wc.capture_scene()
+                    yield 3
+                    wc.capture_scene()
+                    _destroy(warm)
+                    yield 2
+                except Exception as exc:
+                    note(f"(warm-up picture skipped: {exc})")
             for cam in CAMERAS:
                 try:
                     yield from capture_steps(s, cam, focus, dist, out_dir)

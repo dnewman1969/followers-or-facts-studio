@@ -489,6 +489,11 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         full = re.sub(rf"\b{re.escape(n)}(?:'s)?\b", "an anonymous figure", full, flags=re.I)
     from .. import controlmaps
     raw, meta, seed = _comfy_image(ep, name, full, guide=controlmaps.guide_for(ep, shot))
+    # the colourist's check: a dull picture (too dark or grey) is lifted gently; the original is kept (appeal.py)
+    from .. import appeal
+    looked = appeal.lift(raw, ep.path("images", "raw", f"{name}-{seed}-lift.png"), look)
+    if looked.get("lifted"):
+        raw = ep.path("images", "raw", f"{name}-{seed}-lift.png")
     picture = raw
     extra: dict[str, Any] = {}
     if shot["kind"] == "owl":
@@ -505,7 +510,7 @@ def _paint(ep: Episode, shot: dict[str, Any], k: int, style: styles.Style, peopl
         labeled = cards.name_caption(labeled, labeled, people[shot["person_id"]]["name"])
     return {"path": ep.rel(labeled), "raw": ep.rel(picture), "prompt": shot["idea"], "full_prompt": full,
             "seed": seed, "model": cfg["image_model_name"], "workflow": meta["workflow"], "made_at": utc_now(),
-            **({"guide": meta["guide"]} if meta.get("guide") else {}),
+            **({"guide": meta["guide"]} if meta.get("guide") else {}), "appeal": looked,
             **({"recreation": True, "why_not_real": why[:5]} if recreation else {}), **extra}
 
 

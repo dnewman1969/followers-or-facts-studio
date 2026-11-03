@@ -942,6 +942,35 @@ the Studio lacked: the storyboard artist between the plan and the painter.
   marking and a review inbox; an Animatic page and lock before any clip is made; blurred depth and wall masks;
   Owlbert hero moves with first-and-last-frame from his rig; calibrate the vision checks against Dave's calls.
 
+## 2026-11-02 — v0.11.0: a story, not a reference index; pictures with appeal; a production diary
+
+Dave: the script repeats the same info way too much; pictures and video are bland; narration read out
+things that sounded like web addresses; the story writer and script writer sound like a reference index; he
+wants a step-by-step run where he sends logs after each step so we can see where story cohesion is lost.
+Research "Animated documentary storytelling craft" (animation craft, narration for the ear, LLM story pipelines,
+appealing frames).
+- `speakable.py`: the narration never holds a web address, domain, file name, case/docket number or source ID
+  (verified quotes untouched); applied whenever script.md is saved (`scriptfmt.render`), in the story writer's
+  beats/logline, and as a script check. The writer gets each source's spoken form ("a 2019 U.S. Senate report",
+  "court records from 2018") instead of its title.
+- Script writer rules: but/so links, one new fact per scene, spoken attribution before the fact (at most twice a
+  scene), rounded spoken numbers, short sentences, a punchy line once per film, truth first and last. Scene
+  checks send it back when it reads references aloud, has more than two citations, or repeats an earlier short
+  line; `dedupe_scenes` (and Fix repeats) removes repeated punchy lines; the script check names refrains.
+- Story writer: logline = who wanted what, what stood in the way, the question; each beat one new development;
+  near-duplicate beats dropped; no references in beats.
+- Qwen presence_penalty 0.5 → 1.2 (old saved default moved automatically, `config.OLD_DEFAULTS`).
+- `appeal.py` (the colourist): brightness, contrast, colourfulness per picture; a dark or grey one is lifted by
+  lightness (hues kept; black-and-white styles stay grey; flat colour left alone). Storyboard artist gets a colour
+  script per scene role and appeal rules (big subject, focal light, rim light, layers, one hero prop); the
+  production designer adds one accent colour.
+- `diary.py`: after every step a diary entry (what came out, checks, the step's own log lines) with a story-thread
+  score per scene and per shot, repeated phrases, scenes that say the same thing, references read aloud;
+  approvals noted. **Send to Claude...** button packs the diary, script, plans, reviews and logs (no media) in
+  one zip under `<data>/send-to-claude/`.
+- Unreal: the set list is given per actor (5.8 refused the property); a warm-up picture before the first camera.
+- docs/TEST-RUN.md: the step-by-step run, what to look at and what to send after each step.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

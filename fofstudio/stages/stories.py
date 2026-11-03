@@ -74,6 +74,12 @@ Structure: open on a true, surprising fact (not the myth). Show the myth only on
 someone sold, attributed to its seller. Then show how it was built. Include a "tell" beat where Owlbert
 names the manipulation trick (pick 1 or 2 from the techniques list) with a harmless everyday example,
 then shows it in this case. End on the fact again. Link beats with "but" or "therefore", never "and then".
+Tell a story a viewer would retell to a friend, not a list of evidence (research "Animated documentary
+storytelling craft"): the logline says who wanted what, what stood in the way, and the question the video
+answers; the opening hook raises that question and the verdict pays it off. Every beat is ONE new development
+(a turn or a consequence) the viewer didn't have yet; never the same fact in two beats. Beats say what
+happened and what the evidence shows, in plain words: never a web address, a file name, a case number or a
+document's title.
 techniques: the keys of the 1-2 tricks this story teaches.
 length_seconds: how long THIS story's short video needs to tell it well, with no padding: count the beats, the
 evidence each needs and the trick (about 150 spoken words a minute). Up to 180 for a YouTube Short; up to 600
@@ -144,6 +150,18 @@ def _clean(story: dict[str, Any], valid: set[str], cap: int = 600, floor: int = 
         b["evidence_ids"] = [e for e in b.get("evidence_ids", []) if e in valid]
     story["thumbnail_words"] = thumbnail_words(story.get("thumbnail_words") or story.get("title", ""))
     story["techniques"] = [t for t in story.get("techniques", []) if t in techniques.TECHNIQUES][:2]
+    # a beat that says again what an earlier beat said is dropped (the script would tell it twice)
+    from ..repeats import similarity
+    from ..speakable import speakable
+    kept: list[dict[str, Any]] = []
+    for b in story.get("beats", []):
+        b["beat"] = speakable(b.get("beat", ""))
+        if b.get("role") in ("verdict",) or not any(similarity(b.get("beat", ""), k.get("beat", "")) >= 0.6
+                                                     for k in kept):
+            kept.append(b)
+    story["beats"] = kept
+    for k in ("logline", "opening_hook", "angle"):
+        story[k] = speakable(story.get(k, ""))
     return story
 
 

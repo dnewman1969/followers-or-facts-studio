@@ -148,7 +148,8 @@ def design_sets(ep: Episode, bible: dict[str, Any], style, llm=None, log_line=la
                 f"{style.look}. For every place, design the set the camera will see: its era; 6 to 10 concrete set "
                 "pieces, each with its material and its wear (for example 'cracked green leather armchair', 'brass "
                 "desk lamp with a dented shade', 'stacked yellowed newspapers', 'rain-streaked window with venetian "
-                "blinds'); a palette of two or three colours; where the light comes from (left, right, behind, "
+                "blinds'); a palette of two or three colours plus ONE bright accent colour for a focal point (rich, "
+                "never muddy or all grey); where the light comes from (left, right, behind, "
                 "above) and what makes it (a window, a lamp, a screen). Only physical things the camera sees. No "
                 "signs, posters, screens or papers with readable words, no numbers, no people, no animals, no "
                 "birds, no real names, no brand names.")},
@@ -181,6 +182,26 @@ def design_sets(ep: Episode, bible: dict[str, Any], style, llm=None, log_line=la
 FRAMES_SCHEMA = {"type": "object", "properties": {"frames": {"type": "array", "items": {
     "type": "object", "properties": {"shot_id": {"type": "string"}, "camera_sees": {"type": "string"}},
     "required": ["shot_id", "camera_sees"]}}}, "required": ["frames"]}
+
+
+# The colour script (research "Animated documentary storytelling craft": each act gets its own palette, colour
+# kept for one focal point against muted surroundings; the most colour saved for the payoff)
+COLOUR_SCRIPT = {
+    "intro": "inviting: warm golden key light on the subject against a cool teal background, one bright accent",
+    "claim": "uneasy: cool blue and grey surroundings with one hot red-orange accent on the thing being sold",
+    "record": "investigating: warm amber lamp light pooling on the evidence, cool blue shadows around it",
+    "benefit": "money and gain: rich gold and deep green, glossy highlights on the goods",
+    "harm": "sober: soft muted blue-grey, gentle low light, one small warm light of humanity",
+    "tell": "playful clarity: bright clean primary colours, crisp light, a yellow highlight on the trick",
+    "toolkit": "hopeful: fresh daylight, clear sky blue and warm yellow, open and bright",
+    "verdict": "resolved: the richest colours of the film, bright warm light, a strong clean accent",
+    "outro": "warm and friendly: sunset gold and soft purple, glowing light",
+}
+APPEAL = ("Make it appealing, like a frame from a well-made animated documentary: one main subject large in the "
+          "frame (at least a third of the picture), close or medium framing rather than tiny figures in big "
+          "empty rooms, a clear light source with a bright focal point against a darker or cooler background, "
+          "a rim of light along the subject's edge, rich but controlled colour, foreground, middle and "
+          "background layers for depth, and ONE hero prop rather than piles of paper.")
 
 
 def _brief(shot: dict[str, Any]) -> dict[str, Any]:
@@ -216,7 +237,8 @@ def camera_sees(ep: Episode, entry: dict[str, Any], bible: dict[str, Any], style
                 "shot write 'camera_sees': ONE frozen instant, as a painter would see it, in 40 to 110 words, in "
                 "this order: the framing; the main subject and exactly what it is doing at this instant; the set "
                 "pieces around it (use the place's set pieces, with their materials and wear); the light and time "
-                "of day; the colours. Show the moment, don't tell the story: no 'the shot begins', 'then', 'enters', "
+                f"of day; the colours. {APPEAL} Use the scene's colour plan. Show the moment, don't tell the story: "
+                "no 'the shot begins', 'then', 'enters', "
                 "'walks to'. Never numbers, dates, quotes, captions, labels, signs or readable writing (a document "
                 "is 'a typed page', never what it says). Never a real person's name. For kind 'owl' describe ONLY "
                 "the empty place where the host will stand (he is added from his own artwork): never an owl or a "
@@ -224,7 +246,8 @@ def camera_sees(ep: Episode, entry: dict[str, Any], bible: dict[str, Any], style
                 "what the bible gives them.")},
             {"role": "user", "content": json.dumps({
                 "place": place, "people": people, "scene_feeling": ((bible.get("scenes") or {}).get(sid) or {}).get(
-                    "emotion", ""), "shots": [_brief(s) for s in todo]}, ensure_ascii=False)}],
+                    "emotion", ""), "colour_plan": COLOUR_SCRIPT.get(entry.get("role", ""), ""),
+                "shots": [_brief(s) for s in todo]}, ensure_ascii=False)}],
             FRAMES_SCHEMA, lenient=True, temperature=0.4, on_text=on_text)
     except Exception as exc:  # noqa: BLE001 - the shots are painted from the director's ideas; said in the log
         log_line(f"Storyboard artist couldn't write {sid} ({exc}); painting from the director's ideas")

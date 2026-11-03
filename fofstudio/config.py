@@ -42,7 +42,7 @@ DEFAULTS: dict[str, Any] = {
         "think": False,
         "top_p": 0.8,               # Qwen 3's recommended settings with thinking off
         "top_k": 20,
-        "presence_penalty": 0.5,    # discourages repeating itself in long scripts
+        "presence_penalty": 1.2,    # discourages repeating itself in long scripts (Qwen 3 suggests up to 1.5)
         "format_check": True,       # test once per model whether Ollama obeys the answer format (llm.py)
     },
     # The model for each job (empty = [ollama] writer_model; checks = checker_model). Install a model with
@@ -268,7 +268,23 @@ def settings(reload: bool = False) -> dict[str, Any]:
             with path.open("rb") as fh:
                 user = tomllib.load(fh)
         _cache = _merge(DEFAULTS, user)
+        _move_old_defaults(_cache)
     return _cache
+
+
+# Defaults that changed after a settings file was saved with the old value: the old value means "the default",
+# so it moves to the new one. (A value Dave picked himself is anything else, and stays.)
+OLD_DEFAULTS = [
+    (("ollama", "presence_penalty"), 0.5, 1.2),       # 2026-11-02: the script repeated itself too much
+    (("comfyui", "control_strength"), 0.65, 0.7),     # 2026-11-02: guides set the layout only
+    (("comfyui", "control_strength"), 0.75, 0.7),
+]
+
+
+def _move_old_defaults(s: dict[str, Any]) -> None:
+    for (section, key), old, new in OLD_DEFAULTS:
+        if s.get(section, {}).get(key) == old:
+            s[section][key] = new
 
 
 def repo_path(value: str) -> Path:
