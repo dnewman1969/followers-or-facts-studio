@@ -263,10 +263,28 @@ def _quality_review(ep: Episode, ctx: Context, scenes: list[dict[str, Any]], sty
                 continue
             ctx.check_cancel()
             ctx.progress(f"Quality review: looking at {shot['shot_id']} ({n + 1}/{len(shots_)})", 96)
-            res = rv.frame_check(ep.abs(c["raw"]), shot, drawn=style.cartoon)
-            if res is None:
+            # every version is checked against the shot's own questions and the standard ones, and the one that
+            # passes most is used (research "Leading AI image and video methods": ranking candidates by question
+            # checks matters more than looks); a version you picked yourself is never overridden
+            scores: dict[int, dict] = {}
+            for k, cand in enumerate(shot["candidates"]):
+                if cand and cand.get("raw") and not cand.get("real") and (k == pick or not shot.get("picked_by_hand")):
+                    got = rv.frame_check(ep.abs(cand["raw"]), shot, drawn=style.cartoon)
+                    if got is not None:
+                        scores[k] = got
+            if not scores:
                 vision_ok = n > 0     # the first picture got no answer: no vision model running, stop asking
                 continue
+            def vivid(k: int) -> float:     # ties go to the brighter, more colourful version (appeal.py)
+                a = ((shot["candidates"][k] or {}).get("appeal") or {})
+                m = a.get("after") or a.get("before") or {}
+                return float(m.get("colourfulness", 0)) * (0.5 + float(m.get("brightness", 0)))
+            best = min(scores, key=lambda k: (len(scores[k]["problems"]), -vivid(k), k != pick))
+            if best != pick and not shot.get("picked_by_hand"):
+                ctx.log(f"Quality review: {shot['shot_id']} uses version {best + 1} (it passes more checks)")
+                shot["pick"] = pick = best
+                c = shot["candidates"][pick]
+            res = scores[pick]
             if not res["ok"] and budget > 0 and not shot.get("by_hand"):
                 budget -= 1
                 ctx.log(f"Quality review: {shot['shot_id']} {'; '.join(res['problems'])}: painting it again")
@@ -713,6 +731,7 @@ def set_pick(ep: Episode, shot_id: str, k: int) -> None:
         for shot in s.get("shots", []):
             if shot["shot_id"] == shot_id:
                 shot["pick"] = k
+                shot["picked_by_hand"] = True
     ep.save_storyboard(board)
 
 
@@ -769,7 +788,8 @@ def shots(ep: Episode) -> list[dict[str, Any]]:
                             "person_id": shot.get("person_id", ""), "look": shot.get("look") or {},
                             "covers": shot.get("covers", ""), "shows": shot.get("shows", ""),
                             "action": shot.get("action", ""), "why": shot.get("why", ""),
-                            "emotion": shot.get("emotion", ""), "anim": shot.get("anim") or {}}
+                            "emotion": shot.get("emotion", ""), "anim": shot.get("anim") or {},
+                            "camera_sees": shot.get("camera_sees", "")}
                     if shot["kind"] == "owl" and c.get("set"):    # the empty set; Owlbert is added live
                         item["image"] = {**c, "path": c["set"], "raw": c["set_raw"]}
                         if settings()["owl"].get("in_scenes"):

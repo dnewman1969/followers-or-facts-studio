@@ -251,7 +251,9 @@ def fake_llm(get_packet):
             return {"frames": [{"shot_id": sh["shot_id"], "camera_sees": (
                 f"A {sh['camera'] or 'medium'} view of a typed page on a worn oak desk under a brass desk lamp, "
                 "the paper curling at one corner, stacked yellowed newspapers behind it, warm amber light from the "
-                f"left at night, amber and teal colours ({sh['shot_id']})")} for sh in shots]}
+                f"left at night, amber and teal colours ({sh['shot_id']})"),
+                "checks": ["Is there a typed page on the desk?", "Is the lamp the brightest thing?"]}
+                for sh in shots]}
         if "subject" in props and len(props) == 1:   # a style's showcase scene for the style test
             return {"subject": "A small figure with a lantern crosses a rope bridge over a misty gorge toward one "
                                "lit window, seen from behind, low moonlight from the left"}

@@ -77,6 +77,10 @@ DEFAULTS: dict[str, Any] = {
         "image_width": 1344,
         "image_height": 768,
         "video_workflow": "comfy_workflows/wan22_i2v_lightning.json",
+        # the speed-up add-on's strength on the first (movement-setting) half of each clip. 1.0 is the makers'
+        # setting; it makes motion slower and stiller (research "Leading AI image and video methods"): try 0.7-0.8
+        # if clips hardly move, on a few shots first
+        "wan_high_lora": 1.0,
         "video_model_name": "Wan 2.2 I2V 14B + Lightning",
         "video_width": 832,
         "video_height": 480,

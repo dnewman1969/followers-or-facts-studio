@@ -17,7 +17,7 @@ def test_comfy_placeholders_fill_numbers_and_text():
 def test_workflow_templates_are_valid_and_have_their_placeholders():
     need = {"zimage_turbo_t2i.json": {"PROMPT", "SEED", "WIDTH", "HEIGHT", "FILENAME_PREFIX"},
             "wan22_i2v_lightning.json": {"IMAGE", "PROMPT", "SEED", "WIDTH", "HEIGHT", "FRAMES",
-                                         "FPS", "FILENAME_PREFIX"},
+                                         "FPS", "FILENAME_PREFIX", "HIGH_LORA"},
             "acestep_music.json": {"TAGS", "LYRICS", "SECONDS", "SEED", "FILENAME_PREFIX"}}
     for name, keys in need.items():
         data = json.loads((REPO / "comfy_workflows" / name).read_text(encoding="utf-8"))

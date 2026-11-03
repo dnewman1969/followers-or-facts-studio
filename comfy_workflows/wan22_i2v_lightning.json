@@ -1,5 +1,5 @@
 {
-  "_about": "Wan 2.2 14B image-to-video with the 4-step Lightning LoRAs (ComfyUI API format). Apache-2.0. Model files and folders are listed in docs/MODELS.md. Placeholders: IMAGE (uploaded file name), PROMPT, SEED, WIDTH, HEIGHT, FRAMES, FPS, FILENAME_PREFIX. 832x480, 81 frames = 5 s at 16 fps fits a 12 GB card with 128 GB of system RAM.",
+  "_about": "Wan 2.2 14B image-to-video with the 4-step Lightning LoRAs (ComfyUI API format). Apache-2.0. Model files and folders are listed in docs/MODELS.md. Placeholders: HIGH_LORA (the first stage's speed-up strength, comfyui.wan_high_lora), IMAGE (uploaded file name), PROMPT, SEED, WIDTH, HEIGHT, FRAMES, FPS, FILENAME_PREFIX. 832x480, 81 frames = 5 s at 16 fps fits a 12 GB card with 128 GB of system RAM.",
   "1": {
     "class_type": "UNETLoader",
     "inputs": {"unet_name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors", "weight_dtype": "default"}
@@ -10,7 +10,7 @@
   },
   "3": {
     "class_type": "LoraLoaderModelOnly",
-    "inputs": {"model": ["1", 0], "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", "strength_model": 1.0}
+    "inputs": {"model": ["1", 0], "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", "strength_model": "{{HIGH_LORA}}"}
   },
   "4": {
     "class_type": "LoraLoaderModelOnly",

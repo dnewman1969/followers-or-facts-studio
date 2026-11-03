@@ -98,12 +98,26 @@ def _owl_words():
     return OWLBERT_WORDS, OWL_WORDS
 
 
+# A hand with nobody attached is painted as a floating hand (Dave's pictures 2026-11-03): when no whole person is
+# in the picture, "a hand holding the file" becomes "the file"
+LONE_HAND = re.compile(r"\b(?:an?\s+|two\s+|the\s+|gloved\s+|a\s+gloved\s+|someone's\s+|a\s+person's\s+)?"
+                       r"(?:hands?|fingers?|fists?|arms?)\s+(?:\w+ly\s+)?(?:holding|gripping|clutching|grasping|"
+                       r"lifting|raising|pointing\s+at|pointing\s+to|reaching\s+for|resting\s+on|tapping|"
+                       r"turning|flipping|on|over|with)\s+", re.I)
+PERSON = re.compile(r"\b(?:man|woman|person|figure|someone|people|crowd|clerk|host|reporter|official|"
+                    r"listener|silhouette|caricature|anchor|judge|worker|seller|buyer)\b", re.I)
+
+
+def no_lone_hands(text: str) -> str:
+    return text if PERSON.search(text or "") else LONE_HAND.sub("", text or "")
+
+
 def painter_safe(text: str, owl_allowed: bool = False) -> str:
     """The last check before the painter: no numbers, quotes, labels, ratios, staging words or real names; no
     owl or bird unless it's an Owlbert shot (and even then only the empty set is painted)."""
     from .promptcheck import clean_prompt, no_text_cues
     from .stages.storyboard import names_in, person_names
-    t = numbers_as_words(no_text_cues(text or ""))
+    t = numbers_as_words(no_text_cues(no_lone_hands(text or "")))
     t = DIGITS.sub("", t)
     t = QUOTES.sub("", t)
     t = t.replace(":", ",")
@@ -180,8 +194,10 @@ def design_sets(ep: Episode, bible: dict[str, Any], style, llm=None, log_line=la
 
 # ---------------------------------------------------------------- storyboard artist
 FRAMES_SCHEMA = {"type": "object", "properties": {"frames": {"type": "array", "items": {
-    "type": "object", "properties": {"shot_id": {"type": "string"}, "camera_sees": {"type": "string"}},
-    "required": ["shot_id", "camera_sees"]}}}, "required": ["frames"]}
+    "type": "object", "properties": {"shot_id": {"type": "string"}, "camera_sees": {"type": "string"},
+                                     "checks": {"type": "array", "minItems": 2, "maxItems": 5,
+                                                "items": {"type": "string"}}},
+    "required": ["shot_id", "camera_sees", "checks"]}}}, "required": ["frames"]}
 
 
 # The colour script (research "Animated documentary storytelling craft": each act gets its own palette, colour
@@ -204,6 +220,13 @@ APPEAL = ("Make it appealing, like a frame from a well-made animated documentary
           "background layers for depth, and ONE hero prop rather than piles of paper.")
 
 
+def drawn_from(shot: dict[str, Any]) -> str:
+    """What a frame description was written from: the director's idea and the camera framing. When either
+    changes, the frame is drawn up again."""
+    look = shot.get("look") or {}
+    return " | ".join(str(x or "") for x in (shot.get("idea"), look.get("shot_type"), look.get("angle")))
+
+
 def _brief(shot: dict[str, Any]) -> dict[str, Any]:
     look = shot.get("look") or {}
     return {"shot_id": shot["shot_id"], "kind": shot["kind"], "shows": shot.get("shows", ""),
@@ -219,7 +242,7 @@ def camera_sees(ep: Episode, entry: dict[str, Any], bible: dict[str, Any], style
     shots got a new frame description. Shots keep it until their planned idea changes."""
     from . import bible as biblemod
     todo = [s for s in entry["shots"] if not s.get("by_hand") and s.get("kind") != "real"
-            and (not s.get("camera_sees") or s.get("camera_sees_from") != s.get("idea"))]
+            and (not s.get("camera_sees") or s.get("camera_sees_from") != drawn_from(s))]
     if not todo:
         return 0
     if llm is None:
@@ -234,16 +257,25 @@ def camera_sees(ep: Episode, entry: dict[str, Any], bible: dict[str, Any], style
         ans = llm.chat_json([
             {"role": "system", "content": (
                 f"You are the storyboard artist of a documentary drawn in this look: {style.look}. For each planned "
-                "shot write 'camera_sees': ONE frozen instant, as a painter would see it, in 40 to 110 words, in "
-                "this order: the framing; the main subject and exactly what it is doing at this instant; the set "
-                "pieces around it (use the place's set pieces, with their materials and wear); the light and time "
-                f"of day; the colours. {APPEAL} Use the scene's colour plan. Show the moment, don't tell the story: "
+                "shot write 'camera_sees': ONE frozen instant, as a painter would see it, in 80 to 180 words, in "
+                "this order: the framing; the main subject, how many of it, its colour, and exactly what it is doing "
+                "at this instant; the set pieces around it (use the place's set pieces, with their materials and "
+                "wear) in front, middle and back; the light and time of day; the colours. Write it the way the "
+                "picture model was trained to read (research \"Leading AI image and video methods\", after the "
+                "model makers' own prompt rewriter): literal and concrete; turn any abstract idea into things you "
+                "can see; no metaphors, no feelings words, no 'masterpiece' or '8K'; describe what IS there, never "
+                f"'no ...'. {APPEAL} Use the scene's colour plan. Show the moment, don't tell the story: "
                 "no 'the shot begins', 'then', 'enters', "
                 "'walks to'. Never numbers, dates, quotes, captions, labels, signs or readable writing (a document "
-                "is 'a typed page', never what it says). Never a real person's name. For kind 'owl' describe ONLY "
+                "is 'a typed page', never what it says). Never hands or arms on their own: either a whole person "
+                "(seen from behind or far away) or the object by itself, resting on something. Never a real "
+                "person's name. For kind 'owl' describe ONLY "
                 "the empty place where the host will stand (he is added from his own artwork): never an owl or a "
                 "bird. For other kinds never an owl or a bird. People are seen from behind or far away, wearing "
-                "what the bible gives them.")},
+                "what the bible gives them. Also give 'checks': 2 to 5 short yes/no questions anyone could answer "
+                "by looking at the finished picture, each about one concrete thing it must show (\"Is there a red "
+                "folder on the desk?\", \"Is the lamp the brightest thing?\", \"Is it a close view?\"), each "
+                "answered yes when the picture is right.")},
             {"role": "user", "content": json.dumps({
                 "place": place, "people": people, "scene_feeling": ((bible.get("scenes") or {}).get(sid) or {}).get(
                     "emotion", ""), "colour_plan": COLOUR_SCRIPT.get(entry.get("role", ""), ""),
@@ -262,7 +294,11 @@ def camera_sees(ep: Episode, entry: dict[str, Any], bible: dict[str, Any], style
         if len(safe.split()) < 8:
             log(ep, "artist", "no usable frame description; the director's idea is used", shot["shot_id"])
             continue
-        shot["camera_sees"], shot["camera_sees_from"] = safe, shot.get("idea")
+        shot["camera_sees"], shot["camera_sees_from"] = safe, drawn_from(shot)
+        checks = next((f.get("checks") for f in ans.get("frames") or []
+                       if str(f.get("shot_id", "")).strip() == shot["shot_id"]), None) or []
+        shot["checks"] = [c.strip() for c in checks if isinstance(c, str) and c.strip().endswith("?")
+                          and 3 <= len(c.split()) <= 18][:5]
         log(ep, "artist", safe[:240], shot["shot_id"])
         n += 1
     if n:

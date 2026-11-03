@@ -76,9 +76,13 @@ def frame_check(image_path, shot: dict[str, Any], drawn: bool = True, llm=None) 
              "no clear main subject (it may break when animated)"),
             ("blockout", "Does it look like an empty, untextured grey 3D model with plain bare walls?", True,
              "looks like a bare grey blockout, not a designed set")]
+    asks.append(("hand", "Is there a hand or an arm that isn't attached to a whole visible person?", True,
+                 "has a floating hand"))
     if shot.get("kind") != "owl":
         asks.append(("bird", "Is there a bird or an owl anywhere in the picture?", True,
                      "has a bird or owl in it (Owlbert only comes from his own artwork)"))
+    for i, q in enumerate((shot.get("checks") or [])[:5]):   # the storyboard artist's own questions
+        asks.append((f"check{i}", q, False, f"doesn't show: {q.rstrip('?')}"))
     if drawn:
         asks.append(("drawn", "Is it a drawing, painting or illustration (not a photograph)?", False,
                      "looks like a photograph, not the drawn style"))

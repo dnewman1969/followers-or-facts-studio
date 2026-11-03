@@ -228,7 +228,39 @@ def emotion_streaks(seq: list[dict[str, Any]], limit: int = 4) -> list[int]:
 ENVIRONMENT = ["none", "drifting smoke", "moving clouds", "falling rain", "falling snow", "flickering firelight",
                "passing traffic", "rustling leaves", "rippling water", "floating dust", "flickering light",
                "rising steam", "wind in the grass", "a distant crowd shifting"]
-SPEEDS = ["very slow", "slow", "steady"]
+SPEEDS = ["gently", "steadily", "briskly"]
+# "slowly" makes the fast animation settings barely move at all (research "Leading AI image and video methods"):
+# it's said as a steady, clear move instead
+SPEED_WORDS = {"very slow": "gently", "slow": "steadily", "steady": "steadily"}
+
+# Each background movement only where the picture has the thing that moves (Dave's clips 2026-11-03 all asked
+# for "a distant crowd shifting and a distant crowd shifting", over desks in an office)
+ENV_NEEDS = {
+    "drifting smoke": r"smok|cigar|fire|chimney|candle|incense|fog",
+    "moving clouds": r"sky|cloud|outdoor|outside|street|field|horizon|rooftop|window",
+    "falling rain": r"rain|storm|wet|umbrella|window|street",
+    "falling snow": r"snow|winter|cold|frost",
+    "flickering firelight": r"fire|candle|fireplace|torch|campfire|lantern",
+    "passing traffic": r"street|road|traffic|city|highway|car",
+    "rustling leaves": r"tree|leaf|leaves|park|forest|garden|bush",
+    "rippling water": r"water|river|sea|lake|pond|ocean|harbou?r|pool",
+    "floating dust": r".",                       # any interior or light beam
+    "flickering light": r"lamp|light|bulb|screen|tv|television|monitor|neon|candle|fluorescent",
+    "rising steam": r"coffee|tea|mug|cup|kettle|steam|kitchen|pot|soup",
+    "wind in the grass": r"grass|field|meadow|prairie|lawn|farm",
+    "a distant crowd shifting": r"crowd|audience|people|rally|protest|spectators|onlookers|stadium|march",
+}
+
+
+def fitting_environment(env: list[str], picture: str) -> list[str]:
+    """The background movements that fit what's in the picture, each once, at most two."""
+    import re as _re
+    out: list[str] = []
+    for e in env or []:
+        need = ENV_NEEDS.get(e)
+        if e != "none" and e not in out and need and _re.search(need, picture or "", _re.I):
+            out.append(e)
+    return out[:2]
 
 
 def motion_prompt(camera_words: str, speed: str, character: str, environment: list[str], band: str) -> str:
@@ -243,8 +275,14 @@ def motion_prompt(camera_words: str, speed: str, character: str, environment: li
         parts.append(" and ".join(env))
     else:   # research: say what stays still, so the model doesn't invent motion everywhere
         parts.append("the background stays steady")
-    cam = camera_words or "the camera holds still"
-    parts.append(f"{cam}, {speed}" if speed and speed not in cam else cam)
+    cam = re.sub(r"\bslowly\b", "steadily", re.sub(r"\bslow\b", "steady", camera_words or "the camera holds still",
+                                                  flags=re.I), flags=re.I)
+    speed = SPEED_WORDS.get(speed, speed)
+    parts.append(f"{cam}, {speed}" if speed and speed[:5] not in cam else cam)
     tidy = [re.sub(r"\s{2,}", " ", NEGATION.sub("", p)).strip(" ,.") for p in parts]   # each layer, one sentence
     from .promptcheck import no_text_cues
-    return no_text_cues(". ".join(t for t in tidy if t)) + "."
+    out = no_text_cues(". ".join(t for t in tidy if t))
+    out = re.sub(r"\bvery slowly\b|\bvery slow\b", "gently", out, flags=re.I)
+    out = re.sub(r"\bslowly\b", "steadily", out, flags=re.I)
+    out = re.sub(r"\bslow\b", "steady", out, flags=re.I)
+    return out + "."

@@ -72,7 +72,7 @@ def test_quality_review_answers_and_repaints(episode, monkeypatch):
         # the first picture "has writing in it": it gets painted again once; otherwise no writing, no grey
         # blockout, no stray bird
         qs = [ln for ln in messages[0]["content"].splitlines() if ln[:1].isdigit()]
-        bad = ("writing", "grey 3D model", "bird")
+        bad = ("writing", "grey 3D model", "bird", "hand or an arm")
         return "\n".join(f"{n}. " + ("yes" if (any(b in q for b in bad) == (len(looked) == 1 and "writing" in q))
                                       else "no") for n, q in enumerate(qs, 1))
     monkeypatch.setattr(Ollama, "chat", vision)
@@ -545,15 +545,15 @@ def test_the_crew_dresses_the_sets_draws_up_frames_and_supervises(episode):
     assert {"breakdown", "designer", "artist", "supervisor"} <= roles
     # a second run keeps the dressed sets; a frame is only drawn again when its shot's plan changed
     before = len(crew.entries(ep))
-    kept = {sh["shot_id"]: (sh["idea"], sh["camera_sees"]) for s in ep.storyboard()["scenes"] for sh in s["shots"]
-            if sh.get("camera_sees")}
+    kept = {sh["shot_id"]: (crew.drawn_from(sh), sh["camera_sees"]) for s in ep.storyboard()["scenes"]
+            for sh in s["shots"] if sh.get("camera_sees")}
     pipeline.run_now(ep, "storyboard")
     assert not [e for e in crew.entries(ep)[before:] if e["role"] == "designer"]
     for s in ep.storyboard()["scenes"]:
         for sh in s["shots"]:
             if sh.get("camera_sees"):
-                assert sh["camera_sees_from"] == sh["idea"]
-                if sh["shot_id"] in kept and kept[sh["shot_id"]][0] == sh["idea"]:
+                assert sh["camera_sees_from"] == crew.drawn_from(sh)      # drawn from the current plan
+                if sh["shot_id"] in kept and kept[sh["shot_id"]][0] == crew.drawn_from(sh):
                     assert sh["camera_sees"] == kept[sh["shot_id"]][1]
 
 
@@ -591,3 +591,17 @@ def test_a_stage_direction_about_owlbert_is_never_read_out():
         "The Treasury document is clear."
     assert speakable("Here is the clue. *adjusts spectacles* Look closer.") == "Here is the clue. Look closer."
     assert speakable("Owlbert's habit is to ask why.") == "Owlbert's habit is to ask why."
+
+
+def test_hands_never_float_and_background_motion_fits_the_picture():
+    """Dave's clips 2026-11-03: floating hands; every motion line asked for "a distant crowd shifting" twice."""
+    from fofstudio import shotplan
+    from fofstudio.crew import no_lone_hands
+    assert no_lone_hands("A gloved hand holding a magnifying glass over the red file") == \
+        "a magnifying glass over the red file"
+    assert "hand" in no_lone_hands("A clerk with a hand on the ledger, seen from behind")
+    assert shotplan.fitting_environment(["a distant crowd shifting", "a distant crowd shifting"],
+                                        "a red file under a brass desk lamp in an office") == []
+    assert shotplan.fitting_environment(["flickering light", "flickering light", "rising steam"],
+                                        "a brass desk lamp glows over a mug of coffee") == ["flickering light",
+                                                                                            "rising steam"]

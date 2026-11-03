@@ -983,6 +983,34 @@ had approved it (twice, per his diary): the film's bible (its places) was only w
 - Seen in his diary, for the next round: thin research (3 ticked items for 6.5 minutes) made a 3.7-minute script
   with two verdict scenes and quotes that weren't word for word; story threads 48-96.
 
+## 2026-11-03 — v0.12.0: pictures that match their description, clips that move
+
+Dave's S01E10 run: pictures much brighter, but "they don't even look like they're described", floating hands, and
+"no animation in a bunch" (his Video step was cancelled at 15:19 with 17 clips left; 41 of 68 shots were 2.5D).
+Every motion line read "a distant crowd shifting and a distant crowd shifting ... the camera pans slowly sideways",
+even over an office desk. Research "Leading AI image and video methods" (picture adherence, video motion, AI
+filmmaker workflows, training locally).
+- Storyboard artist writes like the picture model's makers' own prompt rewriter: 80-180 words, literal, counts and
+  colours, abstract ideas made visible, no metaphors/feeling words/quality tags; plus 2-5 yes/no checks per shot
+  ("Is there a red folder on the desk?").
+- Quality review checks EVERY version of a shot with its own checks and the standard ones (writing, blockout,
+  floating hand, bird) and uses the one that passes most (ties: the more vivid); a version you picked by hand is
+  never overridden (`picked_by_hand`).
+- Floating hands: hands/arms with no person in the picture are taken out of prompts (`crew.no_lone_hands`); the
+  artist is told never to show lone hands; the vision check asks about a hand not attached to a whole person.
+- Motion: the planner sees what was painted (camera_sees), not the plan sentence; background motion must fit the
+  picture and never repeats (`shotplan.fitting_environment`); camera moves say where they start and end; "slow" /
+  "slowly" are gone from motion prompts (they make the fast settings barely move); a clip that hardly moves is made
+  once more with the move said plainly, keeping whichever moved more.
+- `comfyui.wan_high_lora` (default 1.0): the speed-up add-on's strength on the movement-setting half, to try at
+  0.7-0.8 if clips stay still.
+- Storyboard captions show what was painted, so a picture can be judged against its real description.
+- A frame description is drawn up again when the shot's idea OR its camera framing changes (`crew.drawn_from`);
+  before, a new framing kept the old description.
+- Next (report's plan): confidence-scored checks and 4-6 candidates from 2-3 framings; Qwen-Image-Edit-2511 to fix
+  one fault instead of repainting; Fun Camera presets and first-and-last-frame; a picker trained on Dave's keeps;
+  Z-Image style and Owlbert LoRAs (2-7 h each on the 3060).
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

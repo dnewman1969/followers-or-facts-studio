@@ -101,7 +101,8 @@ class ShotTile(QFrame):
             minis.addWidget(b)
         minis.addStretch(1)
         v.addLayout(minis)
-        idea = QLabel(shot["idea"][:120])
+        # what was painted (the storyboard artist's frame), so the picture can be judged against its description
+        idea = QLabel((shot.get("camera_sees") or shot["idea"])[:140])
         idea.setWordWrap(True)
         idea.setObjectName("muted")
         idea.setFixedWidth(THUMB_W)

@@ -63,13 +63,16 @@ MOVE_TO_CAMERA = {"static": "static", "pan": "pan_right", "tilt": "pan_up", "dol
                   "dolly out": "zoom_out", "crane": "pan_up", "orbit": "pan_left", "push-in": "zoom_in",
                   "pull-out": "zoom_out", "handheld": "zoom_in", "tracking": "pan_left", "steadicam": "dolly_in",
                   "drone": "zoom_out"}
-MOVE_WORDS = {"static": "locked-off camera, only the scene moves", "pan": "the camera pans slowly sideways",
-              "tilt": "the camera tilts slowly upward", "dolly in": "the camera dollies slowly forward",
-              "dolly out": "the camera dollies slowly back", "crane": "the camera rises slowly like a crane",
-              "orbit": "the camera orbits slowly around the subject", "push-in": "a slow push-in",
-              "pull-out": "a slow pull-out that reveals more of the place", "handheld": "a slight handheld drift",
-              "tracking": "the camera tracks alongside the subject", "steadicam": "a smooth gliding steadicam move",
-              "drone": "a high aerial drift"}
+MOVE_WORDS = {   # one clear move from where it starts to where it ends; never "slowly", which the animation model
+    # reads as "hardly move" (research "Leading AI image and video methods")
+    "static": "locked-off camera, only the scene moves", "pan": "the camera pans across from left to right",
+    "tilt": "the camera tilts up from the floor to the top of the scene",
+    "dolly in": "the camera moves forward toward the subject", "dolly out": "the camera moves back from the subject",
+    "crane": "the camera rises from low down to high above the scene",
+    "orbit": "the camera circles part way around the subject", "push-in": "a steady push-in toward the subject",
+    "pull-out": "a pull-out from close up that reveals more of the place", "handheld": "a slight handheld drift",
+    "tracking": "the camera tracks alongside the subject", "steadicam": "a smooth gliding steadicam move",
+    "drone": "a high aerial drift"}
 
 _SHOT_WORDS = [("extreme close", "extreme close-up"), ("establishing", "establishing"),
                ("close-up", "close-up"), ("close up", "close-up"), ("closeup", "close-up"),

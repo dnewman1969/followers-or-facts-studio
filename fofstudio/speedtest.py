@@ -119,9 +119,10 @@ def run(ctx) -> None:
 
             def clip():
                 return run_template("video_workflow", {
-                    "IMAGE": uploaded, "PROMPT": "slow push in, the clock's hands move, dust floats in the light",
+                    "IMAGE": uploaded, "PROMPT": "a steady push-in, the clock's hands move, dust floats in the light",
                     "SEED": new_seed(), "WIDTH": c["video_width"], "HEIGHT": c["video_height"],
-                    "FRAMES": c["video_frames"], "FPS": c["video_fps"], "FILENAME_PREFIX": "fof/speedtest/clip"},
+                    "FRAMES": c["video_frames"], "FPS": c["video_fps"], "FILENAME_PREFIX": "fof/speedtest/clip",
+                    "HIGH_LORA": float(c.get("wan_high_lora", 1.0))},
                     work / "clip", cancelled=ctx.cancelled,
                     on_progress=lambda t, p=None: ctx.progress(f"Animating the test picture: {t}"))
             _, secs = _timed(clip)

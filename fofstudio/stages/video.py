@@ -41,11 +41,17 @@ PLAN_SCHEMA = {
 }
 
 
-CAMERA_WORDS = {"zoom_in": "a slow push-in", "zoom_out": "a slow pull-out", "pan_left": "the camera pans slowly left",
-                "pan_right": "the camera pans slowly right", "pan_up": "the camera tilts slowly up",
-                "pan_down": "the camera tilts slowly down", "dolly_in": "the camera dollies slowly forward",
-                "static": "the camera holds still"}
+CAMERA_WORDS = {"zoom_in": "a steady push-in toward the subject",
+                "zoom_out": "a pull-out from close up that reveals more of the place",
+                "pan_left": "the camera pans across from right to left",
+                "pan_right": "the camera pans across from left to right",
+                "pan_up": "the camera tilts up from the bottom of the scene to the top",
+                "pan_down": "the camera tilts down from the top of the scene to the bottom",
+                "dolly_in": "the camera moves forward toward the subject",
+                "static": "the camera holds still while the scene moves"}
 
+
+STILL = 0.15      # a clip whose frames change less than this (median, on 0-255 grey) hardly moved
 
 WAN_UNRELIABLE = {"orbit", "crane", "drone", "tracking", "handheld", "steadicam"}
 
@@ -96,6 +102,8 @@ def plan(ctx: Context) -> None:
             schema["properties"]["environment"]["items"]["enum"] = shotplan.ENVIRONMENT
             schema["properties"]["speed"]["enum"] = shotplan.SPEEDS
             risk = shot.get("anim") or shotplan.animation_risk(shot)
+            # what was actually painted (the storyboard artist's frame), not the director's plan sentence
+            picture = shot.get("camera_sees") or shot["prompt"]
             p = llm.chat_json([
                 {"role": "system", "content": (
                     f"You are the motion planner for a {style.name} video. A still picture becomes a short moving "
@@ -104,7 +112,7 @@ def plan(ctx: Context) -> None:
                     "faces or many people moving), ENVIRONMENT (up to two background movements from the list). One "
                     f"action only, slow and smooth, in this style: {style.motion}. Then say in one or two plain "
                     "sentences how the shot plays.")},
-                {"role": "user", "content": f"Picture: {shot['prompt']}\nWhat happens: {shot.get('action', '')}\n"
+                {"role": "user", "content": f"Picture: {picture}\nWhat happens: {shot.get('action', '')}\n"
                                             f"Why the shot is used: {shot.get('why', '')}\n"
                                             f"Shot length: {seconds:.1f} seconds"},
             ], schema, lenient=True, temperature=0.4)
@@ -125,9 +133,10 @@ def plan(ctx: Context) -> None:
             cam, words = vd.camera_for(shot.get("look") or {}, out[-1]["camera"] if out else "")
             camera = cam or (p.get("camera") if p.get("camera") in CAMERA_MOVES else "zoom_in")
             words = words or CAMERA_WORDS.get(camera, "")
-            speed = p.get("speed") if p.get("speed") in shotplan.SPEEDS else "slow"
+            speed = p.get("speed") if p.get("speed") in shotplan.SPEEDS else "steadily"
             action = (p.get("character_action") or shot.get("action") or "").strip()[:80]
-            env = [e for e in (p.get("environment") or []) if e in shotplan.ENVIRONMENT]
+            env = shotplan.fitting_environment([e for e in (p.get("environment") or []) if e in shotplan.ENVIRONMENT],
+                                               picture)
             entry = {"how_it_plays": p.get("how_it_plays") or shot.get("action") or "",
                      "motion_prompt": shotplan.motion_prompt(words, speed, action, env, risk["band"]),
                      "camera": camera, "seconds": max(2.0, min(10.0, seconds)), "method": method, "kind": kind,
@@ -287,6 +296,7 @@ def run(ctx: Context) -> None:
             uploaded = client.upload_image(ep.abs(s["raw"]))
             prompt = s["motion_prompt"]
             check: dict[str, Any] = {}
+            first_still = None
             for attempt in (1, 2):
                 ctx.progress(f"Animating {s['shot_id']} with Wan 2.2 ({n + 1}/{total}, a few minutes each)"
                              + (" - second try, camera only" if attempt == 2 else ""), 100 * n / total)
@@ -295,6 +305,7 @@ def run(ctx: Context) -> None:
                     "IMAGE": uploaded, "PROMPT": f"{prompt} {MOTION_SUFFIX}", "SEED": seed,
                     "WIDTH": cfg["video_width"], "HEIGHT": cfg["video_height"], "FRAMES": cfg["video_frames"],
                     "FPS": cfg["video_fps"], "FILENAME_PREFIX": f"fof/{ep.project_id}/{s['shot_id']}",
+                    "HIGH_LORA": float(cfg.get("wan_high_lora", 1.0)),
                 }, ep.path("video", f"{s['shot_id']}-wan-{seed}"), cancelled=ctx.cancelled,
                     on_progress=lambda t, p=None, sid=s["shot_id"], k=n: ctx.progress(
                         f"Animating {sid} with Wan 2.2 ({k + 1}/{total}): {t}"))
@@ -308,7 +319,19 @@ def run(ctx: Context) -> None:
                         ctx.log(f"{s['shot_id']}: the clip broke near the end ({check['why']}); kept the first "
                                 f"{check['break_at'] - 1} frames")
                         clip, check = kept, {**again, "trimmed_at": check["break_at"]}
+                if check["ok"] and attempt == 1 and check.get("median_change", 1) < STILL:
+                    # it hardly moved (Dave's clips 2026-11-03): one more try, the move said plainly and stronger
+                    ctx.log(f"{s['shot_id']}: the clip hardly moved; trying again with a clearer move")
+                    first_still = (clip, check)
+                    prompt = f"{prompt} The movement is clear and continuous from the first frame to the last."
+                    continue
                 if check["ok"]:
+                    if attempt == 2 and first_still and check.get("median_change", 0) < \
+                            first_still[1].get("median_change", 0):
+                        clip, check = first_still        # keep whichever moved more
+                    break
+                if first_still:                          # the stronger try broke: keep the one that held together
+                    clip, check = first_still
                     break
                 ctx.log(f"{s['shot_id']}: the animated clip broke ({check['why']}); "
                         + ("trying again with camera motion only" if attempt == 1 else "using a 2.5D move instead"))
