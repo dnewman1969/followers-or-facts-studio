@@ -20,6 +20,7 @@ from .common import GREEN, MUTED, RED, error, open_path
 class UnrealDialog(QDialog):
     got = Signal(int, int)
     finished_download = Signal(str, bool)
+    bible_done = Signal(str)
 
     def __init__(self, parent, ep) -> None:
         super().__init__(parent)
@@ -89,6 +90,7 @@ class UnrealDialog(QDialog):
         lay.addLayout(row)
 
         self.got.connect(self._progress)
+        self.bible_done.connect(self._bible_ready)
         self.finished_download.connect(self._downloaded)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -149,6 +151,31 @@ class UnrealDialog(QDialog):
 
     # ------------------------------------------------------------- Unreal
     def _start(self) -> None:
+        if ub.needs_bible(self.ep):   # list the film's places first (about a minute), then start Unreal
+            self._listing = True
+            self.go_btn.setEnabled(False)
+            self.status.setText("Listing the places in your script first (the film's bible, about a minute)...")
+
+            def work() -> None:
+                try:
+                    ub.ensure_bible(self.ep)
+                    self.bible_done.emit("")
+                except StageError as exc:
+                    self.bible_done.emit(str(exc))
+            threading.Thread(target=work, daemon=True).start()
+            return
+        self._launch()
+
+    def _bible_ready(self, problem: str) -> None:
+        self._listing = False
+        self.go_btn.setEnabled(True)
+        if problem:
+            self.status.setText("")
+            error(self, problem)
+            return
+        self._launch()
+
+    def _launch(self) -> None:
         try:
             r = ub.start(self.ep)
         except StageError as exc:
@@ -165,8 +192,10 @@ class UnrealDialog(QDialog):
 
     def _tick(self) -> None:
         busy = ub.running()
-        self.go_btn.setEnabled(not busy)
+        self.go_btn.setEnabled(not busy and not getattr(self, "_listing", False))
         self.stop_btn.setEnabled(busy)
+        if getattr(self, "_listing", False):
+            return
         r = ub.check()
         if r["state"] == "running":
             mins = f" ({r['minutes']} min)" if r.get("minutes") else ""

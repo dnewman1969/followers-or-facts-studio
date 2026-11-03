@@ -44,15 +44,33 @@ def out_dir() -> Path:
     return folder() / "out"
 
 
+def needs_bible(ep: Episode) -> bool:
+    from . import bible
+    return not (bible.load(ep).get("locations") or {})
+
+
+def ensure_bible(ep: Episode, on_text=None) -> dict[str, Any]:
+    """The film's bible (its places), written now if it isn't yet (Dave, 2026-11-03: the Unreal window said
+    "approve the script" when he had: the bible was only written by Make pictures). Takes about a minute."""
+    from . import bible
+    from .scriptfmt import parse
+    b = bible.load(ep)
+    if b.get("locations"):
+        return b
+    if ep.stage_status("script")["status"] != "approved" or not ep.path("script.md").exists():
+        raise StageError("Approve the script first (Script page): the places to build come from it.")
+    b = bible.make(ep, parse(ep.path("script.md").read_text(encoding="utf-8")), on_text=on_text)
+    if not b.get("locations"):
+        raise StageError("The local AI couldn't list the places in this script (is Ollama running?). Try again, "
+                         "or press Make pictures, which writes the list too.")
+    return b
+
+
 def prepare(ep: Episode, auto: bool = False) -> dict[str, Any]:
     """The job for this video's places, and the script with the job's path filled in."""
-    from . import bible
-    b = bible.load(ep)
+    b = ensure_bible(ep)
     places = [{"id": k, **{f: v.get(f, "") for f in ("name", "architecture", "props", "colours")}}
               for k, v in (b.get("locations") or {}).items()]
-    if not places:
-        raise StageError("This video's bible has no places yet. Approve the script, then press Make pictures once "
-                         "(it writes the bible), then come back here.")
     folder().mkdir(parents=True, exist_ok=True)
     out_dir().mkdir(parents=True, exist_ok=True)
     for old in ("done.json", "run-log.txt"):

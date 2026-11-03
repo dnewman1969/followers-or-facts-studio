@@ -971,6 +971,18 @@ appealing frames).
 - Unreal: the set list is given per actor (5.8 refused the property); a warm-up picture before the first camera.
 - docs/TEST-RUN.md: the step-by-step run, what to look at and what to send after each step.
 
+## 2026-11-03 — v0.11.1: Unreal guides after an approved script
+
+Dave's first checkpoint run (S01E10): the Unreal window said "approve the script, then press Make pictures" when he
+had approved it (twice, per his diary): the film's bible (its places) was only written by Make pictures.
+- `unreal_bridge.ensure_bible`: the Unreal window lists the places itself (about a minute, in the background)
+  when the script is approved and the bible doesn't exist yet; a clear message only if the script isn't approved.
+- `speakable`: stage directions about the narrator ("Owlbert pushes his glasses up.", *adjusts spectacles*) are
+  never read out (his diary's SCENE_003 opened with one).
+- The diary notes the chosen story (title, logline, beats) when you pick it (it showed "chosen:" empty).
+- Seen in his diary, for the next round: thin research (3 ticked items for 6.5 minutes) made a 3.7-minute script
+  with two verdict scenes and quotes that weren't word for word; story threads 48-96.
+
 ## Next
 
 1. Dave: run Update Studio.cmd, then make an episode in a new style end to end (Stories → style); report.

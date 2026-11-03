@@ -25,6 +25,13 @@ CASE_ID = re.compile(_LEAD + r"\b\d{1,2}:\d{2}-[a-z]{2}-\d{3,6}(?:-\w+)?\b", re.
 SOURCE_ID = re.compile(r"\b(?:S|E|C|A)-[A-Z0-9-]{2,}\b|\b[A-Z]{1,3}\d{2,}[A-Z]?\b")   # S-COURT-12, E14, C-031
 BRACKET_REF = re.compile(r"\s*[\[(](?:source|see|ref|via|cited|citation)[^\])]*[\])]", re.I)
 QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”")
+# a stage direction about the narrator, which he would read out (Dave's diary 2026-11-03: "Owlbert pushes his
+# glasses up."): Owlbert speaks in the first person, so "Owlbert <does something>." is never narration
+STAGE = re.compile(r"(?:(?<=^)|(?<=[.!?]\s))\(?\*?(?:Professor\s+)?Owlbert(?:\s+McFinnegan)?\s+(?:\w+ly\s+)?"
+                   r"(?:pushes|adjusts|leans|points|taps|flaps|tilts|raises|looks|turns|smiles|nods|shakes|peers|"
+                   r"holds|pulls|lifts|spreads|folds|hops|flies|waves|sighs|gestures|squints|glances|steps|walks|"
+                   r"sits|stands|clears|scratches|ruffles|blinks)\b[^.!?]*[.!?]\)?\*?\s*", re.M)
+DIRECTION = re.compile(r"\s*(?:\*[^*\n]{2,80}\*|\[(?:[^\]\n]{2,80})\])\s*")
 
 
 def _site_name(m: re.Match) -> str:
@@ -38,7 +45,9 @@ def _site_name(m: re.Match) -> str:
 
 
 def _clean(part: str) -> str:
-    t = URL.sub("", part)
+    t = STAGE.sub("", part)
+    t = DIRECTION.sub(" ", t)
+    t = URL.sub("", t)
     t = FILE.sub("", t)
     t = DOMAIN.sub(_site_name, t)
     t = DOCKET.sub("", t)

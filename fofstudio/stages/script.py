@@ -1259,7 +1259,8 @@ def repeat_checks(scenes: list[dict[str, Any]], packet: dict[str, Any]) -> list[
     if refrains:
         k, v = next(iter(refrains.items()))
         out.append(Check(WARN, f"{len(refrains)} short line(s) are said in more than one scene, like \"{k}\" in "
-                               f"{', '.join(sorted(set(v))[:4])}: a punchy line lands once. Press Fix repeats."))
+                               f"{', '.join(sorted(set(v))[:4])}: a punchy line lands once. Rewrite one of them (where it's the "
+                               "scene's only sentence, it can't simply be taken out)."))
     quoted: dict[int, list[str]] = {}
     for sc in scenes:
         for e in sc.get("excerpt_ids", []):

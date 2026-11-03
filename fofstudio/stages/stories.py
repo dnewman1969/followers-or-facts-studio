@@ -262,6 +262,10 @@ def choose(ep: Episode, index: int) -> None:
     story = data["options"][index]
     if story.get("length_seconds"):          # the video length follows the chosen story
         ep.set_creative(minutes=max(1.0, round(story["length_seconds"] / 30) / 2))
+    from .. import diary
+    beats = "; ".join(f"{b.get('role')}: {b.get('beat', '')[:90]}" for b in story.get("beats") or [])
+    diary.note(ep, f"you chose story {index + 1}: \"{story.get('title', '')}\": {story.get('logline', '')} "
+                   f"| beats: {beats}")
 
 
 # ---------------------------------------------------------------- the book as a long video ("the movie")

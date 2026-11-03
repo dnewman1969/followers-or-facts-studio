@@ -564,3 +564,30 @@ def test_a_picture_that_may_hold_a_painted_owl_is_never_animated_by_wan():
     # Owlbert's own empty set is fine: he was taken out before painting and is added from his rig
     assert not _may_hold_an_owl({"prompt": "Owlbert by the window", "image": {"set": "x.png",
                                                                              "full_prompt": "an empty quiet set"}})
+
+
+def test_unreal_guides_list_the_places_themselves_after_the_script_is_approved(episode):
+    """Dave 2026-11-03: the Unreal window said "approve the script" when he had; the places were only listed by
+    Make pictures. Now the window lists them itself."""
+    from fofstudio import unreal_bridge as ub
+    from fofstudio.util import StageError
+    ep = episode
+    research_and_story(ep)
+    pipeline.run_now(ep, "script")
+    try:
+        ub.ensure_bible(ep)
+        raise AssertionError("a script that isn't approved has no places to build")
+    except StageError as exc:
+        assert "Approve the script" in str(exc)
+    pipeline.approve(ep, "script")
+    assert ub.needs_bible(ep)
+    r = ub.prepare(ep)                       # no Make pictures first
+    assert r["places"] and not ub.needs_bible(ep)
+
+
+def test_a_stage_direction_about_owlbert_is_never_read_out():
+    from fofstudio.speakable import speakable
+    assert speakable("Owlbert pushes his glasses up. The Treasury document is clear.") == \
+        "The Treasury document is clear."
+    assert speakable("Here is the clue. *adjusts spectacles* Look closer.") == "Here is the clue. Look closer."
+    assert speakable("Owlbert's habit is to ask why.") == "Owlbert's habit is to ask why."
